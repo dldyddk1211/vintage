@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JP 소싱 대시보드</title>
+  <style>
+    :root {
+      --bg: #0f1117; --card: #1a1d27; --border: #2a2d3a;
+      --accent: #4f8ef7; --accent2: #7c5cbf;
+      --green: #2ecc71; --red: #e74c3c; --yellow: #f39c12;
+      --text: #e0e0e0; --muted: #7a7f9a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', sans-serif; min-height: 100vh; }
+
+    header {
+      background: var(--card); border-bottom: 1px solid var(--border);
+      padding: 16px 32px; display: flex; align-items: center; gap: 16px;
+    }
+    .logo { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+    .sub  { font-size: 0.82rem; color: var(--muted); margin-top: 3px; }
+    .rate-badge {
+      margin-left: auto; background: #1e2433;
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 6px 16px; font-size: 0.88rem;
+    }
+    .rate-badge span { color: var(--yellow); font-weight: 700; }
+
+    .container { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
+
+    .stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .stat-card .label { font-size: 0.75rem; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-card .value { font-size: 1.9rem; font-weight: 700; }
+    .stat-card .hint  { font-size: 0.73rem; color: var(--muted); margin-top: 5px; }
+    .blue   { color: var(--accent); }
+    .green  { color: var(--green); }
+    .yellow { color: var(--yellow); }
+    .red    { color: var(--red); }
+
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+    .panel-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+
+    .btn-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      padding: 11px 22px; border-radius: 8px; border: none;
+      font-size: 0.88rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; gap: 8px;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:hover   { opacity: .85; }
+    .btn:active  { transform: scale(.97); }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+    .btn-blue   { background: var(--accent); color: #fff; }
+    .btn-green  { background: var(--green);  color: #fff; }
+    .btn-purple { background: linear-gradient(135deg,var(--accent),var(--accent2)); color: #fff; }
+    .btn-red    { background: var(--red);    color: #fff; }
+
+    .opts { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+    .opts label { font-size: 0.8rem; color: var(--muted); }
+    .opts input {
+      background: #0f1117; border: 1px solid var(--border);
+      color: var(--text); padding: 6px 10px; border-radius: 6px; width: 90px; font-size: 0.85rem;
+    }
+
+    .schedule-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #1e2433; border: 1px solid var(--border);
+      border-radius: 20px; padding: 5px 14px; font-size: 0.8rem; color: var(--yellow); margin-top: 14px;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* 로그 박스 */
+    .log-box {
+      background: #080a0f; border: 1px solid var(--border); border-radius: 10px;
+      height: 300px; overflow-y: auto; padding: 14px 16px;
+      font-family: 'Consolas', monospace; font-size: 0.78rem; line-height: 1.8;
+    }
+    .log-line           { color: #9ca3af; }
+    .log-line.ok        { color: var(--green); }
+    .log-line.err       { color: var(--red); }
+    .log-line.warn      { color: var(--yellow); }
+    .log-line.info      { color: #60a5fa; }
+
+    /* 상품 테이블 */
+    .tbl-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-size: 0.75rem; font-weight: 500; }
+    tr:hover td { background: #1e2130; }
+    .pimg { width: 46px; height: 46px; object-fit: cover; border-radius: 6px; background: #1e2433; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .b-jpy { background:#1a2a3a; color:#60a5fa; }
+    .b-krw { background:#1a2e1a; color:#4ade80; }
+
+    .pager { display: flex; justify-content: center; gap: 8px; margin-top: 18px; }
+    .pager button {
+      padding: 5px 13px; background: var(--card); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; cursor: pointer; font-size: 0.8rem;
+    }
+    .pager button.on  { background: var(--accent); border-color: var(--accent); }
+    .pager button:disabled { opacity: .35; cursor: not-allowed; }
+
+    .spinner {
+      display: inline-block; width: 13px; height: 13px;
+      border: 2px solid rgba(255,255,255,.3); border-top-color:#fff;
+      border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle;
+    }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    .status-running { color: var(--yellow); }
+    .status-idle    { color: var(--green); }
+
+    @media(max-width:900px){ .stat-grid{ grid-template-columns:repeat(2,1fr); } }
+    @media(max-width:560px){ .stat-grid{ grid-template-columns:1fr 1fr; } .btn-row{ flex-direction:column; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">🛒 JP 소싱 대시보드</div>
+    <div class="sub">Xebio NIKE セール → 네이버 카페 자동 업로더</div>
+  </div>
+  <div class="rate-badge">💱 현재 환율 <span id="rate">-</span> / 1엔</div>
+</header>
+
+<div class="container">
+
+  <!-- 상태 카드 -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="label">수집된 상품</div>
+      <div class="value blue" id="s-count">-</div>
+      <div class="hint">마지막: <span id="s-last-scrape">-</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">업로드 완료</div>
+      <div class="value green" id="s-uploaded">-</div>
+      <div class="hint">마지막: <span id="s-last-upload">-</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">스크래핑 상태</div>
+      <div class="value" id="s-scraping">-</div>
+      <div class="hint" id="s-upload-status">업로드 대기중</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">자동 스케줄</div>
+      <div class="value yellow" id="s-schedule">-</div>
+      <div class="hint">매일 자동 실행</div>
+    </div>
+  </div>
+
+  <!-- 컨트롤 -->
+  <div class="panel">
+    <div class="panel-title">⚙️ 실행 컨트롤</div>
+    <div class="btn-row">
+      <button class="btn btn-blue"   id="btn-scrape" onclick="runScrape()">🔍 수동 스크래핑</button>
+      <button class="btn btn-green"  id="btn-upload" onclick="runUpload()">📤 수동 업로드</button>
+      <button class="btn btn-purple" id="btn-auto"   onclick="runAuto()">⚡ 자동 실행 (수집+업로드)</button>
+    </div>
+    <div class="opts">
+      <label>테스트 페이지 수</label>
+      <input type="number" id="max-pages"  placeholder="전체" min="1">
+      <label>업로드 최대 개수</label>
+      <input type="number" id="max-upload" placeholder="전체" min="1">
+    </div>
+    <div class="schedule-pill"><div class="dot"></div> 자동 스케줄 활성화 — 매일 <span id="s-schedule2">-</span> 실행</div>
+  </div>
+
+  <!-- 실시간 로그 -->
+  <div class="panel">
+    <div class="panel-title" style="justify-content:space-between">
+      <span>📋 실시간 실행 로그</span>
+      <button onclick="clearLog()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.78rem;">지우기</button>
+    </div>
+    <div class="log-box" id="log-box">
+      <div class="log-line info">[시스템] 대시보드 연결됨. 실행 로그가 여기에 표시됩니다.</div>
+    </div>
+  </div>
+
+  <!-- 상품 목록 -->
+  <div class="panel">
+    <div class="panel-title">📦 수집된 상품 목록</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>이미지</th><th>상품명</th><th>일본 가격</th>
+            <th>구매대행가</th><th>링크</th><th>수집시각</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:36px">
+            수집된 상품이 없습니다. 스크래핑을 먼저 실행하세요.
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pager" id="pager"></div>
+  </div>
+
+</div>
+
+<script>
+const PREFIX = "/jp_sourcing";
+let curPage = 1;
+const PER = 50;
+
+// ── 실시간 로그 SSE ──────────────────────────
+const logBox = document.getElementById("log-box");
+const es = new EventSource(PREFIX + "/logs/stream");
+es.onmessage = e => {
+  const { msg } = JSON.parse(e.data);
+  if (msg === ".") return;
+  const d = document.createElement("div");
+  d.className = "log-line";
+  if (/✅|🎉|완료|성공/.test(msg)) d.classList.add("ok");
+  else if (/❌|오류|실패/.test(msg))  d.classList.add("err");
+  else if (/⚠️|타임아웃/.test(msg))   d.classList.add("warn");
+  else if (/📡|📄|⏰|🔍|📤|👟/.test(msg)) d.classList.add("info");
+  d.textContent = msg;
+  logBox.appendChild(d);
+  logBox.scrollTop = logBox.scrollHeight;
+};
+function clearLog() { logBox.innerHTML = ""; }
+
+// ── 버튼 액션 ────────────────────────────────
+async function runScrape() {
+  const mp = document.getElementById("max-pages").value;
+  setBtn(false);
+  await post("/run/scrape", { max_pages: mp ? +mp : null });
+}
+async function runUpload() {
+  const mu = document.getElementById("max-upload").value;
+  setBtn(false);
+  await post("/run/upload", { max_upload: mu ? +mu : null });
+}
+async function runAuto() {
+  setBtn(false);
+  await post("/run/auto", {});
+}
+function setBtn(on) {
+  ["btn-scrape","btn-upload","btn-auto"].forEach(id => {
+    document.getElementById(id).disabled = !on;
+  });
+}
+
+async function post(path, body) {
+  try {
+    const r = await fetch(PREFIX + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    addLog("🚀 " + d.message, "info");
+  } catch(e) {
+    addLog("❌ 요청 실패: " + e, "err");
+  }
+}
+
+function addLog(msg, cls="") {
+  const d = document.createElement("div");
+  d.className = "log-line " + cls;
+  d.textContent = "[" + new Date().toLocaleTimeString() + "] " + msg;
+  logBox.appendChild(d);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+// ── 상태 폴링 (4초마다) ──────────────────────
+async function refreshStatus() {
+  try {
+    const d = await fetch(PREFIX + "/status").then(r => r.json());
+
+    document.getElementById("rate").textContent       = (d.rate||0).toFixed(2) + "원";
+    document.getElementById("s-count").textContent    = d.product_count ?? 0;
+    document.getElementById("s-uploaded").textContent = d.uploaded_count ?? 0;
+    document.getElementById("s-last-scrape").textContent = d.last_scrape || "-";
+    document.getElementById("s-last-upload").textContent = d.last_upload || "-";
+
+    // 스크래핑 상태
+    const scEl = document.getElementById("s-scraping");
+    const upEl = document.getElementById("s-upload-status");
+    if (d.scraping) {
+      scEl.innerHTML = '<span class="status-running">실행 중 <span class="spinner"></span></span>';
+      setBtn(false);
+    } else {
+      scEl.innerHTML = '<span class="status-idle">대기 중 ✓</span>';
+      setBtn(true);
+    }
+    upEl.textContent = d.uploading ? "업로드 진행 중..." : "업로드 대기중";
+
+    // 스케줄 시간
+    const t = d.schedule_time || "-";
+    document.getElementById("s-schedule").textContent  = t;
+    document.getElementById("s-schedule2").textContent = t;
+
+  } catch(e) {}
+}
+
+// ── 상품 목록 ────────────────────────────────
+async function loadProducts(page=1) {
+  curPage = page;
+  try {
+    const d = await fetch(`${PREFIX}/products?page=${page}&per_page=${PER}`).then(r=>r.json());
+    const tb = document.getElementById("tbody");
+
+    if (!d.products || d.products.length === 0) {
+      tb.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:36px">
+        수집된 상품이 없습니다. 스크래핑을 먼저 실행하세요.</td></tr>`;
+      return;
+    }
+
+    tb.innerHTML = d.products.map(p => {
+      const img   = p.img_url ? `<img class="pimg" src="${p.img_url}" onerror="this.style.opacity=0">` : `<div class="pimg"></div>`;
+      const jpy   = p.price_jpy ? `<span class="badge b-jpy">¥${p.price_jpy.toLocaleString()}</span>` : "-";
+      const krw   = p.price_info ? `<span class="badge b-krw">${p.price_info.price_final.toLocaleString()}원</span>` : "-";
+      const link  = p.link ? `<a href="${p.link}" target="_blank" style="color:var(--accent);font-size:0.78rem">보기 →</a>` : "-";
+      const time  = (p.scraped_at||"").substring(0,16);
+      return `<tr>
+        <td>${img}</td>
+        <td style="max-width:260px;word-break:break-word">${p.name||"-"}</td>
+        <td>${jpy}</td><td>${krw}</td><td>${link}</td>
+        <td style="color:var(--muted);font-size:0.75rem">${time}</td>
+      </tr>`;
+    }).join("");
+
+    // 페이지네이션
+    const total = Math.ceil(d.total / PER);
+    const pg = document.getElementById("pager");
+    if (total <= 1) { pg.innerHTML=""; return; }
+    let h = `<button onclick="loadProducts(${page-1})" ${page===1?"disabled":""}>◀</button>`;
+    for (let i=Math.max(1,page-2); i<=Math.min(total,page+2); i++)
+      h += `<button class="${i===page?'on':''}" onclick="loadProducts(${i})">${i}</button>`;
+    h += `<button onclick="loadProducts(${page+1})" ${page===total?"disabled":""}>▶</button>`;
+    pg.innerHTML = h;
+
+  } catch(e) { console.error(e); }
+}
+
+// ── 초기화 ───────────────────────────────────
+refreshStatus();
+loadProducts(1);
+setInterval(refreshStatus, 4000);
+setInterval(() => loadProducts(curPage), 10000);
+</script>
+</body>
+</html>
