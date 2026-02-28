@@ -17,6 +17,24 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# app.py의 status 딕셔너리를 참조하기 위한 전역 참조
+_app_status = None
+
+def set_app_status(status_dict):
+    """app.py에서 status 딕셔너리를 주입받아 일시정지/리셋 신호 감지"""
+    global _app_status
+    _app_status = status_dict
+
+def _check_flag(flag: str) -> bool:
+    """일시정지(pause) 또는 중단(stop) 플래그 확인"""
+    if _app_status is None:
+        return False
+    if flag == "pause":
+        return _app_status.get("paused", False)
+    if flag == "stop":
+        return _app_status.get("stop_requested", False)
+    return False
+
 
 # =============================================
 # 메인 스크래핑 함수
@@ -81,22 +99,11 @@ async def scrape_nike_sale(status_callback=None, max_pages=None):
             log("   ✅ セール 페이지 이동 완료!")
             log(f"   🔗 현재 URL: {page.url}")
 
-            # ── STEP 3: NIKE 브랜드 필터 선택 ────────────
+            # ── STEP 3: 세일 전체 상품 수집 준비 ────────
             log("━" * 45)
-            log("👟 [STEP 3/4] 브랜드 필터에서 NIKE 선택 중...")
-            log("   📋 ブランドで絞り込む → NIKE 아이콘 클릭 시도...")
-            nike_ok = await select_nike_brand(page)
-            if not nike_ok:
-                log("   ❌ NIKE 브랜드를 찾지 못했습니다")
-                log("   💡 브랜드 필터 선택자 확인 필요")
-                return []
-            await page.wait_for_load_state("networkidle", timeout=20000)
-            await asyncio.sleep(2)
-            log(f"✅ NIKE 필터 적용 완료: {page.url}")
-
-            # 총 상품 수 표시
-            total = await get_total_count(page)
-            log(f"📦 수집 대상 총 상품: {total}개")
+            log("🛍️  [STEP 3/4] 세일 전체 상품 수집 준비 중...")
+            log("   📋 브랜드 필터 없이 전체 세일 상품을 수집합니다")
+            log(f"   ✅ 준비 완료! 현재 URL: {page.url}")
 
             # ── STEP 4: 페이지 순회하며 상품 수집 ──────────
             log("━" * 45)
@@ -107,6 +114,22 @@ async def scrape_nike_sale(status_callback=None, max_pages=None):
 
             current_page = 1
             while True:
+                # ── 리셋 요청 체크 ──────────────────────
+                if status_callback and _check_flag("stop"):
+                    log("🔄 리셋 요청 — 수집을 중단합니다")
+                    products = []
+                    return []
+
+                # ── 일시정지 체크 ───────────────────────
+                if status_callback and _check_flag("pause"):
+                    log("⏸️ 일시정지 중... (재개 버튼을 누르면 계속됩니다)")
+                    while _check_flag("pause"):
+                        await asyncio.sleep(1)
+                        if _check_flag("stop"):
+                            log("🔄 리셋 요청 — 수집을 중단합니다")
+                            return []
+                    log("▶️ 수집 재개!")
+
                 log(f"   📄 [{current_page}페이지] 상품 파싱 중...")
                 page_products = await parse_product_list(page)
                 products.extend(page_products)
@@ -316,12 +339,31 @@ async def extract_product_info(item):
         if not name and not link:
             return None
 
+        # 품번 추출 (URL 마지막 경로 또는 상품 코드 영역)
+        product_code = ""
+        if link:
+            import re as _re
+            m = _re.search(r'/([A-Z0-9\-]+)(?:\?|$)', link)
+            if m:
+                product_code = m.group(1)
+
+        # 브랜드 추출
+        brand = ""
+        for sel in ["[class*='brand']", ".product-brand", ".brand-name"]:
+            el = item.locator(sel).first
+            if await el.count() > 0:
+                brand = (await el.inner_text()).strip()
+                break
+
         return {
             "name": name,
+            "brand": brand,
+            "product_code": product_code,
             "price_jpy": price_jpy,
             "link": link,
             "img_url": img_url,
             "scraped_at": datetime.now().isoformat(),
+            "selected": True,   # 기본값: 업로드 대상
         }
 
     except Exception as e:
