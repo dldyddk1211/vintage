@@ -19,9 +19,9 @@ from config import (
     SERVER_HOST, SERVER_PORT, URL_PREFIX,
     AUTO_SCHEDULE_HOUR, AUTO_SCHEDULE_MINUTE
 )
-from xebio_search import scrape_nike_sale, load_latest_products, set_app_status
+from xebio_search import scrape_nike_sale, load_latest_products, set_app_status, force_close_browser
 from cafe_uploader import upload_products
-from exchange import get_jpy_to_krw_rate, calc_buying_price
+from exchange import get_jpy_to_krw_rate, get_cached_rate, calc_buying_price, set_margin_rate, get_margin_rate
 
 # =============================================
 # 앱 초기화
@@ -190,11 +190,13 @@ def get_products():
     """수집된 상품 목록 JSON 반환 (브랜드 필터, 페이지네이션)"""
     products = load_latest_products()
 
-    # 브랜드 필터
-    brand_filter = request.args.get("brand", "").strip().upper()
+    # 브랜드 필터 (한국어/원문 모두 비교)
+    brand_filter = request.args.get("brand", "").strip()
     search_filter = request.args.get("search", "").strip().lower()
     if brand_filter and brand_filter != "ALL":
-        products = [p for p in products if p.get("brand", "").upper() == brand_filter]
+        products = [p for p in products if
+                    (p.get("brand_ko") or "").strip() == brand_filter or
+                    (p.get("brand")    or "").strip() == brand_filter]
     if search_filter:
         products = [p for p in products if search_filter in p.get("name", "").lower()
                     or search_filter in p.get("brand", "").lower()
@@ -206,10 +208,11 @@ def get_products():
     end = start + per_page
     page_products = products[start:end]
 
-    # 구매대행 가격 추가
+    # 구매대행 가격 추가 - 환율 한 번만 조회 후 재사용
+    rate = get_jpy_to_krw_rate()
     for p in page_products:
         if p.get("price_jpy"):
-            p["price_info"] = calc_buying_price(p["price_jpy"])
+            p["price_info"] = calc_buying_price(p["price_jpy"], rate=rate)
 
     return jsonify({
         "total": len(products),
@@ -219,16 +222,145 @@ def get_products():
     })
 
 
+@app.route(f"{URL_PREFIX}/products/download")
+def download_excel():
+    """수집된 상품 엑셀 다운로드"""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from flask import send_file
+
+    products = load_latest_products()
+    rate = get_cached_rate()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "상품목록"
+
+    # ── 헤더 스타일 ─────────────────────────
+    header_font    = Font(bold=True, color="FFFFFF", name="Arial", size=10)
+    header_fill    = PatternFill("solid", start_color="2D3A8C")
+    header_align   = Alignment(horizontal="center", vertical="center")
+    thin_border    = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin")
+    )
+    alt_fill       = PatternFill("solid", start_color="F0F4FF")
+
+    # ── 헤더 정의 ───────────────────────────
+    headers = [
+        ("상품번호",   15),
+        ("브랜드",     14),
+        ("제품명(한국어)", 38),
+        ("제품명(일본어)", 38),
+        ("엔화",       12),
+        ("구매대행원가",  16),
+    ]
+
+    for col, (title, width) in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font      = header_font
+        cell.fill      = header_fill
+        cell.alignment = header_align
+        cell.border    = thin_border
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    ws.row_dimensions[1].height = 22
+
+    # ── 데이터 행 ───────────────────────────
+    price_font   = Font(name="Arial", size=9)
+    normal_font  = Font(name="Arial", size=9)
+    center_align = Alignment(horizontal="center", vertical="center")
+    left_align   = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+
+    for row_idx, p in enumerate(products, 2):
+        # 구매대행원가 계산
+        cost_krw = 0
+        if p.get("price_jpy"):
+            from exchange import calc_buying_price
+            info     = calc_buying_price(p["price_jpy"], rate=rate)
+            cost_krw = info["cost_krw"]
+
+        row_data = [
+            p.get("product_code", ""),
+            p.get("brand_ko") or p.get("brand", ""),
+            p.get("name_ko")  or p.get("name",  ""),
+            p.get("name", ""),
+            p.get("price_jpy", 0),
+            cost_krw,
+        ]
+
+        fill = alt_fill if row_idx % 2 == 0 else None
+
+        for col, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col, value=value)
+            cell.border = thin_border
+            cell.font   = normal_font
+
+            if col in (1, 2):           # 상품번호, 브랜드 - 중앙정렬
+                cell.alignment = center_align
+            elif col in (3, 4):         # 제품명 - 좌측정렬 + 줄바꿈
+                cell.alignment = left_align
+            elif col in (5, 6):         # 가격 - 숫자 형식
+                cell.alignment = center_align
+                if col == 5:
+                    cell.number_format = '#,##0"엔"'
+                else:
+                    cell.number_format = '#,##0"원"'
+
+            if fill:
+                cell.fill = fill
+
+        ws.row_dimensions[row_idx].height = 18
+
+    # ── 요약 행 ─────────────────────────────
+    sum_row = len(products) + 2
+    ws.cell(row=sum_row, column=1, value="합계").font = Font(bold=True, name="Arial", size=9)
+    ws.cell(row=sum_row, column=5, value=f'=SUM(E2:E{sum_row-1})').number_format = '#,##0"엔"'
+    ws.cell(row=sum_row, column=6, value=f'=SUM(F2:F{sum_row-1})').number_format = '#,##0"원"'
+    for col in range(1, 7):
+        ws.cell(row=sum_row, column=col).fill   = PatternFill("solid", start_color="E8EDFF")
+        ws.cell(row=sum_row, column=col).border = thin_border
+
+    # ── 파일 저장 후 전송 ────────────────────
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    from datetime import datetime
+    filename = f"xebio_sale_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename
+    )
+
+
 @app.route(f"{URL_PREFIX}/products/brands")
 def get_brands():
-    """수집된 상품의 브랜드 목록 반환"""
+    """수집된 상품의 브랜드 목록 반환 (한국어 번역 우선)"""
     products = load_latest_products()
-    brands = sorted(set(p.get("brand", "").strip() for p in products if p.get("brand")))
+    brand_map = {}  # 원문 → 한국어 매핑
     brand_counts = {}
+
     for p in products:
-        b = p.get("brand", "기타").strip() or "기타"
-        brand_counts[b] = brand_counts.get(b, 0) + 1
-    return jsonify({"brands": brands, "counts": brand_counts})
+        b_raw = (p.get("brand") or "").strip()
+        b_ko  = (p.get("brand_ko") or b_raw).strip()
+        if not b_raw:
+            continue
+        brand_map[b_raw] = b_ko
+        key = b_ko or b_raw
+        brand_counts[key] = brand_counts.get(key, 0) + 1
+
+    # 한국어 기준으로 정렬
+    brands_ko = sorted(set(brand_map.values()))
+    return jsonify({
+        "brands"   : brands_ko,          # 콤보박스에 표시할 한국어 목록
+        "brand_map": brand_map,          # 원문→한국어 (필터 시 역매핑용)
+        "counts"   : brand_counts,
+    })
 
 
 @app.route(f"{URL_PREFIX}/products/update", methods=["POST"])
@@ -292,7 +424,8 @@ def get_status():
     return jsonify({
         **status,
         "product_count": len(products),
-        "rate": get_jpy_to_krw_rate(),
+        "rate": get_cached_rate(),  # 캐시 우선 사용
+        "margin": get_margin_rate(),
         "schedule_time": f"{AUTO_SCHEDULE_HOUR:02d}:{AUTO_SCHEDULE_MINUTE:02d}",
     })
 
@@ -325,6 +458,94 @@ def manual_auto():
     return jsonify({"ok": True, "message": "자동 파이프라인 시작됨"})
 
 
+@app.route(f"{URL_PREFIX}/products/translate", methods=["POST"])
+def translate_products():
+    """기존 수집 데이터 일괄 번역"""
+    try:
+        from translator import translate_ja_ko, translate_brand, TRANSLATE_AVAILABLE
+        if not TRANSLATE_AVAILABLE:
+            return jsonify({"ok": False, "message": "googletrans 미설치 — pip install googletrans==4.0.0-rc1"})
+
+        products = load_latest_products()
+        if not products:
+            return jsonify({"ok": False, "message": "수집된 상품이 없습니다"})
+
+        push_log(f"🌐 번역 시작: 총 {len(products)}개 상품")
+        count = 0
+        for p in products:
+            changed = False
+            # 상품명 번역
+            if p.get("name") and not p.get("name_ko"):
+                p["name_ko"] = translate_ja_ko(p["name"])
+                changed = True
+            # 브랜드 번역
+            if p.get("brand") and not p.get("brand_ko"):
+                p["brand_ko"] = translate_brand(p["brand"])
+                changed = True
+            # 상세 설명 번역
+            if p.get("description") and not p.get("description_ko"):
+                p["description_ko"] = translate_ja_ko(p["description"])
+                changed = True
+            if changed:
+                count += 1
+
+        from xebio_search import save_products
+        save_products(products)
+        msg = f"번역 완료: {count}개 상품"
+        push_log(f"✅ " + msg)
+        return jsonify({"ok": True, "message": msg, "count": count})
+
+    except Exception as e:
+        push_log(f"❌ 번역 오류: {e}")
+        return jsonify({"ok": False, "message": str(e)})
+
+
+@app.route(f"{URL_PREFIX}/settings/dict", methods=["GET"])
+def get_dict():
+    """커스텀 단어장 조회"""
+    from translator import CUSTOM_DICT
+    return jsonify({"dict": CUSTOM_DICT})
+
+
+@app.route(f"{URL_PREFIX}/settings/dict", methods=["POST"])
+def update_dict():
+    """커스텀 단어장 단어 추가/수정"""
+    from translator import CUSTOM_DICT
+    data = request.json or {}
+    ja = data.get("ja", "").strip()
+    ko = data.get("ko", "").strip()
+    if not ja or not ko:
+        return jsonify({"ok": False, "message": "일본어와 한국어를 모두 입력해주세요"})
+    CUSTOM_DICT[ja] = ko
+    push_log(f"📖 단어 추가: {ja} → {ko}")
+    return jsonify({"ok": True, "message": f"{ja} → {ko} 추가 완료"})
+
+
+@app.route(f"{URL_PREFIX}/settings/dict/<path:ja>", methods=["DELETE"])
+def delete_dict(ja):
+    """커스텀 단어장 단어 삭제"""
+    from translator import CUSTOM_DICT
+    ja = ja.strip()
+    if ja in CUSTOM_DICT:
+        del CUSTOM_DICT[ja]
+        push_log(f"🗑️ 단어 삭제: {ja}")
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "message": "단어 없음"})
+
+
+@app.route(f"{URL_PREFIX}/settings/margin", methods=["POST"])
+def update_margin():
+    """마진율 변경"""
+    data = request.json or {}
+    pct = data.get("margin_pct", 20)   # 퍼센트로 받기 (예: 20 → 1.2)
+    rate = 1 + (pct / 100)
+    rate = max(1.0, min(rate, 3.0))    # 0~200% 범위 제한
+    set_margin_rate(rate)
+    msg = f"마진율 변경: {pct}% (x{round(rate,2)})"
+    push_log("💰 " + msg)
+    return jsonify({"ok": True, "margin_pct": pct, "margin_rate": round(rate, 2), "message": msg})
+
+
 @app.route(f"{URL_PREFIX}/run/pause", methods=["POST"])
 def pause_scrape():
     """일시정지: 현재 상품 완료 후 멈춤"""
@@ -345,12 +566,21 @@ def resume_scrape():
 
 @app.route(f"{URL_PREFIX}/run/reset", methods=["POST"])
 def reset_all():
-    """리셋: 수집 중단 + 데이터 삭제 + 상태 초기화"""
+    """리셋: 수집 중단 + 브라우저 강제 종료 + 데이터 삭제 + 상태 초기화"""
     import glob, shutil
 
     # 중단 요청
     status["stop_requested"] = True
     status["paused"] = False
+
+    # 브라우저 강제 종료 (백그라운드 스레드에서 실행)
+    def close_browser():
+        try:
+            asyncio.run(force_close_browser())
+            push_log("🔄 브라우저 종료 완료")
+        except Exception as e:
+            logger.debug(f"브라우저 종료 오류: {e}")
+    threading.Thread(target=close_browser, daemon=True).start()
 
     # output 폴더 데이터 삭제
     for f in glob.glob("output/*.json"):
@@ -361,17 +591,26 @@ def reset_all():
         shutil.rmtree(img_dir)
         os.makedirs(img_dir, exist_ok=True)
 
-    # 상태 초기화
-    status.update({
-        "scraping": False,
-        "uploading": False,
-        "last_scrape": None,
-        "last_upload": None,
-        "product_count": 0,
-        "uploaded_count": 0,
-        "paused": False,
-        "stop_requested": False,
-    })
+    # scraping/uploading 즉시 False로 → 백그라운드 스레드가 루프 탈출
+    status["scraping"]  = False
+    status["uploading"] = False
+
+    # 잠시 후 전체 초기화 (브라우저 종료 완료 대기)
+    import time
+    def delayed_reset():
+        time.sleep(1.5)
+        status.update({
+            "scraping"      : False,
+            "uploading"     : False,
+            "last_scrape"   : None,
+            "last_upload"   : None,
+            "product_count" : 0,
+            "uploaded_count": 0,
+            "paused"        : False,
+            "stop_requested": False,
+        })
+        push_log("✅ 리셋 완료 — 초기 상태로 돌아갔습니다")
+    threading.Thread(target=delayed_reset, daemon=True).start()
 
     push_log("🔄 리셋 완료 — 모든 데이터가 삭제되고 초기화되었습니다")
     return jsonify({"ok": True, "message": "리셋 완료"})

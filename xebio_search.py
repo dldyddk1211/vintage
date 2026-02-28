@@ -12,13 +12,18 @@ from datetime import datetime
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
 from config import (
-    XEBIO_BASE_URL, SCRAPE_DELAY, OUTPUT_DIR, IMAGE_DIR
+    XEBIO_BASE_URL, XEBIO_DOMAIN, SCRAPE_DELAY, OUTPUT_DIR, IMAGE_DIR
 )
+from translator import translate_ja_ko, translate_brand
 
 logger = logging.getLogger(__name__)
 
 # app.py의 status 딕셔너리를 참조하기 위한 전역 참조
 _app_status = None
+
+# 실행 중인 브라우저 인스턴스 (리셋 시 강제 종료용)
+_browser = None
+_playwright = None
 
 def set_app_status(status_dict):
     """app.py에서 status 딕셔너리를 주입받아 일시정지/리셋 신호 감지"""
@@ -34,6 +39,21 @@ def _check_flag(flag: str) -> bool:
     if flag == "stop":
         return _app_status.get("stop_requested", False)
     return False
+
+
+async def force_close_browser():
+    """리셋 시 실행 중인 브라우저 강제 종료"""
+    global _browser, _playwright
+    try:
+        if _browser:
+            await _browser.close()
+            _browser = None
+            logger.info("🔄 브라우저 강제 종료 완료")
+        if _playwright:
+            await _playwright.stop()
+            _playwright = None
+    except Exception as e:
+        logger.debug(f"브라우저 종료 오류 (무시): {e}")
 
 
 # =============================================
@@ -60,12 +80,15 @@ async def scrape_nike_sale(status_callback=None, max_pages=None):
             status_callback(msg)
 
     async with async_playwright() as p:
+        global _browser, _playwright
+        _playwright = p
         browser = await p.chromium.launch(
             headless=False,          # 브라우저 창이 보이게
             slow_mo=300,             # 동작 사이 딜레이(ms)
             args=["--no-sandbox", "--disable-dev-shm-usage",
                   "--window-size=1280,900"]
         )
+        _browser = browser  # 전역에 저장 (리셋 시 강제 종료용)
         context = await browser.new_context(
             locale="ja-JP",
             viewport={"width": 1280, "height": 900},
@@ -86,16 +109,14 @@ async def scrape_nike_sale(status_callback=None, max_pages=None):
             await asyncio.sleep(2)
             log("   ✅ 메인 페이지 접속 완료!")
 
-            # ── STEP 2: セール 카테고리 클릭 ─────────────
+            # ── STEP 2: セール 카테고리 직접 이동 ────────
             log("━" * 45)
-            log("🏷️  [STEP 2/4] セール(세일) 카테고리 탐색 중...")
-            sale_ok = await click_sale_category(page)
-            if not sale_ok:
-                log("   ❌ セール 카테고리를 찾지 못했습니다")
-                log("   💡 사이트 구조가 변경됐을 수 있어요")
-                return []
-            await page.wait_for_load_state("networkidle", timeout=20000)
-            await asyncio.sleep(2)
+            log("🏷️  [STEP 2/4] セール 페이지로 직접 이동 중...")
+
+            # 직접 세일 URL로 이동 (클릭 방식 제거)
+            SALE_URL = "https://www.supersports.com/ja-jp/xebio/products/?discount=sale"
+            await page.goto(SALE_URL, wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(3)
             log("   ✅ セール 페이지 이동 완료!")
             log(f"   🔗 현재 URL: {page.url}")
 
@@ -130,6 +151,11 @@ async def scrape_nike_sale(status_callback=None, max_pages=None):
                             return []
                     log("▶️ 수집 재개!")
 
+                # 파싱 전에도 리셋 체크
+                if status_callback and _check_flag("stop"):
+                    log("🔄 리셋 — 수집 즉시 중단")
+                    return []
+
                 log(f"   📄 [{current_page}페이지] 상품 파싱 중...")
                 page_products = await parse_product_list(page)
                 products.extend(page_products)
@@ -149,6 +175,54 @@ async def scrape_nike_sale(status_callback=None, max_pages=None):
                 current_page += 1
                 await asyncio.sleep(SCRAPE_DELAY)
 
+            # ── STEP 5: 상세 페이지 수집 ──────────────────
+            log("━" * 45)
+            log(f"🔎 [STEP 5/5] 상품 상세 페이지 수집 시작!")
+            log(f"   📋 총 {len(products):,}개 상품 상세 페이지 방문 예정")
+            log(f"   ⏱️  예상 소요 시간: 약 {len(products) * 2 // 60}분")
+
+            for i, product in enumerate(products, 1):
+                # 리셋/일시정지 체크
+                if status_callback and _check_flag("stop"):
+                    log("🔄 리셋 요청 — 상세 수집 중단")
+                    return []
+                while status_callback and _check_flag("pause"):
+                    log("⏸️ 일시정지 중...")
+                    await asyncio.sleep(1)
+                    if _check_flag("stop"):
+                        return []
+                    log("▶️ 재개!")
+
+                link = product.get("link", "")
+                if not link:
+                    continue
+
+                pct = int(i / len(products) * 100)
+                bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
+                if i % 10 == 1 or i == len(products):
+                    log(f"   [{bar}] {pct}% — {i:,}/{len(products):,} 상세 수집 중...")
+
+                try:
+                    # 링크 정규화 - 잘못된 URL 보정
+                    if not link.startswith("http"):
+                        link = "https://www.supersports.com" + link
+                    # 첫 3개 상품은 링크 로그 출력 (디버깅용)
+                    if i <= 3:
+                        log(f"   🔗 상세 URL 확인: {link}")
+                    detail = await scrape_detail_page(page, link)
+                    product.update(detail)
+                except Exception as e:
+                    log(f"   ⚠️ 상세 오류 ({link[:60]}): {e}")
+
+                # 매 상품마다 리셋 체크
+                if status_callback and _check_flag("stop"):
+                    log("🔄 리셋 — 상세 수집 즉시 중단")
+                    return []
+
+                await asyncio.sleep(SCRAPE_DELAY)
+
+            log("   ✅ 상세 페이지 수집 완료!")
+
         except PlaywrightTimeout as e:
             log(f"⏰ 타임아웃: {e}")
         except Exception as e:
@@ -156,12 +230,14 @@ async def scrape_nike_sale(status_callback=None, max_pages=None):
             logger.exception(e)
         finally:
             await browser.close()
+            _browser = None
+            _playwright = None
 
     if products:
         save_products(products)
         log("━" * 45)
-        log(f"🎉 스크래핑 완료!")
-        log(f"   📦 총 수집: {len(products):,}개 상품")
+        log(f"🎉 전체 수집 완료!")
+        log(f"   📦 총 수집: {len(products):,}개 상품 (목록 + 상세)")
         log(f"   💾 결과 저장: output/latest.json")
         log("━" * 45)
 
@@ -184,18 +260,25 @@ async def click_sale_category(page):
         try:
             el = page.locator(sel).first
             if await el.count() > 0:
-                await el.click()
+                # click() 대신 goto()로 직접 이동 시도
+                href = await el.get_attribute("href") or ""
+                if href:
+                    url = href if href.startswith("http") else (XEBIO_BASE_URL + href)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                else:
+                    await el.click()
                 return True
         except Exception:
             continue
 
-    # 모든 <a> 태그에서 텍스트 검색
+    # 모든 <a> 태그에서 텍스트/href 검색 → 직접 URL 이동
     for link in await page.locator("a").all():
         try:
             text = (await link.inner_text()).strip()
             href = await link.get_attribute("href") or ""
             if "セール" in text or "sale" in href.lower():
-                await link.click()
+                url = href if href.startswith("http") else (XEBIO_BASE_URL + href)
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 return True
         except Exception:
             continue
@@ -294,81 +377,271 @@ async def parse_product_list(page):
 
 
 async def extract_product_info(item):
-    """상품 카드 하나에서 상품명 / 가격 / 링크 / 이미지 추출"""
+    """
+    상품 카드에서 정보 추출
+    실제 선택자 기준:
+      브랜드 : b.caption
+      상품명 : b.title
+      가격   : strong.sale
+    """
     try:
-        # 상품명
-        name = ""
-        for sel in [".product-name", ".product-title", "h2", "h3", "[class*='name']"]:
+        # ── 브랜드 ────────────────────────────────
+        # <b class="jsx-XXXX caption">ナイキ</b>
+        brand = ""
+        for sel in [
+            "b[class*='caption']",
+            "b.caption",
+            "[class*='caption']",
+        ]:
             el = item.locator(sel).first
             if await el.count() > 0:
-                name = (await el.inner_text()).strip()
-                if name:
+                txt = (await el.inner_text()).strip()
+                if txt:
+                    brand = txt
                     break
 
-        # 가격 (엔화)
+        # ── 상품명 ────────────────────────────────
+        # <b class="jsx-XXXX title">商品名...</b>
+        name = ""
+        for sel in [
+            "b[class*='title']",
+            "b.title",
+            "[class*='title']",
+            "h2", "h3",
+        ]:
+            el = item.locator(sel).first
+            if await el.count() > 0:
+                txt = (await el.inner_text()).strip()
+                if txt:
+                    name = txt
+                    break
+
+        # ── 가격 (엔화) ───────────────────────────
+        # <strong class="jsx-XXXX sale">￥9,980<span>（税込）</span></strong>
         price_jpy = 0
-        for sel in [".price", ".product-price", "[class*='price']", ".sale-price", ".new-price"]:
+        for sel in [
+            "strong[class*='sale']",
+            "strong.sale",
+            "[class*='sale'] strong",
+            ".price", "strong",
+        ]:
             el = item.locator(sel).first
             if await el.count() > 0:
                 txt = await el.inner_text()
+                # ￥9,980 → 9980
                 numbers = re.findall(r'[\d,]+', txt)
                 if numbers:
-                    price_jpy = int(numbers[0].replace(",", ""))
-                    break
+                    val = int(numbers[0].replace(",", ""))
+                    if val > 100:
+                        price_jpy = val
+                        break
 
-        # 상품 링크
+        # ── 상품 링크 ─────────────────────────────
         link = ""
         a_tag = item.locator("a").first
         if await a_tag.count() > 0:
             href = await a_tag.get_attribute("href") or ""
-            link = href if href.startswith("http") else (XEBIO_BASE_URL + href if href else "")
+            if href.startswith("http"):
+                link = href
+            elif href.startswith("/"):
+                link = XEBIO_DOMAIN + href
+            elif href:
+                link = XEBIO_DOMAIN + "/" + href
 
-        # 이미지 URL
+        # ── 이미지 ────────────────────────────────
         img_url = ""
-        for sel in ["img", "[class*='image'] img", ".product-image img"]:
+        for sel in ["img", "[class*='image'] img"]:
             img = item.locator(sel).first
             if await img.count() > 0:
                 src = (await img.get_attribute("src") or
                        await img.get_attribute("data-src") or "")
-                if src:
+                if src and "placeholder" not in src:
                     img_url = src if src.startswith("http") else (
-                        "https:" + src if src.startswith("//") else XEBIO_BASE_URL + src
+                        "https:" + src if src.startswith("//") else XEBIO_DOMAIN + src
                     )
                 break
 
         if not name and not link:
             return None
 
-        # 품번 추출 (URL 마지막 경로 또는 상품 코드 영역)
-        product_code = ""
-        if link:
-            import re as _re
-            m = _re.search(r'/([A-Z0-9\-]+)(?:\?|$)', link)
-            if m:
-                product_code = m.group(1)
-
-        # 브랜드 추출
-        brand = ""
-        for sel in ["[class*='brand']", ".product-brand", ".brand-name"]:
-            el = item.locator(sel).first
-            if await el.count() > 0:
-                brand = (await el.inner_text()).strip()
-                break
+        # 번역 (일본어 → 한국어)
+        name_ko  = translate_ja_ko(name)
+        brand_ko = translate_brand(brand)
 
         return {
-            "name": name,
-            "brand": brand,
-            "product_code": product_code,
-            "price_jpy": price_jpy,
-            "link": link,
-            "img_url": img_url,
-            "scraped_at": datetime.now().isoformat(),
-            "selected": True,   # 기본값: 업로드 대상
+            "name"        : name,          # 일본어 원문
+            "name_ko"     : name_ko,       # 한국어 번역
+            "brand"       : brand,         # 브랜드 원문
+            "brand_ko"    : brand_ko,      # 브랜드 한국어
+            "product_code": "",            # 상세 페이지에서 수집
+            "price_jpy"   : price_jpy,
+            "link"        : link,
+            "img_url"     : img_url,
+            "scraped_at"  : datetime.now().isoformat(),
+            "selected"    : True,
         }
 
     except Exception as e:
         logger.debug(f"extract 오류: {e}")
         return None
+
+
+async def scrape_detail_page(page, url: str) -> dict:
+    """
+    상품 상세 페이지에서 추가 정보 수집
+    - 상세 설명
+    - 사이즈 목록 + 재고 여부
+    - 상세 이미지 여러 장
+    - 정가 vs 세일가 (할인율)
+    """
+    detail = {
+        "description"   : "",
+        "sizes"         : [],   # [{"size": "25.0", "in_stock": True}, ...]
+        "detail_images" : [],   # 추가 이미지 URL 리스트
+        "original_price": 0,    # 정가 (엔화)
+        "discount_rate" : 0,    # 할인율 (%)
+        "in_stock"      : False,
+    }
+
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        await asyncio.sleep(1)
+
+        # ── 품번 (メーカー品番) ─────────────────
+        # <span class="jsx-XXXX title">メーカー品番</span>
+        # <span class="jsx-XXXX description">FN8454-403</span>
+        # → 같은 부모 아래 title + description 쌍으로 존재
+        try:
+            spec_titles = page.locator("span[class*='title']")
+            cnt = await spec_titles.count()
+            for i in range(cnt):
+                txt = (await spec_titles.nth(i).inner_text()).strip()
+                if "品番" in txt or "メーカー" in txt:
+                    # 같은 부모(li or div)에서 description span 찾기
+                    parent = spec_titles.nth(i).locator("xpath=..")
+                    desc = parent.locator("span[class*='description']").first
+                    if await desc.count() > 0:
+                        code = (await desc.inner_text()).strip()
+                        if code:
+                            detail["product_code"] = code
+                            break
+            # 못 찾았을 경우 — 모든 description span 순회
+            if not detail.get("product_code"):
+                descs = page.locator("span[class*='description']")
+                dcnt = await descs.count()
+                for i in range(dcnt):
+                    val = (await descs.nth(i).inner_text()).strip()
+                    # 품번 패턴: 영문+숫자 조합 (예: FN8454-403, AB1234-001)
+                    if re.match(r'^[A-Z]{1,4}[\d]', val):
+                        detail["product_code"] = val
+                        break
+        except Exception as e:
+            logger.debug(f"품번 추출 오류: {e}")
+
+        # ── 상세 설명 ───────────────────────────
+        for sel in [
+            "[class*='description']",
+            ".product-description",
+            ".item-description",
+            "#description",
+        ]:
+            el = page.locator(sel).first
+            if await el.count() > 0:
+                txt = (await el.inner_text()).strip()
+                if txt and len(txt) > 10:
+                    detail["description"] = txt[:500]
+                    break
+
+        # ── 사이즈 목록 + 재고 ──────────────────
+        # Xebio 사이즈 선택 버튼 구조 기반
+        size_selectors = [
+            "[class*='size'] button",
+            "[class*='size'] li",
+            "[class*='size-item']",
+            "[class*='sizeList'] li",
+            "button[class*='size']",
+        ]
+        for sel in size_selectors:
+            items = page.locator(sel)
+            cnt = await items.count()
+            if cnt > 0:
+                sizes = []
+                for i in range(cnt):
+                    item = items.nth(i)
+                    size_text = (await item.inner_text()).strip()
+                    size_text = re.sub(r'[^\d.]', '', size_text)  # 숫자/점만 남김
+                    cls      = await item.get_attribute("class") or ""
+                    disabled = await item.get_attribute("disabled")
+                    in_stock = (
+                        "sold" not in cls.lower() and
+                        "disable" not in cls.lower() and
+                        "unavailable" not in cls.lower() and
+                        disabled is None
+                    )
+                    if size_text:
+                        sizes.append({"size": size_text, "in_stock": in_stock})
+                if sizes:
+                    detail["sizes"]    = sizes
+                    detail["in_stock"] = any(s["in_stock"] for s in sizes)
+                    break
+
+        # 재고 여부 (사이즈 없는 경우)
+        if not detail["sizes"]:
+            for sel in [".sold-out", "[class*='soldout']", "[class*='outOfStock']"]:
+                el = page.locator(sel).first
+                if await el.count() > 0:
+                    detail["in_stock"] = False
+                    break
+            else:
+                detail["in_stock"] = True
+
+        # ── 정가 vs 세일가 (할인율) ─────────────
+        for sel in ["[class*='original']", "[class*='regular']", "[class*='before']"]:
+            el = page.locator(sel).first
+            if await el.count() > 0:
+                txt = await el.inner_text()
+                nums = re.findall(r'[\d,]+', txt)
+                if nums:
+                    val = int(nums[0].replace(",", ""))
+                    if val > 100:
+                        detail["original_price"] = val
+                        break
+
+        # ── 상세 이미지 여러 장 ─────────────────
+        img_selectors = [
+            "[class*='thumbnail'] img",
+            "[class*='gallery'] img",
+            "[class*='swiper'] img",
+            "[class*='images'] img",
+        ]
+        for sel in img_selectors:
+            imgs = page.locator(sel)
+            cnt = await imgs.count()
+            if cnt > 1:
+                urls = []
+                for i in range(min(cnt, 6)):
+                    src = (await imgs.nth(i).get_attribute("src") or
+                           await imgs.nth(i).get_attribute("data-src") or "")
+                    if src and "placeholder" not in src:
+                        src = src if src.startswith("http") else ("https:" + src if src.startswith("//") else src)
+                        urls.append(src)
+                if urls:
+                    detail["detail_images"] = urls
+                    break
+
+    except Exception as e:
+        logger.debug(f"상세 수집 오류: {e}")
+
+    # ── 상세 설명 번역 ──────────────────────────
+    if detail.get("description"):
+        try:
+            detail["description_ko"] = translate_ja_ko(detail["description"])
+        except Exception:
+            detail["description_ko"] = detail["description"]
+    else:
+        detail["description_ko"] = ""
+
+    return detail
 
 
 async def go_next_page(page):

@@ -152,14 +152,90 @@
       <button class="btn b-purple" id="btn-auto"   onclick="runAuto()">⚡ 자동 실행</button>
       <button class="btn b-yellow" id="btn-pause"  onclick="togglePause()" style="display:none">⏸️ 일시정지</button>
       <button class="btn b-red"    id="btn-reset"  onclick="runReset()">🔄 리셋</button>
+      <button class="btn b-gray"   id="btn-translate" onclick="runTranslate()">🌐 한국어 번역</button>
+      <button class="btn b-gray"   onclick="openDict()">📖 단어장</button>
+      <button class="btn b-gray"   onclick="downloadExcel()" id="btn-excel">📥 엑셀 다운로드</button>
     </div>
     <div class="opts">
-      <label>테스트 페이지 수</label>
-      <input type="number" id="max-pages"  placeholder="전체" min="1">
-      <label>업로드 최대 개수</label>
-      <input type="number" id="max-upload" placeholder="전체" min="1">
+      <label>스크래핑 페이지 수</label>
+      <input type="text" id="max-pages" placeholder="전부" style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:5px;width:80px;font-size:0.82rem">
+      <span style="font-size:0.75rem;color:var(--muted)">※ 비워두면 전체 수집 / 숫자 입력 시 해당 페이지까지만</span>
+      <label style="margin-left:10px">업로드 최대 개수</label>
+      <input type="number" id="max-upload" placeholder="전체" min="1" style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:5px;width:80px;font-size:0.82rem">
+    </div>
+    <div id="page-preview" style="margin-top:8px;font-size:0.78rem;color:var(--muted)">
+      📄 현재 설정: <span id="page-preview-text" style="color:var(--yellow)">전체 페이지 수집</span>
+    </div>
+    <!-- 진행 시간 표시 -->
+    <div id="time-bar" style="display:none;margin-top:12px;background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:12px 16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:0.8rem;color:var(--muted)">⏱️ 예상 소요시간</span>
+        <span id="t-estimated" style="font-size:0.85rem;color:var(--yellow);font-weight:600">-</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="font-size:0.8rem;color:var(--muted)">⏳ 남은 시간</span>
+        <span id="t-remaining" style="font-size:0.85rem;color:var(--accent);font-weight:600">-</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:0.78rem;color:var(--muted)">경과 시간</span>
+        <span id="t-elapsed" style="font-size:0.78rem;color:var(--muted)">-</span>
+      </div>
+      <!-- 프로그레스 바 -->
+      <div style="background:#1a1d27;border-radius:4px;height:6px;overflow:hidden;">
+        <div id="t-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px;width:0%;transition:width 0.5s;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;">
+        <span style="font-size:0.72rem;color:var(--muted)" id="t-progress-text">0%</span>
+        <span style="font-size:0.72rem;color:var(--muted)" id="t-step-text">-</span>
+      </div>
     </div>
     <div class="schedule-pill"><div class="dot"></div> 자동 스케줄 활성화 — 매일 <span id="s-schedule">-</span> 실행</div>
+  </div>
+
+  <!-- 가격 설정 패널 -->
+  <div class="panel">
+    <div class="panel-title">💰 구매대행 가격 설정</div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+
+      <!-- 마진율 -->
+      <div style="background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:16px;min-width:200px">
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px">📈 마진율 설정</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <input type="number" id="margin-input" min="0" max="200" value="20"
+            style="background:#1a1d27;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:80px;font-size:1rem;text-align:center">
+          <span style="font-size:1rem;color:var(--text)">%</span>
+          <button class="btn b-blue" onclick="applyMargin()" style="padding:7px 14px">적용</button>
+        </div>
+        <div style="font-size:0.75rem;color:var(--muted)" id="margin-preview">판매가 = 원가 × 1.20</div>
+      </div>
+
+      <!-- 원가 계산 구조 설명 -->
+      <div style="background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:16px;font-size:0.78rem;color:var(--muted);line-height:2">
+        <div style="color:var(--text);font-weight:600;margin-bottom:6px">📋 원가 계산 구조</div>
+        <div>일본 상품가</div>
+        <div>+ 일본 내 배송료 <span style="color:var(--yellow)">3,980엔 이상 무료 / 이하 550엔</span></div>
+        <div>+ 일본 업체 수수료 <span style="color:var(--yellow)">3%</span></div>
+        <div>+ 국제 배송비 <span style="color:var(--yellow)">1,500엔</span></div>
+        <div style="border-top:1px solid var(--border);margin:4px 0;padding-top:4px">= 일본 총 원가 (엔)</div>
+        <div>× 송금 환율 <span style="color:var(--yellow)">실시간 환율 +1.5%</span></div>
+        <div style="border-top:1px solid var(--border);margin:4px 0;padding-top:4px">= 원화 원가</div>
+        <div>× 마진율</div>
+        <div style="border-top:1px solid var(--border);margin:4px 0;padding-top:4px;color:var(--green);font-weight:600">= 최종 판매가</div>
+      </div>
+
+      <!-- 예시 계산기 -->
+      <div style="background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:16px;min-width:220px">
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px">🧮 예시 계산</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+          <span style="font-size:0.78rem;color:var(--muted)">¥</span>
+          <input type="number" id="calc-jpy" value="9980" min="1"
+            style="background:#1a1d27;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;width:90px;font-size:0.9rem">
+          <button class="btn b-gray" onclick="calcExample()" style="padding:5px 10px;font-size:0.78rem">계산</button>
+        </div>
+        <div id="calc-result" style="font-size:0.78rem;line-height:1.9;color:var(--muted)">계산 버튼을 눌러보세요</div>
+      </div>
+
+    </div>
   </div>
 
   <!-- 실시간 로그 -->
@@ -211,10 +287,10 @@
             <th>브랜드</th>
             <th>상품명</th>
             <th>품번</th>
-            <th>일본가</th>
+            <th>일본가 (클릭→상품)</th>
             <th>구매대행가</th>
-            <th>링크</th>
-            <th>수집시각</th>
+            <th>구매가능 사이즈</th>
+            <th>재고</th>
           </tr>
         </thead>
         <tbody id="tbody">
@@ -254,11 +330,88 @@ es.onmessage = e => {
 function clearLog() { logBox.innerHTML = ""; }
 
 // ── 버튼 액션 ────────────────────────────────
+function fmtTime(sec) {
+  if (sec < 60) return `${Math.ceil(sec)}초`;
+  if (sec < 3600) return `${Math.floor(sec/60)}분 ${Math.ceil(sec%60)}초`;
+  return `${Math.floor(sec/3600)}시간 ${Math.floor((sec%3600)/60)}분`;
+}
+
+// 타이머 상태
+let timerInterval = null;
+let scrapeStartTime = null;
+let estimatedSec = 0;
+
+function startTimer(totalProducts) {
+  scrapeStartTime = Date.now();
+  // 목록 수집: 페이지당 2초, 상세 수집: 상품당 2.5초
+  estimatedSec = totalProducts * 2.5 + 30;
+  document.getElementById("time-bar").style.display = "block";
+  document.getElementById("t-estimated").textContent = fmtTime(estimatedSec);
+
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    const elapsed = (Date.now() - scrapeStartTime) / 1000;
+    const remaining = Math.max(0, estimatedSec - elapsed);
+    const pct = Math.min(100, Math.floor(elapsed / estimatedSec * 100));
+    document.getElementById("t-elapsed").textContent   = fmtTime(elapsed);
+    document.getElementById("t-remaining").textContent = remaining > 0 ? fmtTime(remaining) : "거의 완료!";
+    document.getElementById("t-progress-bar").style.width = pct + "%";
+    document.getElementById("t-progress-text").textContent = pct + "%";
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  const elapsed = scrapeStartTime ? (Date.now() - scrapeStartTime) / 1000 : 0;
+  if (elapsed > 0) {
+    document.getElementById("t-remaining").textContent = "완료 ✅";
+    document.getElementById("t-progress-bar").style.width = "100%";
+    document.getElementById("t-progress-text").textContent = "100%";
+    document.getElementById("t-elapsed").textContent = fmtTime(elapsed) + " (총 소요)";
+  }
+}
+
+function updatePagePreview() {
+  const val = document.getElementById("max-pages").value.trim();
+  const el  = document.getElementById("page-preview-text");
+  const stepEl = document.getElementById("t-step-text");
+  if (!val || val === "전부") {
+    el.textContent = "전체 페이지 수집 (セール 전체)";
+    el.style.color = "var(--green)";
+    if (stepEl) stepEl.textContent = "전체 수집";
+  } else if (!isNaN(val) && +val > 0) {
+    const products = +val * 40;
+    const estSec = products * 2.5 + 30;
+    el.textContent = `1페이지 ~ ${val}페이지까지 수집 (약 ${products}개 상품 예상)`;
+    el.style.color = "var(--yellow)";
+    if (stepEl) stepEl.textContent = `예상 ${fmtTime(estSec)}`;
+    // 미리보기 시간 표시
+    document.getElementById("time-bar").style.display = "block";
+    document.getElementById("t-estimated").textContent = fmtTime(estSec);
+    document.getElementById("t-remaining").textContent = "-";
+    document.getElementById("t-elapsed").textContent   = "-";
+    document.getElementById("t-progress-bar").style.width = "0%";
+    document.getElementById("t-progress-text").textContent = "0%";
+  } else {
+    el.textContent = "⚠️ 숫자 또는 비워두기(전체)만 입력 가능";
+    el.style.color = "var(--red)";
+  }
+}
+
 async function runScrape() {
-  const mp = document.getElementById("max-pages").value;
+  const raw = document.getElementById("max-pages").value.trim();
+  let maxPages = null;
+  if (raw && raw !== "전부" && !isNaN(raw) && +raw > 0) {
+    maxPages = +raw;
+  }
   checkedIndices.clear();
   updateSelCount();
-  await post("/run/scrape", { max_pages: mp ? +mp : null });
+
+  // 타이머 시작
+  const products = maxPages ? maxPages * 40 : 3000;
+  startTimer(products);
+
+  await post("/run/scrape", { max_pages: maxPages });
 }
 async function runUpload() {
   await uploadSelected();
@@ -282,6 +435,46 @@ async function uploadSelected() {
   const mu = document.getElementById("max-upload").value;
   addLog(`📤 ${checkedIndices.size}개 상품 업로드 시작...`, "info");
   await post("/run/upload", { max_upload: mu ? +mu : null });
+}
+
+function downloadExcel() {
+  const btn = document.getElementById("btn-excel");
+  btn.disabled = true;
+  btn.textContent = "📥 생성 중...";
+  addLog("📥 엑셀 파일 생성 중...", "info");
+
+  // 링크 클릭으로 다운로드
+  const a = document.createElement("a");
+  a.href = PREFIX + "/products/download";
+  a.click();
+
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = "📥 엑셀 다운로드";
+    addLog("✅ 엑셀 다운로드 완료!", "ok");
+  }, 2000);
+}
+
+async function runTranslate() {
+  const btn = document.getElementById("btn-translate");
+  btn.disabled = true;
+  btn.textContent = "🌐 번역 중...";
+  addLog("🌐 한국어 번역 시작...", "info");
+  try {
+    const r = await fetch(PREFIX + "/products/translate", { method: "POST" });
+    const d = await r.json();
+    if (d.ok) {
+      addLog(`✅ ${d.message}`, "ok");
+      setTimeout(() => loadProducts(curPage), 800);
+    } else {
+      addLog(`❌ ${d.message}`, "err");
+    }
+  } catch(e) {
+    addLog("❌ 번역 요청 실패: " + e, "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🌐 한국어 번역";
+  }
 }
 
 async function togglePause() {
@@ -478,23 +671,66 @@ async function loadProducts(page = 1) {
     tb.innerHTML = d.products.map((p, i) => {
       const globalIdx = startIdx + i;
       const isChecked = checkedIndices.has(globalIdx);
-      const img  = p.img_url ? `<img class="pimg" src="${p.img_url}" onerror="this.style.opacity=0">` : `<div class="pimg"></div>`;
-      const brand = p.brand ? `<span class="badge b-brand">${p.brand}</span>` : "-";
+      const img   = p.img_url ? `<img class="pimg" src="${p.img_url}" onerror="this.style.opacity=0">` : `<div class="pimg"></div>`;
+      // 브랜드: 한국어 번역 + 원문
+      const brandTxt = p.brand_ko && p.brand_ko !== p.brand
+        ? `<span class="badge b-brand">${p.brand_ko}</span><br><span style="font-size:0.68rem;color:var(--muted)">${p.brand}</span>`
+        : `<span class="badge b-brand">${p.brand || "-"}</span>`;
+      const brand = brandTxt;
       const code  = p.product_code ? `<span class="badge b-code">${p.product_code}</span>` : "-";
-      const jpy   = p.price_jpy ? `<span class="badge b-jpy">¥${p.price_jpy.toLocaleString()}</span>` : "-";
-      const krw   = p.price_info ? `<span class="badge b-krw">${p.price_info.price_final.toLocaleString()}원</span>` : "-";
-      const link  = p.link ? `<a href="${p.link}" target="_blank" style="color:var(--accent);font-size:0.75rem">보기 →</a>` : "-";
-      const time  = (p.scraped_at||"").substring(0,16);
+
+      // 일본가에 URL 링크 삽입
+      const jpy = p.price_jpy
+        ? (p.link
+            ? `<a href="${p.link}" target="_blank" style="text-decoration:none">
+                <span class="badge b-jpy" style="cursor:pointer;border-bottom:1px dashed #60a5fa">
+                  ¥${p.price_jpy.toLocaleString()} ↗
+                </span>
+               </a>`
+            : `<span class="badge b-jpy">¥${p.price_jpy.toLocaleString()}</span>`)
+        : "-";
+
+      const krw = p.price_info
+        ? `<span class="badge b-krw">${p.price_info.price_final.toLocaleString()}원</span>`
+        : "-";
+
+      // 구매가능 사이즈 (재고 있는 것만 표시)
+      let sizesHtml = "-";
+      if (p.sizes && p.sizes.length > 0) {
+        const available = p.sizes.filter(s => s.in_stock);
+        const soldout   = p.sizes.filter(s => !s.in_stock);
+        if (available.length > 0) {
+          sizesHtml = available.map(s =>
+            `<span style="display:inline-block;margin:1px 2px;padding:2px 6px;background:#1a2e1a;color:#4ade80;border-radius:3px;font-size:0.7rem">${s.size}</span>`
+          ).join("");
+          if (soldout.length > 0) {
+            sizesHtml += `<span style="font-size:0.7rem;color:var(--muted);margin-left:4px">+품절 ${soldout.length}개</span>`;
+          }
+        } else {
+          sizesHtml = '<span style="color:var(--red);font-size:0.75rem">전 사이즈 품절</span>';
+        }
+      }
+
+      // 재고 여부
+      const stock = p.in_stock === true
+        ? '<span style="color:var(--green);font-size:0.78rem">✅ 재고있음</span>'
+        : p.in_stock === false
+          ? '<span style="color:var(--red);font-size:0.78rem">❌ 품절</span>'
+          : '<span style="color:var(--muted);font-size:0.78rem">-</span>';
+
       return `<tr class="${isChecked?'selected-row':''}">
         <td><input type="checkbox" class="row-chk" data-idx="${globalIdx}" ${isChecked?'checked':''} onchange="onRowCheck(this)"></td>
         <td>${img}</td>
         <td>${brand}</td>
-        <td style="max-width:220px;word-break:break-word;font-size:0.8rem">${p.name||"-"}</td>
+        <td style="max-width:200px;word-break:break-word">
+          <div style="font-size:0.82rem;color:var(--text)">${p.name_ko || p.name || "-"}</div>
+          ${p.name_ko && p.name_ko !== p.name ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:2px">${p.name}</div>` : ""}
+        </td>
         <td>${code}</td>
         <td>${jpy}</td>
         <td>${krw}</td>
-        <td>${link}</td>
-        <td style="color:var(--muted);font-size:0.72rem">${time}</td>
+        <td style="max-width:180px">${sizesHtml}</td>
+        <td>${stock}</td>
       </tr>`;
     }).join("");
 
@@ -534,11 +770,28 @@ async function refreshStatus() {
       scEl.innerHTML = `<span class="c-yellow">실행 중 <span class="spinner"></span>${d.paused?' (일시정지)':''}</span>`;
       setBtn(false);
       pauseBtn.style.display = "inline-flex";
+      // 진행률 로그에서 % 파싱해서 프로그레스바 업데이트
+      const logLines = document.querySelectorAll(".log-line");
+      const last = [...logLines].reverse().find(l => l.textContent.includes("%"));
+      if (last) {
+        const m = last.textContent.match(/(\d+)%/);
+        if (m) {
+          const pct = +m[1];
+          document.getElementById("t-progress-bar").style.width = pct + "%";
+          document.getElementById("t-progress-text").textContent = pct + "%";
+        }
+        // 현재 단계 표시
+        const stepEl = document.getElementById("t-step-text");
+        if (last.textContent.includes("STEP 4")) stepEl.textContent = "목록 수집 중...";
+        else if (last.textContent.includes("STEP 5")) stepEl.textContent = "상세 페이지 수집 중...";
+      }
     } else {
       scEl.innerHTML = '<span class="c-green">대기 중 ✓</span>';
       setBtn(true);
       pauseBtn.style.display = "none";
       if (isPaused) isPaused = false;
+      // 스크래핑 완료 → 타이머 종료
+      if (scrapeStartTime) stopTimer();
     }
     document.getElementById("s-upload-status").textContent = d.uploading ? "업로드 진행 중..." : "대기중";
 
@@ -549,12 +802,193 @@ async function refreshStatus() {
   } catch(e) {}
 }
 
+// ── 커스텀 단어장 팝업 ──────────────────────
+function openDict() {
+  document.getElementById("dict-overlay").style.display = "block";
+  document.getElementById("dict-popup").style.display   = "flex";
+  loadDict();
+}
+function closeDict() {
+  document.getElementById("dict-overlay").style.display = "none";
+  document.getElementById("dict-popup").style.display   = "none";
+}
+// ESC 키로 닫기
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDict(); });
+
+async function loadDict() {
+  try {
+    const d = await fetch(PREFIX + "/settings/dict").then(r => r.json());
+    const tb = document.getElementById("dict-tbody");
+    const entries = Object.entries(d.dict || {});
+    if (entries.length === 0) {
+      tb.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">단어장이 비어있어요</td></tr>';
+      return;
+    }
+    document.getElementById("dict-count").textContent = `총 ${entries.length}개 단어`;
+    tb.innerHTML = entries.map(([ja, ko]) => `
+      <tr>
+        <td style="padding:7px 16px;border-bottom:1px solid var(--border)">${ja}</td>
+        <td style="padding:7px 16px;border-bottom:1px solid var(--border);color:var(--green);font-weight:600">${ko}</td>
+        <td style="padding:7px 8px;border-bottom:1px solid var(--border);text-align:center">
+          <button onclick="deleteDict('${ja}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:1rem" title="삭제">🗑️</button>
+        </td>
+      </tr>`).join("");
+  } catch(e) { console.error(e); }
+}
+
+async function addDict() {
+  const ja = document.getElementById("dict-ja").value.trim();
+  const ko = document.getElementById("dict-ko").value.trim();
+  if (!ja || !ko) { addLog("⚠️ 일본어와 한국어를 모두 입력해주세요", "warn"); return; }
+  const r = await fetch(PREFIX + "/settings/dict", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ ja, ko })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    addLog(`📖 단어 추가: ${ja} → ${ko}`, "ok");
+    document.getElementById("dict-ja").value = "";
+    document.getElementById("dict-ko").value = "";
+    loadDict();
+  }
+}
+
+async function deleteDict(ja) {
+  if (!confirm(`"${ja}" 단어를 삭제할까요?`)) return;
+  await fetch(PREFIX + "/settings/dict/" + encodeURIComponent(ja), { method: "DELETE" });
+  addLog(`🗑️ 단어 삭제: ${ja}`, "warn");
+  loadDict();
+}
+
+// ── 마진율 설정 ──────────────────────────────
+document.getElementById("margin-input").addEventListener("input", () => {
+  const pct = +document.getElementById("margin-input").value || 0;
+  const rate = (1 + pct / 100).toFixed(2);
+  document.getElementById("margin-preview").textContent = `판매가 = 원가 × ${rate}`;
+  calcExample();  // 마진율 바뀔 때마다 예시 자동 갱신
+});
+
+document.getElementById("calc-jpy").addEventListener("input", () => {
+  calcExample();  // 일본가 바뀔 때마다 예시 자동 갱신
+});
+
+async function applyMargin() {
+  const pct = +document.getElementById("margin-input").value;
+  if (isNaN(pct) || pct < 0 || pct > 200) {
+    addLog("⚠️ 마진율은 0~200% 사이로 입력해주세요", "warn");
+    return;
+  }
+  try {
+    const r = await fetch(PREFIX + "/settings/margin", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ margin_pct: pct })
+    });
+    const d = await r.json();
+    addLog(`💰 마진율 ${pct}% 적용 완료 (×${d.margin_rate.toFixed(2)})`, "ok");
+    calcExample();  // 예시 계산 즉시 갱신
+    setTimeout(() => loadProducts(curPage), 500);
+  } catch(e) { addLog("❌ 마진율 적용 실패", "err"); }
+}
+
+async function calcExample() {
+  const jpy = +document.getElementById("calc-jpy").value;
+  if (!jpy || jpy <= 0) return;
+  const pct = +document.getElementById("margin-input").value || 20;
+  // 이미 갱신된 환율 배지에서 읽기 (status API 재호출 불필요)
+  const rateText = document.getElementById("rate").textContent || "9.23원";
+  const rate = parseFloat(rateText) || 9.23;
+  const remitRate = rate * 1.015;
+
+  const domestic = jpy >= 3980 ? 0 : 550;
+  const fee      = Math.floor(jpy * 0.03);
+  const intl     = 1500;
+  const totalJpy = jpy + domestic + fee + intl;
+  const costKrw  = Math.floor(totalJpy * remitRate);
+  const margin   = 1 + pct / 100;
+  const finalKrw = Math.floor(costKrw * margin);
+
+  document.getElementById("calc-result").innerHTML = `
+    <div>일본가: <b style="color:var(--text)">¥${jpy.toLocaleString()}</b></div>
+    <div>일본배송: <b style="color:var(--text)">¥${domestic.toLocaleString()}</b></div>
+    <div>수수료(3%): <b style="color:var(--text)">¥${fee.toLocaleString()}</b></div>
+    <div>국제배송: <b style="color:var(--text)">¥1,500</b></div>
+    <div>총원가: <b style="color:var(--yellow)">¥${totalJpy.toLocaleString()}</b></div>
+    <div>송금환율: <b style="color:var(--text)">${remitRate.toFixed(2)}원</b></div>
+    <div>원화원가: <b style="color:var(--accent)">${costKrw.toLocaleString()}원</b></div>
+    <div style="border-top:1px solid var(--border);padding-top:4px;margin-top:4px">
+      마진 금액: <b style="color:var(--orange)">${(finalKrw - costKrw).toLocaleString()}원</b>
+    </div>
+    <div style="margin-top:4px">
+      판매가(${pct}%): <b style="color:var(--green);font-size:1rem">${finalKrw.toLocaleString()}원</b>
+    </div>`;
+}
+
 // ── 초기화 ───────────────────────────────────
 refreshStatus();
 loadProducts(1);
 loadBrands();
-setInterval(refreshStatus, 4000);
-setInterval(() => { loadProducts(curPage); loadBrands(); }, 15000);
+setInterval(refreshStatus, 10000);        // 10초마다 상태 확인
+setInterval(() => { loadProducts(curPage); loadBrands(); }, 30000);  // 30초마다 상품 갱신
+
+// 페이지 수 입력 시 실시간 프리뷰
+document.getElementById("max-pages").addEventListener("input", updatePagePreview);
+updatePagePreview();
+
+// 초기 예시 계산 실행
+calcExample();
+
+// 단어장은 팝업 열 때 로드
 </script>
+<!-- 단어장 팝업 -->
+<div id="dict-overlay" onclick="closeDict()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999"></div>
+<div id="dict-popup" style="
+  display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  width:480px;max-width:95vw;max-height:80vh;z-index:1000;
+  display:none;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+
+  <!-- 팝업 헤더 -->
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">
+    <span style="font-weight:700;font-size:0.95rem">📖 번역 단어장</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:0.72rem;color:var(--muted)">잘못 번역되는 단어를 직접 수정</span>
+      <button onclick="closeDict()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem;line-height:1">✕</button>
+    </div>
+  </div>
+
+  <!-- 단어 추가 입력 -->
+  <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input type="text" id="dict-ja" placeholder="일본어 (예: ズーム)" class="search-input" style="flex:1;min-width:120px">
+    <span style="color:var(--muted);font-size:1.1rem">→</span>
+    <input type="text" id="dict-ko" placeholder="한국어 (예: 줌)" class="search-input" style="flex:1;min-width:120px">
+    <button class="btn b-blue" onclick="addDict()" style="padding:7px 14px;white-space:nowrap">➕ 추가</button>
+  </div>
+
+  <!-- 단어 목록 -->
+  <div style="overflow-y:auto;flex:1;padding:0 4px">
+    <table style="width:100%;font-size:0.82rem;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:8px 16px;color:var(--muted);font-size:0.72rem;background:#141720;position:sticky;top:0">일본어</th>
+          <th style="text-align:left;padding:8px 16px;color:var(--muted);font-size:0.72rem;background:#141720;position:sticky;top:0">→ 한국어</th>
+          <th style="padding:8px;background:#141720;width:40px;position:sticky;top:0"></th>
+        </tr>
+      </thead>
+      <tbody id="dict-tbody">
+        <tr><td colspan="3" style="text-align:center;color:var(--muted);padding:24px">로딩 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 팝업 푸터 -->
+  <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+    <span id="dict-count" style="font-size:0.75rem;color:var(--muted)"></span>
+    <div style="display:flex;gap:8px">
+      <button class="btn b-gray" onclick="loadDict()" style="padding:6px 12px;font-size:0.78rem">🔄 새로고침</button>
+      <button class="btn b-green" onclick="closeDict();runTranslate()" style="padding:6px 12px;font-size:0.78rem">🌐 재번역 적용</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
