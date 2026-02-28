@@ -4,7 +4,7 @@
 
 # ── 서버 설정 ──────────────────────────────
 SERVER_HOST = "0.0.0.0"
-SERVER_PORT = 3000
+SERVER_PORT = 3002
 URL_PREFIX  = "/jp_sourcing"   # 대시보드 접속 경로
 
 # ── Xebio 스크래핑 설정 ────────────────────
