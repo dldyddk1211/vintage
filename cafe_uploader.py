@@ -12,10 +12,12 @@ import asyncio
 import json
 import os
 import logging
+import random
 import requests
 import tempfile
 from datetime import datetime
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from notifier import notify_upload_success, notify_upload_waiting, notify_upload_complete, notify_upload_error
 
 from config import (
     CAFE_URL, CAFE_ID, CAFE_MENU_NAME, CAFE_MENU_ID,
@@ -150,7 +152,7 @@ async def verify_login(context) -> bool:
     page = await context.new_page()
     try:
         await page.goto(
-            "https://cafe.naver.com/ca-fe/home",
+            f"https://cafe.naver.com/f-e/cafes/{CAFE_ID}",
             wait_until="domcontentloaded",
             timeout=15000
         )
@@ -241,9 +243,10 @@ async def upload_products(products: list, status_callback=None, max_upload=None)
         page = await context.new_page()
 
         try:
-            # 카페 이동
-            log(f"🏠 카페 이동 중: {CAFE_URL}")
-            await page.goto(CAFE_URL, wait_until="domcontentloaded", timeout=20000)
+            # 카페 이동 (f-e 형식 사용)
+            cafe_home = f"https://cafe.naver.com/f-e/cafes/{CAFE_ID}"
+            log(f"🏠 카페 이동 중: {cafe_home}")
+            await page.goto(cafe_home, wait_until="domcontentloaded", timeout=20000)
             await asyncio.sleep(2)
 
             # 상품별 업로드
@@ -255,11 +258,22 @@ async def upload_products(products: list, status_callback=None, max_upload=None)
                     if ok:
                         success_count += 1
                         log(f"   ✅ 업로드 성공 ({success_count}개 완료)")
+                        notify_upload_success(name_short, i, len(upload_list))
                     else:
                         log(f"   ⚠️ 업로드 실패")
-                    await asyncio.sleep(3)  # 게시글 간 딜레이
+                        notify_upload_error(name_short, "업로드 실패")
+
+                    # 게시글 간 랜덤 딜레이 (20~30분) — 네이버 봇 탐지 방지
+                    if i < len(upload_list):
+                        delay_min = random.randint(20, 30)
+                        delay_sec = delay_min * 60
+                        next_name = (upload_list[i].get("name_ko") or upload_list[i].get("name", ""))[:30]
+                        log(f"   ⏳ 다음 게시글까지 {delay_min}분 대기...")
+                        notify_upload_waiting(next_name, i, len(upload_list), delay_min)
+                        await asyncio.sleep(delay_sec)
                 except Exception as e:
                     log(f"   ❌ 오류: {e}")
+                    notify_upload_error(name_short, str(e))
                     continue
 
         except Exception as e:
@@ -269,6 +283,7 @@ async def upload_products(products: list, status_callback=None, max_upload=None)
             await browser.close()
 
     log(f"🎉 업로드 완료: 총 {success_count}/{len(upload_list)}개 성공")
+    notify_upload_complete(success_count, len(upload_list))
     return success_count
 
 
@@ -287,15 +302,16 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
         price_info = calc_buying_price(product.get("price_jpy", 0))
 
         # 게시글 제목 & 내용 생성 (Claude API 우선, 실패 시 기본 템플릿)
-        from post_generator import generate_cafe_post
+        from post_generator import generate_cafe_post, get_detail_image_urls
         post = generate_cafe_post(product, price_info)
         title = post["title"]
         content = post["content"]
+        detail_images = get_detail_image_urls(product)
 
-        # ── 1단계: 카페 메뉴 페이지로 이동 ──
-        menu_url = f"https://cafe.naver.com/f-e/cafes/{CAFE_ID}/menus/{CAFE_MENU_ID}"
-        _log(f"   🌐 카페 메뉴 페이지 이동: {menu_url}")
-        await page.goto(menu_url, wait_until="domcontentloaded", timeout=20000)
+        # ── 1단계: 글쓰기 페이지로 직접 이동 ──
+        write_url = f"https://cafe.naver.com/f-e/cafes/{CAFE_ID}/articles/write?menuId={CAFE_MENU_ID}"
+        _log(f"   🌐 글쓰기 페이지 이동: {write_url}")
+        await page.goto(write_url, wait_until="domcontentloaded", timeout=20000)
         await asyncio.sleep(2)
 
         # 로그인 페이지로 리다이렉트 됐는지 확인
@@ -305,61 +321,50 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
 
         _log(f"   ✅ 현재 URL: {page.url}")
 
-        # ── 2단계: 글쓰기 버튼 클릭 ──
-        write_btn_selectors = [
-            "a:has-text('카페 글쓰기')",
-            "button:has-text('카페 글쓰기')",
-            "a:has-text('글쓰기')",
-            "button:has-text('글쓰기')",
-            "[class*='WriteButton']",
-            "[class*='write-button']",
-        ]
-        clicked_write = False
-        for sel in write_btn_selectors:
-            try:
-                el = page.locator(sel).first
-                if await el.count() > 0:
-                    await el.click()
-                    clicked_write = True
-                    _log(f"   ✅ 글쓰기 버튼 클릭: {sel}")
-                    break
-            except Exception:
-                continue
-
-        if not clicked_write:
-            _log("   ❌ 글쓰기 버튼을 찾지 못했습니다")
-            return False
-
-        # ── 3단계: 에디터 렌더링 대기 ──
-        # React SPA가 write 화면을 그릴 때까지 대기
+        # ── 2단계: iframe 내 에디터 렌더링 대기 ──
+        # 글쓰기 페이지는 iframe#cafe_main 안에 에디터가 로드됨
+        frame_locator = page.frame_locator("iframe[name='cafe_main']")
         try:
-            await page.wait_for_selector(
-                "textarea.textarea_input, textarea[placeholder*='제목']",
-                timeout=15000
-            )
-            _log("   ✅ 에디터 로딩 완료")
+            await frame_locator.locator(
+                "textarea.textarea_input, textarea[placeholder*='제목']"
+            ).first.wait_for(timeout=20000)
+            _log("   ✅ 에디터 로딩 완료 (iframe#cafe_main)")
         except PlaywrightTimeout:
-            _log("   ❌ 에디터 로딩 시간 초과 (15초)")
+            _log("   ❌ 에디터 로딩 시간 초과 (20초)")
             return False
 
-        # ── 4단계: 제목 입력 ──
-        # 새 UI: <textarea class="textarea_input" placeholder="제목을 입력해 주세요.">
+        # ── 게시판 선택 (드롭다운에서 게시판 선택) ──
+        try:
+            board_btn = frame_locator.locator(
+                "a.board_name, "
+                "button[class*='select_board'], "
+                "[class*='BoardSelectButton'], "
+                "[class*='board_select'], "
+                "a:has-text('게시판을 선택')"
+            ).first
+            if await board_btn.count() > 0:
+                await board_btn.click()
+                await asyncio.sleep(1)
+                menu_item = frame_locator.locator(f"text={CAFE_MENU_NAME}").first
+                if await menu_item.count() > 0:
+                    await menu_item.click()
+                    await asyncio.sleep(1)
+                    _log(f"   ✅ 게시판 선택: {CAFE_MENU_NAME}")
+        except Exception as e:
+            _log(f"   ⚠️ 게시판 선택 시도: {e}")
+
+        # ── 3단계: 제목 입력 ──
         title_selectors = [
             "textarea.textarea_input",
             "textarea[placeholder*='제목']",
-            "input.textarea_input",
-            "#subject",
-            "input[name='subject']",
-            "input[placeholder*='제목']",
         ]
         title_filled = False
         for sel in title_selectors:
             try:
-                el = page.locator(sel).first
+                el = frame_locator.locator(sel).first
                 if await el.count() > 0:
                     await el.click()
                     await asyncio.sleep(0.5)
-                    # Playwright fill()은 React synthetic event를 제대로 발생시킴
                     await el.fill(title)
                     await asyncio.sleep(0.3)
                     val = await el.input_value()
@@ -368,19 +373,17 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                         _log(f"   ✅ 제목 입력 완료 ({sel}): {val[:30]}")
                         break
                     else:
-                        _log(f"   ⚠️ 제목 입력 실패 (빈값) — keyboard.type 시도: {sel}")
-                        # fallback: 직접 타이핑
+                        _log(f"   ⚠️ 제목 fill 실패 — keyboard.type 시도")
                         await el.click()
                         await asyncio.sleep(0.3)
-                        await page.keyboard.press("Control+a")
-                        await page.keyboard.type(title, delay=30)
+                        await el.press("Control+a")
+                        await el.type(title, delay=30)
                         await asyncio.sleep(0.3)
                         val2 = await el.input_value()
                         if val2.strip():
                             title_filled = True
                             _log(f"   ✅ 제목 입력 완료 (타이핑): {val2[:30]}")
                             break
-                        _log(f"   ⚠️ 타이핑도 실패: {sel}")
             except Exception as e:
                 _log(f"   ⚠️ 제목 시도 실패 ({sel}): {e}")
                 continue
@@ -391,26 +394,39 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
 
         await asyncio.sleep(0.5)
 
-        # ── 5단계: 본문 입력 ──
-        # 새 UI: Smart Editor 3 — .se-content 클릭 후 키보드 입력
-        await type_content_to_editor(page, content)
+        # ── 4단계: 대표 이미지 업로드 (첫 번째 상세 이미지) ──
+        if detail_images:
+            _log(f"   📷 대표 이미지 업로드")
+            await upload_image_from_url_iframe(page, frame_locator, detail_images[0], _log)
+            await asyncio.sleep(1)
 
-        # ── 6단계: 이미지 업로드 (대표 이미지 파일 업로드) ──
-        if product.get("img_url"):
-            await upload_image_from_url(page, product["img_url"])
+        # ── 5단계: 줄간격 200% 설정 후 본문 입력 ──
+        await set_line_spacing_200(frame_locator, _log)
+        await type_content_to_editor_iframe(page, frame_locator, content, _log)
 
-        # ── 7단계: 등록 버튼 클릭 ──
+        # ── 6단계: 나머지 상세 이미지 업로드 ──
+        remaining_images = detail_images[1:] if len(detail_images) > 1 else []
+        for img_idx, img_url in enumerate(remaining_images):
+            _log(f"   📷 상세 이미지 업로드 [{img_idx+1}/{len(remaining_images)}]")
+            await upload_image_from_url_iframe(page, frame_locator, img_url, _log)
+            await asyncio.sleep(1)
+
+        # ── 7단계: 태그 입력 ──
+        tags = post.get("tags", [])
+        if tags:
+            await input_tags_iframe(frame_locator, tags, _log)
+
+        # ── 8단계: 등록 버튼 클릭 ──
         submit_selectors = [
             "button.BaseButton--submit",
             "button:has-text('등록')",
             "button:has-text('확인')",
             "a.btn_upload",
             "button[class*='submit']",
-            "input[type='submit']",
         ]
         for sel in submit_selectors:
             try:
-                el = page.locator(sel).first
+                el = frame_locator.locator(sel).first
                 if await el.count() > 0:
                     await el.click()
                     _log(f"   ✅ 등록 버튼 클릭")
@@ -449,6 +465,493 @@ async def select_cafe_menu(frame):
     except Exception:
         pass
     return False
+
+
+async def set_line_spacing_200(frame_locator, log=None):
+    """
+    Smart Editor 3 줄간격을 200%로 설정
+    에디터 툴바의 줄간격 버튼 → 200% 선택
+    """
+    try:
+        # 먼저 에디터 본문 클릭하여 포커스
+        for sel in [".se-content", ".se-section-text", "[contenteditable=true]"]:
+            try:
+                el = frame_locator.locator(sel).first
+                if await el.count() > 0:
+                    await el.click()
+                    await asyncio.sleep(0.3)
+                    break
+            except Exception:
+                continue
+
+        # 전체 선택 (Ctrl+A) 후 줄간격 적용
+        # 줄간격 버튼 찾기
+        spacing_btn_selectors = [
+            "button[data-name='lineSpacing']",
+            "button[aria-label*='줄간격']",
+            "button[title*='줄간격']",
+            "button[data-command='lineSpacing']",
+            "button[class*='line_spacing']",
+            "button[class*='lineHeight']",
+        ]
+        for sel in spacing_btn_selectors:
+            try:
+                btn = frame_locator.locator(sel).first
+                if await btn.count() > 0:
+                    await btn.click()
+                    await asyncio.sleep(1)
+
+                    # 200% 옵션 선택
+                    option_selectors = [
+                        "li:has-text('2.0')",
+                        "li:has-text('200')",
+                        "button:has-text('2.0')",
+                        "button:has-text('200')",
+                        "[data-value='2.0']",
+                        "[data-value='200']",
+                    ]
+                    for opt_sel in option_selectors:
+                        try:
+                            opt = frame_locator.locator(opt_sel).first
+                            if await opt.count() > 0:
+                                await opt.click()
+                                await asyncio.sleep(0.5)
+                                logger.info("줄간격 200% 설정 완료")
+                                if log:
+                                    log("   ✅ 줄간격 200% 설정")
+                                return
+                        except Exception:
+                            continue
+
+                    # 드롭다운이 열렸지만 옵션 못 찾은 경우 닫기
+                    try:
+                        await btn.click()
+                        await asyncio.sleep(0.3)
+                    except Exception:
+                        pass
+                    break
+            except Exception:
+                continue
+
+        logger.warning("줄간격 버튼을 찾지 못했습니다")
+        if log:
+            log("   ⚠️ 줄간격 설정 실패 — 기본값 사용")
+    except Exception as e:
+        logger.warning(f"줄간격 설정 오류: {e}")
+        if log:
+            log(f"   ⚠️ 줄간격 설정 오류: {e}")
+
+
+async def type_content_to_editor_iframe(page, frame_locator, content: str, log=None):
+    """
+    iframe 내 Smart Editor 3 본문 입력
+    줄 단위로 타이핑 + Enter (사람이 직접 치는 것처럼)
+    """
+    import re
+    plain = re.sub(r'<img\s+src="([^"]+)"[^>]*>', '', content)
+    plain = re.sub(r'<[^>]+>', '', plain)
+    plain = plain.strip()
+
+    editor_selectors = [
+        ".se-content",
+        ".se-section-text",
+        "[class*='se-module-text']",
+        "[contenteditable=true]",
+    ]
+
+    # 에디터 영역 클릭
+    target_el = None
+    for sel in editor_selectors:
+        try:
+            el = frame_locator.locator(sel).first
+            if await el.count() > 0:
+                await el.click()
+                target_el = el
+                logger.info(f"에디터 클릭 (iframe): {sel}")
+                break
+        except Exception:
+            continue
+
+    if not target_el:
+        if log:
+            log("   ⚠️ 에디터 영역을 찾지 못했습니다")
+        return
+
+    await asyncio.sleep(0.5)
+
+    # 패턴 정의
+    url_pattern = re.compile(r'^https?://\S+$')
+    heading_pattern = re.compile(r'핵심 포인트')
+    numbered_pattern = re.compile(r'^\d+\.\s')
+
+    try:
+        lines = plain.split("\n")
+        prev_was_empty = False
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+
+            # ── 핵심 포인트 제목: 볼드 + 폰트 24 ──
+            if stripped and heading_pattern.search(stripped):
+                await _set_font_size(frame_locator, "24", log)
+                await _toggle_bold(frame_locator, target_el, on=True)
+                await target_el.type(stripped, delay=10)
+                await _toggle_bold(frame_locator, target_el, on=False)
+                await _reset_font_size(frame_locator, log)
+                await target_el.press("Enter")
+                await target_el.press("Enter")  # 빈 줄
+                await asyncio.sleep(0.1)
+                prev_was_empty = True
+                continue
+
+            # ── 번호 항목 (1. 2. 3.): 앞에 빈 줄 추가 ──
+            if stripped and numbered_pattern.match(stripped) and not prev_was_empty:
+                await target_el.press("Enter")  # 빈 줄
+                await asyncio.sleep(0.05)
+
+            # ── URL: 클릭 가능한 링크 삽입 ──
+            if stripped and url_pattern.match(stripped):
+                inserted = await _insert_link_via_editor(
+                    page, frame_locator, target_el, stripped, stripped, log
+                )
+                if not inserted:
+                    await target_el.type(stripped, delay=10)
+                    await target_el.press("Space")
+                    await asyncio.sleep(0.5)
+                    if log:
+                        log(f"   🔗 URL 입력 (자동 링크 감지): {stripped}")
+            elif stripped:
+                await target_el.type(line, delay=10)
+
+            prev_was_empty = (not stripped)
+
+            if i < len(lines) - 1:
+                await target_el.press("Enter")
+                await asyncio.sleep(0.05)
+
+        logger.info(f"본문 입력 완료 (줄 단위 타이핑, {len(lines)}줄)")
+        if log:
+            log(f"   ✅ 본문 입력 완료 ({len(lines)}줄)")
+    except Exception as e:
+        logger.warning(f"본문 타이핑 실패: {e}")
+        if log:
+            log(f"   ⚠️ 본문 입력 실패: {e}")
+
+
+async def _set_font_size(frame_locator, size: str, log=None):
+    """Smart Editor 3 폰트 크기 변경"""
+    try:
+        font_btn_selectors = [
+            "button[data-name='fontSize']",
+            "button[aria-label*='글자 크기']",
+            "button[aria-label*='글꼴 크기']",
+            "button[title*='글자 크기']",
+            "button[class*='font_size']",
+            "button[class*='fontSize']",
+        ]
+        for sel in font_btn_selectors:
+            try:
+                btn = frame_locator.locator(sel).first
+                if await btn.count() > 0:
+                    await btn.click()
+                    await asyncio.sleep(0.8)
+
+                    # 사이즈 옵션 선택
+                    option_selectors = [
+                        f"[data-value='{size}']",
+                        f"li:has-text('{size}')",
+                        f"button:has-text('{size}')",
+                        f"span:has-text('{size}')",
+                    ]
+                    for opt_sel in option_selectors:
+                        try:
+                            opt = frame_locator.locator(opt_sel).first
+                            if await opt.count() > 0:
+                                await opt.click()
+                                await asyncio.sleep(0.3)
+                                logger.info(f"폰트 크기 {size} 설정")
+                                return
+                        except Exception:
+                            continue
+
+                    # 드롭다운 닫기
+                    await btn.click()
+                    await asyncio.sleep(0.3)
+                    break
+            except Exception:
+                continue
+        logger.warning(f"폰트 크기 버튼 못 찾음")
+    except Exception as e:
+        logger.warning(f"폰트 크기 설정 오류: {e}")
+
+
+async def _reset_font_size(frame_locator, log=None):
+    """폰트 크기를 기본값(13 또는 15)으로 복원"""
+    await _set_font_size(frame_locator, "13", log)
+
+
+async def _toggle_bold(frame_locator, editor_el, on=True):
+    """볼드 토글 (Ctrl+B)"""
+    try:
+        # 키보드 단축키로 볼드 토글
+        await editor_el.press("Control+b")
+        await asyncio.sleep(0.1)
+        logger.info(f"볼드 {'ON' if on else 'OFF'}")
+    except Exception as e:
+        logger.warning(f"볼드 토글 실패: {e}")
+
+
+async def _insert_link_via_editor(page, frame_locator, editor_el, url: str, text: str, log=None) -> bool:
+    """
+    Smart Editor 3에 클릭 가능한 URL 삽입
+    방법 1: 에디터 툴바 링크 버튼
+    방법 2: JavaScript로 <a> 태그 직접 삽입
+    방법 3: execCommand insertHTML
+    """
+
+    # ── 방법 1: 에디터 툴바 링크 버튼 ──
+    try:
+        link_btn_selectors = [
+            "button[data-name='link']",
+            "button[data-type='link']",
+            "button[aria-label*='링크']",
+            "button[title*='링크']",
+            "button[data-command='link']",
+            ".se-toolbar button.se-link-toolbar-button",
+            "button.se-text-paragraph-toolbar-button-link",
+        ]
+        for sel in link_btn_selectors:
+            try:
+                btn = frame_locator.locator(sel).first
+                if await btn.count() > 0:
+                    await btn.click()
+                    await asyncio.sleep(1.5)
+                    logger.info(f"링크 버튼 클릭 성공: {sel}")
+
+                    # URL 입력란 찾기 (팝업/패널)
+                    url_input_selectors = [
+                        "input[placeholder*='URL']",
+                        "input[placeholder*='url']",
+                        "input[placeholder*='링크']",
+                        "input[placeholder*='주소']",
+                        ".se-popup-link input[type='text']",
+                        ".se-link-popup input",
+                        "input.se-popup-link-input",
+                        "input[class*='link']",
+                    ]
+                    for inp_sel in url_input_selectors:
+                        try:
+                            url_input = frame_locator.locator(inp_sel).first
+                            if await url_input.count() > 0:
+                                await url_input.click()
+                                await url_input.fill("")
+                                await asyncio.sleep(0.3)
+                                await url_input.type(url, delay=5)
+                                await asyncio.sleep(0.5)
+                                logger.info(f"URL 입력 완료: {inp_sel}")
+
+                                # 확인 버튼 클릭
+                                confirm_selectors = [
+                                    "button:has-text('확인')",
+                                    "button:has-text('적용')",
+                                    "button.se-popup-button-confirm",
+                                    ".se-popup-link button.se-popup-button-confirm",
+                                    "button[class*='confirm']",
+                                    "button[class*='apply']",
+                                ]
+                                for cfm_sel in confirm_selectors:
+                                    try:
+                                        cfm = frame_locator.locator(cfm_sel).first
+                                        if await cfm.count() > 0:
+                                            await cfm.click()
+                                            await asyncio.sleep(1)
+                                            logger.info(f"링크 삽입 완료 (툴바): {url}")
+                                            if log:
+                                                log(f"   🔗 링크 삽입 완료: {url}")
+                                            return True
+                                    except Exception:
+                                        continue
+                        except Exception:
+                            continue
+
+                    # 팝업 닫기
+                    for close_sel in ["button:has-text('취소')", "button[class*='cancel']", ".se-popup-close"]:
+                        try:
+                            cb = frame_locator.locator(close_sel).first
+                            if await cb.count() > 0:
+                                await cb.click()
+                                await asyncio.sleep(0.3)
+                                break
+                        except Exception:
+                            continue
+                    break
+            except Exception:
+                continue
+    except Exception as e:
+        logger.warning(f"링크 버튼 방식 실패: {e}")
+
+    # ── 방법 2: JavaScript로 <a> 태그 직접 삽입 ──
+    try:
+        # iframe 내부 frame 객체 가져오기
+        frames = page.frames
+        for frame in frames:
+            if 'cafe_main' in (frame.name or ''):
+                result = await frame.evaluate("""(url) => {
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount > 0) {
+                        const range = sel.getRangeAt(0);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.textContent = url;
+                        a.target = '_blank';
+                        a.rel = 'noopener';
+                        range.insertNode(a);
+                        range.setStartAfter(a);
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        return true;
+                    }
+                    return false;
+                }""", url)
+                if result:
+                    logger.info(f"링크 삽입 완료 (JS): {url}")
+                    if log:
+                        log(f"   🔗 링크 삽입 완료 (JS): {url}")
+                    return True
+    except Exception as e:
+        logger.warning(f"JS 링크 삽입 실패: {e}")
+
+    # ── 방법 3: execCommand insertHTML ──
+    try:
+        frames = page.frames
+        for frame in frames:
+            if 'cafe_main' in (frame.name or ''):
+                html = f'<a href="{url}" target="_blank" rel="noopener">{url}</a>'
+                result = await frame.evaluate(
+                    """(html) => document.execCommand('insertHTML', false, html)""",
+                    html
+                )
+                if result:
+                    logger.info(f"링크 삽입 완료 (execCommand): {url}")
+                    if log:
+                        log(f"   🔗 링크 삽입 완료: {url}")
+                    return True
+    except Exception as e:
+        logger.warning(f"execCommand 링크 삽입 실패: {e}")
+
+    logger.warning(f"모든 링크 삽입 방법 실패: {url}")
+    return False
+
+
+async def upload_image_from_url_iframe(page, frame_locator, img_url: str, log=None):
+    """iframe 내 이미지 업로드"""
+    if not img_url:
+        return
+
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(img_url, headers=headers, timeout=15)
+        if res.status_code != 200:
+            logger.warning(f"이미지 다운로드 실패: {res.status_code}")
+            return
+    except Exception as e:
+        logger.warning(f"이미지 다운로드 오류: {e}")
+        return
+
+    ext = "jpg"
+    ct = res.headers.get("content-type", "")
+    if "png" in ct:
+        ext = "png"
+    elif "webp" in ct:
+        ext = "webp"
+
+    tmp_dir = tempfile.gettempdir()
+    tmp_path = os.path.join(tmp_dir, f"naver_img_{datetime.now().strftime('%H%M%S%f')}.{ext}")
+    with open(tmp_path, "wb") as f:
+        f.write(res.content)
+
+    logger.info(f"이미지 저장: {tmp_path} ({len(res.content):,} bytes)")
+
+    try:
+        # iframe 내 file input 찾기
+        for sel in ["input[type='file'][accept*='image']", "input[type='file']"]:
+            try:
+                el = frame_locator.locator(sel).first
+                if await el.count() > 0:
+                    await el.set_input_files(tmp_path)
+                    await asyncio.sleep(2)
+                    logger.info(f"이미지 업로드 완료 (iframe): {sel}")
+                    if log:
+                        log(f"   ✅ 이미지 업로드 완료")
+                    return
+            except Exception:
+                continue
+
+        # 이미지 버튼 클릭 → file_chooser
+        img_btn_selectors = [
+            "button[data-name='image']",
+            "button[aria-label*='사진']",
+            "button[aria-label*='이미지']",
+        ]
+        for sel in img_btn_selectors:
+            try:
+                el = frame_locator.locator(sel).first
+                if await el.count() > 0:
+                    async with page.expect_file_chooser(timeout=4000) as fc_info:
+                        await el.click()
+                    fc = await fc_info.value
+                    await fc.set_files(tmp_path)
+                    await asyncio.sleep(2)
+                    logger.info(f"이미지 업로드 완료 (버튼): {sel}")
+                    if log:
+                        log(f"   ✅ 이미지 업로드 완료")
+                    return
+            except Exception:
+                continue
+
+        logger.warning("이미지 업로드: file input을 찾지 못했습니다")
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
+
+async def input_tags_iframe(frame_locator, tags: list, log=None):
+    """iframe 내 태그 입력 (#일본구매대행 #브랜드명 #모델명)"""
+    if not tags:
+        return
+
+    tag_selectors = [
+        "input[placeholder*='태그']",
+        "input[placeholder*='Tag']",
+        "input[class*='tag']",
+        "input[id*='tag']",
+    ]
+
+    for sel in tag_selectors:
+        try:
+            el = frame_locator.locator(sel).first
+            if await el.count() > 0:
+                for tag in tags:
+                    await el.click()
+                    await asyncio.sleep(0.3)
+                    await el.type(tag, delay=30)
+                    await asyncio.sleep(0.3)
+                    # Enter로 태그 확정
+                    await el.press("Enter")
+                    await asyncio.sleep(0.5)
+                if log:
+                    log(f"   ✅ 태그 입력 완료: {' '.join('#' + t for t in tags)}")
+                return
+        except Exception as e:
+            if log:
+                log(f"   ⚠️ 태그 입력 시도 ({sel}): {e}")
+            continue
+
+    if log:
+        log("   ⚠️ 태그 입력란을 찾지 못했습니다")
 
 
 async def type_content_to_editor(page, content: str):

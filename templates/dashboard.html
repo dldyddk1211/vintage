@@ -278,9 +278,21 @@
       <span class="cat-arrow" id="arrow-setting">&#x25BC;</span>
     </div>
     <div class="nav-sub collapsed" id="sub-setting">
+      <div class="nav-item" data-page="data-path" onclick="showPage('data-path')">
+        <span class="nav-icon">&#x1f4c1;</span>
+        <span>&#xb370;&#xc774;&#xd130; &#xc800;&#xc7a5; &#xacbd;&#xb85c;</span>
+      </div>
+      <div class="nav-item" data-page="ai-settings" onclick="showPage('ai-settings')">
+        <span class="nav-icon">🤖</span>
+        <span>AI 글쓰기 설정</span>
+      </div>
       <div class="nav-item" data-page="dictionary" onclick="showPage('dictionary')">
         <span class="nav-icon">&#x1f4d6;</span>
         <span>&#xbc88;&#xc5ed; &#xb2e8;&#xc5b4;&#xc7a5;</span>
+      </div>
+      <div class="nav-item" data-page="telegram" onclick="showPage('telegram')">
+        <span class="nav-icon">&#x1f4ec;</span>
+        <span>텔레그램 알림</span>
       </div>
     </div>
   </nav>
@@ -536,6 +548,174 @@
       </div>
     </div>
 
+    <!-- ═══ 데이터 저장 경로 ═══ -->
+    <div class="page-section" id="page-data-path">
+      <div class="panel">
+        <div class="panel-title">
+          <span>&#x1f4c1; &#xb370;&#xc774;&#xd130; &#xc800;&#xc7a5; &#xacbd;&#xb85c;</span>
+        </div>
+        <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px">
+          &#xac70;&#xb798;&#xba85;&#xc138;&#xc11c;, &#xc0c1;&#xd488; &#xb370;&#xc774;&#xd130;, &#xc5c5;&#xb85c;&#xb4dc; &#xae30;&#xb85d; &#xb4f1; &#xc911;&#xc694; DB&#xac00; &#xc800;&#xc7a5;&#xb418;&#xb294; &#xc704;&#xce58;&#xc785;&#xb2c8;&#xb2e4;.<br>
+          Mac/Windows &#xbaa8;&#xb450; &#xac19;&#xc740; &#xc678;&#xc7a5; &#xb4dc;&#xb77c;&#xc774;&#xbe0c;&#xb97c; &#xc5f0;&#xacb0;&#xd558;&#xba74; &#xb3d9;&#xc77c;&#xd55c; &#xb370;&#xc774;&#xd130;&#xb97c; &#xbd3c; &#xc218; &#xc788;&#xc2b5;&#xb2c8;&#xb2e4;.
+        </p>
+
+        <div style="border:1px solid var(--border);border-radius:10px;padding:20px;background:var(--bg)">
+          <!-- 헤더 -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="background:var(--purple);color:#fff;padding:4px 12px;border-radius:6px;font-size:0.82rem;font-weight:700">DB</span>
+              <span style="font-weight:700;font-size:1.05rem">&#xb370;&#xc774;&#xd130; &#xacbd;&#xb85c;</span>
+            </div>
+            <span id="dp-conn-badge" style="padding:4px 12px;border-radius:6px;font-size:0.78rem;font-weight:600">...</span>
+          </div>
+
+          <!-- 환경 정보 -->
+          <table style="width:100%;font-size:0.85rem;margin-bottom:16px;border-collapse:collapse">
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:8px 12px;color:var(--muted);width:100px">&#xd658;&#xacbd;</td>
+              <td style="padding:8px 0" id="dp-os">-</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:8px 12px;color:var(--muted)">&#xae30;&#xbcf8; &#xacbd;&#xb85c;</td>
+              <td style="padding:8px 0;color:var(--muted)" id="dp-default">-</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;color:var(--muted)">&#xd604;&#xc7ac; &#xacbd;&#xb85c;</td>
+              <td style="padding:8px 0;font-weight:700" id="dp-current">-</td>
+            </tr>
+          </table>
+
+          <!-- 저장되는 데이터 목록 -->
+          <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;background:var(--card)">
+            <div style="font-size:0.82rem;color:var(--muted);margin-bottom:8px;font-weight:600">&#xc800;&#xc7a5;&#xb418;&#xb294; &#xb370;&#xc774;&#xd130;</div>
+            <div id="dp-stored-data" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:0.8rem"></div>
+          </div>
+
+          <!-- 경로 변경 입력 -->
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="dp-path-input" type="text" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;background:var(--bg);color:var(--text)" placeholder="&#xb370;&#xc774;&#xd130; &#xc800;&#xc7a5; &#xacbd;&#xb85c;&#xb97c; &#xc785;&#xb825;&#xd558;&#xc138;&#xc694;">
+            <button class="btn b-purple" onclick="changeDataPath()" style="padding:8px 20px;white-space:nowrap">&#xbcc0;&#xacbd;</button>
+            <button class="btn b-gray" onclick="resetDataPath()" style="padding:8px 16px;white-space:nowrap">&#xcd08;&#xae30;&#xd654;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ AI 설정 ═══ -->
+    <div class="page-section" id="page-ai-settings">
+      <div class="panel">
+        <div class="panel-title">
+          <span>🤖 AI 글쓰기 설정</span>
+          <button class="btn b-gray" onclick="loadAiSettings()" style="padding:6px 12px;font-size:0.78rem">🔄 새로고침</button>
+        </div>
+        <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px">
+          네이버 카페 게시글 제목/본문 자동 생성에 사용할 AI를 설정합니다.<br>
+          일본어 상품 설명을 한국어로 번역하고 매력적인 게시글을 작성합니다.
+        </p>
+
+        <div style="border:1px solid var(--border);border-radius:10px;padding:20px;background:var(--bg)">
+          <!-- AI 제공자 선택 -->
+          <div style="margin-bottom:20px">
+            <div style="font-size:0.85rem;font-weight:600;margin-bottom:10px">AI 플랫폼 선택</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color 0.2s" id="ai-opt-gemini">
+                <input type="radio" name="ai-provider" value="gemini" onchange="onAiProviderChange(this.value)">
+                <span style="font-weight:600">Gemini</span>
+                <span style="font-size:0.75rem;color:var(--muted)">(무료/빠름)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color 0.2s" id="ai-opt-claude">
+                <input type="radio" name="ai-provider" value="claude" onchange="onAiProviderChange(this.value)">
+                <span style="font-weight:600">Claude</span>
+                <span style="font-size:0.75rem;color:var(--muted)">(유료/고품질)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color 0.2s" id="ai-opt-none">
+                <input type="radio" name="ai-provider" value="none" onchange="onAiProviderChange(this.value)">
+                <span style="font-weight:600">미사용</span>
+                <span style="font-size:0.75rem;color:var(--muted)">(기본 템플릿)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- API 키 입력 -->
+          <div style="display:grid;gap:14px;margin-bottom:20px">
+            <div id="ai-gemini-key-row">
+              <div style="font-size:0.82rem;color:var(--muted);margin-bottom:6px">
+                Gemini API Key
+                <span id="ai-gemini-status" style="margin-left:8px;font-size:0.75rem"></span>
+              </div>
+              <div style="display:flex;gap:8px">
+                <input id="ai-gemini-key" type="password" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;background:var(--bg);color:var(--text);font-family:monospace" placeholder="AIzaSy...">
+                <button class="btn b-purple" onclick="saveAiKey('gemini')" style="padding:8px 16px;white-space:nowrap">저장</button>
+              </div>
+            </div>
+            <div id="ai-claude-key-row">
+              <div style="font-size:0.82rem;color:var(--muted);margin-bottom:6px">
+                Claude API Key
+                <span id="ai-claude-status" style="margin-left:8px;font-size:0.75rem"></span>
+              </div>
+              <div style="display:flex;gap:8px">
+                <input id="ai-claude-key" type="password" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;background:var(--bg);color:var(--text);font-family:monospace" placeholder="sk-ant-...">
+                <button class="btn b-purple" onclick="saveAiKey('claude')" style="padding:8px 16px;white-space:nowrap">저장</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 테스트 버튼 -->
+          <div style="display:flex;gap:10px;align-items:center">
+            <button class="btn b-blue" onclick="testAi()" style="padding:8px 20px">🧪 AI 연결 테스트</button>
+            <span id="ai-test-result" style="font-size:0.82rem;color:var(--muted)"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 텔레그램 알림 설정 ═══ -->
+    <div class="page-section" id="page-telegram">
+      <div class="panel">
+        <div class="panel-title">
+          <span>&#x1f4ec; 텔레그램 알림 설정</span>
+          <button class="btn b-gray" onclick="loadTelegramSettings()" style="padding:6px 12px;font-size:0.78rem">&#x1f504; 새로고침</button>
+        </div>
+        <p style="color:var(--muted);font-size:0.82rem;margin-bottom:16px">
+          카페 업로드 진행 상황을 텔레그램으로 알림 받습니다.<br>
+          업로드 성공/실패/대기 알림이 실시간으로 전송됩니다.
+        </p>
+
+        <div style="border:1px solid var(--border);border-radius:10px;padding:20px;background:var(--bg)">
+          <div style="display:grid;gap:14px;margin-bottom:20px">
+            <div>
+              <div style="font-size:0.82rem;color:var(--muted);margin-bottom:6px">
+                Bot Token <span style="font-size:0.72rem">(@BotFather에서 발급)</span>
+                <span id="tg-token-status" style="margin-left:8px;font-size:0.75rem"></span>
+              </div>
+              <input id="tg-bot-token" type="password" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;background:var(--bg);color:var(--text);font-family:monospace" placeholder="123456789:ABCdefGHI...">
+            </div>
+            <div>
+              <div style="font-size:0.82rem;color:var(--muted);margin-bottom:6px">
+                Chat ID <span style="font-size:0.72rem">(개인 또는 그룹)</span>
+              </div>
+              <input id="tg-chat-id" type="text" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;background:var(--bg);color:var(--text);font-family:monospace" placeholder="123456789">
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:center">
+            <button class="btn b-purple" onclick="saveTelegram()" style="padding:8px 20px">&#x1f4be; 저장</button>
+            <button class="btn b-blue" onclick="testTelegram()" style="padding:8px 20px">&#x1f9ea; 테스트 전송</button>
+            <span id="tg-result" style="font-size:0.82rem;color:var(--muted)"></span>
+          </div>
+        </div>
+
+        <div style="font-size:0.78rem;color:var(--muted);line-height:1.7;padding:14px;background:#0f1117;border:1px solid var(--border);border-radius:8px;margin-top:16px;">
+          <div style="font-weight:600;color:var(--text);margin-bottom:6px;">&#x1f4a1; 텔레그램 봇 설정 방법</div>
+          1. 텔레그램에서 <b>@BotFather</b> 검색 &#x2192; /newbot 명령<br>
+          2. 봇 이름 설정 후 발급된 <b>Bot Token</b>을 위에 입력<br>
+          3. 생성된 봇에게 아무 메시지 전송<br>
+          4. <b>Chat ID</b> 확인: 브라우저에서 <code>https://api.telegram.org/bot{TOKEN}/getUpdates</code> 접속 &#x2192; chat.id 값 복사<br>
+          5. 테스트 전송 버튼으로 확인
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ 5. 번역 단어장 ═══ -->
     <div class="page-section" id="page-dictionary">
       <div class="panel">
@@ -622,6 +802,13 @@
               style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
               <option value="ALL">전체 브랜드</option>
             </select>
+            <select id="cafe-status-select" onchange="loadCafeProducts(1)"
+              style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
+              <option value="대기" selected>대기</option>
+              <option value="ALL">전체 상태</option>
+              <option value="완료">완료</option>
+              <option value="중복">중복</option>
+            </select>
             <button class="btn b-gray" onclick="cafeSel(true)" style="padding:5px 10px;font-size:0.78rem;">전체선택</button>
             <button class="btn b-gray" onclick="cafeSel(false)" style="padding:5px 10px;font-size:0.78rem;">선택해제</button>
             <span style="font-size:0.78rem;color:var(--muted)" id="cafe-filter-result"></span>
@@ -636,7 +823,7 @@
                   <th style="padding:8px 6px;text-align:left;font-weight:500;">상품명</th>
                   <th style="padding:8px 6px;text-align:left;font-weight:500;">가격(JPY)</th>
                   <th style="padding:8px 6px;text-align:left;font-weight:500;">판매가</th>
-                  <th style="padding:8px 6px;text-align:left;font-weight:500;">재고</th>
+                  <th style="padding:8px 6px;text-align:left;font-weight:500;">상태</th>
                 </tr>
               </thead>
               <tbody id="cafe-tbody"></tbody>
@@ -714,6 +901,9 @@ const pageTitles = {
   vintage:    "\uD83C\uDFBA Vintage",
   brandauc:   "\uD83C\uDFAF Brand Auc",
   dictionary: "Setting \u203A \uD83D\uDCD6 \uBC88\uC5ED \uB2E8\uC5B4\uC7A5",
+  "data-path": "Setting \u203A \uD83D\uDCC1 \uB370\uC774\uD130 \uC800\uC7A5 \uACBD\uB85C",
+  "ai-settings": "Setting \u203A \uD83E\uDD16 AI \uAE00\uC4F0\uAE30 \uC124\uC815",
+  "telegram": "Setting \u203A \uD83D\uDCEC \uD154\uB808\uADF8\uB7A8 \uC54C\uB9BC",
   "cafe-upload": "Sport \u203A \u2615 \uB124\uC774\uBC84\uCE74\uD398 \uC5C5\uB85C\uB4DC",
 };
 
@@ -729,6 +919,9 @@ function showPage(page) {
   // 페이지 전환 시 데이터 로드
   if (page === "products") { loadProducts(curPage); loadBrands(); }
   if (page === "dictionary") loadDict();
+  if (page === "data-path") loadDataPath();
+  if (page === "ai-settings") loadAiSettings();
+  if (page === "telegram") loadTelegramSettings();
   if (page === "cafe-upload") {
     checkNaverStatus();
     document.getElementById("cafe-sel-cnt").textContent = checkedIndices.size;
@@ -870,8 +1063,9 @@ async function loadCafeProducts(page = 1) {
   cafePage = page;
   const brand = document.getElementById("cafe-brand-select")?.value || "ALL";
   const search = document.getElementById("cafe-search")?.value || "";
+  const statusFilter = document.getElementById("cafe-status-select")?.value || "대기";
   try {
-    const url = `${PREFIX}/products?page=${page}&per_page=${PER}&brand=${encodeURIComponent(brand)}&search=${encodeURIComponent(search)}`;
+    const url = `${PREFIX}/products?page=${page}&per_page=${PER}&brand=${encodeURIComponent(brand)}&search=${encodeURIComponent(search)}&status=${encodeURIComponent(statusFilter)}`;
     const d = await fetch(url).then(r => r.json());
     const tb = document.getElementById("cafe-tbody");
     if (!d.products || d.products.length === 0) {
@@ -887,19 +1081,42 @@ async function loadCafeProducts(page = 1) {
       const img = p.img_url ? `<img src="${p.img_url}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;" onerror="this.style.opacity=0">` : "";
       const jpy = p.price_jpy ? `¥${p.price_jpy.toLocaleString()}` : "-";
       const krw = p.price_info ? `${p.price_info.price_final.toLocaleString()}원` : "-";
-      const stock = p.in_stock === true ? '<span style="color:var(--green)">✅ 재고</span>'
-        : p.in_stock === false ? '<span style="color:var(--red)">품절</span>' : '-';
-      return `<tr class="${isChecked?'selected-row':''}" style="border-bottom:1px solid var(--border);">
+      const cafeStatus = p.cafe_status || "대기";
+      const statusColors = {"대기":"#64748b","완료":"#22c55e","중복":"#f59e0b"};
+      const sc = statusColors[cafeStatus] || "#64748b";
+      const statusSelect = `<select data-code="${p.product_code}" onchange="changeStatus(this)"
+        style="padding:3px 6px;border-radius:8px;border:1px solid ${sc}44;background:${sc}18;color:${sc};font-size:11px;font-weight:600;cursor:pointer;outline:none;">
+        <option value="대기" ${cafeStatus==="대기"?"selected":""}>대기</option>
+        <option value="완료" ${cafeStatus==="완료"?"selected":""}>완료</option>
+        <option value="중복" ${cafeStatus==="중복"?"selected":""}>중복</option>
+      </select>`;
+      const rowOpacity = cafeStatus === "완료" ? "opacity:0.7;" : cafeStatus === "중복" ? "opacity:0.5;" : "";
+      return `<tr class="${isChecked?'selected-row':''}" style="border-bottom:1px solid var(--border);${rowOpacity}">
         <td style="padding:6px"><input type="checkbox" class="cafe-row-chk" data-idx="${globalIdx}" ${isChecked?'checked':''} onchange="onCafeRowCheck(this)"></td>
         <td style="padding:6px">${img}</td>
         <td style="padding:6px"><span class="badge b-brand">${p.brand_ko || p.brand || "-"}</span></td>
         <td style="padding:6px;max-width:220px;word-break:break-word">${p.name_ko || p.name || "-"}</td>
         <td style="padding:6px">${jpy}</td>
         <td style="padding:6px">${krw}</td>
-        <td style="padding:6px">${stock}</td>
+        <td style="padding:6px">${statusSelect}</td>
       </tr>`;
     }).join("");
     renderCafePager(page, Math.ceil(d.total / PER));
+  } catch(e) { console.error(e); }
+}
+
+async function changeStatus(sel) {
+  const code = sel.dataset.code;
+  const newStatus = sel.value;
+  try {
+    const res = await fetch(PREFIX + "/products/status", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({product_code: code, status: newStatus})
+    }).then(r => r.json());
+    if (res.ok) {
+      loadCafeProducts(cafePage);
+    }
   } catch(e) { console.error(e); }
 }
 
@@ -1295,6 +1512,179 @@ async function refreshStatus() {
 }
 
 // ── 단어장 ──────────────────────────────────
+// ── 데이터 경로 설정 ──────────────────
+async function loadDataPath() {
+  try {
+    const d = await fetch(PREFIX + "/settings/data-path").then(r => r.json());
+    if (!d.ok) return;
+    document.getElementById("dp-os").textContent = d.os || "-";
+    document.getElementById("dp-default").textContent = d.default_path || "-";
+    document.getElementById("dp-current").textContent = d.current_path || "-";
+    document.getElementById("dp-path-input").value = d.current_path || "";
+
+    // 연결 배지
+    const badge = document.getElementById("dp-conn-badge");
+    if (d.connected) {
+      badge.textContent = "\uc5f0\uacb0\ub428";
+      badge.style.background = "#e8f5e9"; badge.style.color = "#2e7d32";
+    } else {
+      badge.textContent = "\ubbf8\uc5f0\uacb0";
+      badge.style.background = "#fce4ec"; badge.style.color = "#c62828";
+    }
+
+    // 저장되는 데이터
+    const box = document.getElementById("dp-stored-data");
+    box.innerHTML = "";
+    for (const [name, path] of Object.entries(d.stored_data || {})) {
+      box.innerHTML += `<div><b>${name}</b> <span style="color:var(--muted)">- ${path}</span></div>`;
+    }
+  } catch (e) { console.error("loadDataPath:", e); }
+}
+
+async function changeDataPath() {
+  const path = document.getElementById("dp-path-input").value.trim();
+  if (!path) return alert("\uacbd\ub85c\ub97c \uc785\ub825\ud574\uc8fc\uc138\uc694");
+  try {
+    const d = await fetch(PREFIX + "/settings/data-path", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path})
+    }).then(r => r.json());
+    alert(d.message || (d.ok ? "\ubcc0\uacbd \uc644\ub8cc" : "\uc2e4\ud328"));
+    if (d.ok) loadDataPath();
+  } catch (e) { alert("\uc624\ub958: " + e); }
+}
+
+async function resetDataPath() {
+  if (!confirm("\uae30\ubcf8 \uacbd\ub85c\ub85c \ucd08\uae30\ud654\ud558\uc2dc\uaca0\uc2b5\ub2c8\uae4c?")) return;
+  try {
+    const d = await fetch(PREFIX + "/settings/data-path/reset", {
+      method: "POST", headers: {"Content-Type": "application/json"}
+    }).then(r => r.json());
+    alert(d.message || (d.ok ? "\ucd08\uae30\ud654 \uc644\ub8cc" : "\uc2e4\ud328"));
+    if (d.ok) loadDataPath();
+  } catch (e) { alert("\uc624\ub958: " + e); }
+}
+
+// ── AI 설정 ────────────────────────────
+async function loadAiSettings() {
+  try {
+    const d = await fetch(PREFIX + "/settings/ai").then(r => r.json());
+    // 라디오 버튼 선택
+    const radios = document.querySelectorAll('input[name="ai-provider"]');
+    radios.forEach(r => {
+      r.checked = r.value === d.provider;
+      r.closest('label').style.borderColor = r.checked ? 'var(--purple)' : 'var(--border)';
+    });
+    // 키 상태 표시
+    document.getElementById("ai-gemini-status").innerHTML = d.gemini_set
+      ? '<span style="color:var(--green)">✅ 설정됨</span>'
+      : '<span style="color:var(--red)">❌ 미설정</span>';
+    document.getElementById("ai-claude-status").innerHTML = d.claude_set
+      ? '<span style="color:var(--green)">✅ 설정됨</span>'
+      : '<span style="color:var(--red)">❌ 미설정</span>';
+    // 마스킹된 키 placeholder
+    if (d.gemini_key) document.getElementById("ai-gemini-key").placeholder = d.gemini_key;
+    if (d.claude_key) document.getElementById("ai-claude-key").placeholder = d.claude_key;
+  } catch (e) { console.error("AI 설정 로드 오류:", e); }
+}
+
+function onAiProviderChange(provider) {
+  // UI 하이라이트
+  document.querySelectorAll('input[name="ai-provider"]').forEach(r => {
+    r.closest('label').style.borderColor = r.checked ? 'var(--purple)' : 'var(--border)';
+  });
+  // 서버에 저장
+  fetch(PREFIX + "/settings/ai", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({provider})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) loadAiSettings();
+  });
+}
+
+async function saveAiKey(type) {
+  const input = document.getElementById("ai-" + type + "-key");
+  const key = input.value.trim();
+  if (!key) { alert("API 키를 입력해주세요"); return; }
+  const body = type === "gemini" ? {gemini_key: key} : {claude_key: key};
+  try {
+    const d = await fetch(PREFIX + "/settings/ai", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)
+    }).then(r => r.json());
+    input.value = "";
+    alert(d.ok ? "API 키 저장 완료!" : "저장 실패");
+    loadAiSettings();
+  } catch (e) { alert("오류: " + e); }
+}
+
+async function testAi() {
+  const result = document.getElementById("ai-test-result");
+  result.textContent = "⏳ 테스트 중...";
+  result.style.color = "var(--muted)";
+  try {
+    const d = await fetch(PREFIX + "/settings/ai/test", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"}
+    }).then(r => r.json());
+    if (d.ok) {
+      result.innerHTML = `<span style="color:var(--green)">✅ ${d.provider} 연결 성공: "${d.response}"</span>`;
+    } else {
+      result.innerHTML = `<span style="color:var(--red)">❌ 실패: ${d.message}</span>`;
+    }
+  } catch (e) {
+    result.innerHTML = `<span style="color:var(--red)">❌ 오류: ${e}</span>`;
+  }
+}
+
+// ── 텔레그램 설정 ─────────────────────────
+async function loadTelegramSettings() {
+  try {
+    const d = await fetch(PREFIX + "/settings/telegram").then(r => r.json());
+    document.getElementById("tg-token-status").innerHTML = d.bot_token_set
+      ? `<span style="color:var(--green)">설정됨 (${d.bot_token_masked})</span>`
+      : '<span style="color:var(--red)">미설정</span>';
+    if (d.chat_id) document.getElementById("tg-chat-id").placeholder = d.chat_id;
+  } catch(e) { console.error(e); }
+}
+
+async function saveTelegram() {
+  const token = document.getElementById("tg-bot-token").value.trim();
+  const chatId = document.getElementById("tg-chat-id").value.trim();
+  if (!token && !chatId) { alert("Bot Token 또는 Chat ID를 입력해주세요"); return; }
+  const body = {};
+  if (token) body.bot_token = token;
+  if (chatId) body.chat_id = chatId;
+  try {
+    const d = await fetch(PREFIX + "/settings/telegram", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)
+    }).then(r => r.json());
+    document.getElementById("tg-bot-token").value = "";
+    document.getElementById("tg-result").innerHTML = d.ok
+      ? '<span style="color:var(--green)">저장 완료!</span>' : '<span style="color:var(--red)">저장 실패</span>';
+    loadTelegramSettings();
+  } catch(e) { alert("오류: " + e); }
+}
+
+async function testTelegram() {
+  const el = document.getElementById("tg-result");
+  el.textContent = "전송 중...";
+  el.style.color = "var(--muted)";
+  try {
+    const d = await fetch(PREFIX + "/settings/telegram/test", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"}
+    }).then(r => r.json());
+    el.innerHTML = d.ok
+      ? `<span style="color:var(--green)">전송 성공!</span>`
+      : `<span style="color:var(--red)">${d.message}</span>`;
+  } catch(e) { el.innerHTML = `<span style="color:var(--red)">오류: ${e}</span>`; }
+}
+
 async function loadDict() {
   try {
     const d = await fetch(PREFIX + "/settings/dict").then(r => r.json());

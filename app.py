@@ -20,11 +20,13 @@ from config import (
     SERVER_HOST, SERVER_PORT, URL_PREFIX,
     AUTO_SCHEDULE_HOUR, AUTO_SCHEDULE_MINUTE,
     LOGIN_USERS, SECRET_KEY, APP_ENV,
-    OUTPUT_DIR,
+    OUTPUT_DIR, DB_DIR,
 )
+from data_manager import get_status as get_data_status, set_data_root, get_data_root, ensure_dirs, is_connected
 from xebio_search import scrape_nike_sale, load_latest_products, set_app_status, force_close_browser
 from cafe_uploader import upload_products, naver_manual_login, has_saved_cookies, delete_cookies
 from exchange import get_jpy_to_krw_rate, get_cached_rate, calc_buying_price, set_margin_rate, get_margin_rate, set_price_config, get_price_config
+from post_generator import get_ai_config, set_ai_config
 
 # =============================================
 # 앱 초기화
@@ -171,6 +173,10 @@ def run_upload(max_upload=None):
 
         # 업로드 히스토리 저장
         _save_upload_history(selected[:count])
+
+        # 업로드 완료 상품에 cafe_uploaded 표시
+        _mark_uploaded_products(selected[:count])
+
         push_log(f"🎉 업로드 완료: {count}개 성공")
     except Exception as e:
         push_log(f"❌ 업로드 오류: {e}")
@@ -180,7 +186,8 @@ def run_upload(max_upload=None):
 
 def _save_upload_history(uploaded_products: list):
     """업로드된 상품을 히스토리에 저장 (중복 체크용)"""
-    history_path = os.path.join(OUTPUT_DIR, "uploaded_history.json")
+    history_path = os.path.join(DB_DIR, "uploaded_history.json")
+    os.makedirs(DB_DIR, exist_ok=True)
     if os.path.exists(history_path):
         with open(history_path, "r", encoding="utf-8") as f:
             history = json.load(f)
@@ -196,9 +203,32 @@ def _save_upload_history(uploaded_products: list):
             "uploaded_at": datetime.now().isoformat(),
         })
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
     with open(history_path, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
+
+
+def _mark_uploaded_products(uploaded_products: list):
+    """업로드 완료된 상품에 cafe_status='완료' 표시 후 latest.json 저장"""
+    try:
+        uploaded_codes = {p.get("product_code") for p in uploaded_products if p.get("product_code")}
+        if not uploaded_codes:
+            return
+
+        products = load_latest_products()
+        changed = False
+        for p in products:
+            if p.get("product_code") in uploaded_codes:
+                p["cafe_status"] = "완료"
+                p["cafe_uploaded"] = True
+                p["cafe_uploaded_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                changed = True
+
+        if changed:
+            from xebio_search import save_products
+            save_products(products)
+            logger.info(f"✅ {len(uploaded_codes)}개 상품 업로드 완료 표시")
+    except Exception as e:
+        logger.warning(f"업로드 완료 표시 실패: {e}")
 
 
 def run_auto_pipeline():
@@ -256,6 +286,7 @@ def get_products():
     # 브랜드 필터 (한국어/원문 모두 비교)
     brand_filter = request.args.get("brand", "").strip()
     search_filter = request.args.get("search", "").strip().lower()
+    status_filter = request.args.get("status", "").strip()
     if brand_filter and brand_filter != "ALL":
         products = [p for p in products if
                     (p.get("brand_ko") or "").strip() == brand_filter or
@@ -264,6 +295,8 @@ def get_products():
         products = [p for p in products if search_filter in p.get("name", "").lower()
                     or search_filter in p.get("brand", "").lower()
                     or search_filter in p.get("product_code", "").lower()]
+    if status_filter and status_filter != "ALL":
+        products = [p for p in products if (p.get("cafe_status") or "대기") == status_filter]
 
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 50, type=int)
@@ -474,7 +507,7 @@ def check_duplicate():
     selected_indices = data.get("indices", [])
     products = load_latest_products()
 
-    uploaded_path = os.path.join(OUTPUT_DIR, "uploaded_history.json")
+    uploaded_path = os.path.join(DB_DIR, "uploaded_history.json")
     if os.path.exists(uploaded_path):
         with open(uploaded_path, "r", encoding="utf-8") as f:
             history = json.load(f)
@@ -504,6 +537,39 @@ def check_duplicate():
                 })
 
     return jsonify(results)
+
+
+@app.route(f"{URL_PREFIX}/products/status", methods=["POST"])
+@login_required
+def update_product_status():
+    """개별 상품의 cafe_status 변경 (대기/완료/중복)"""
+    data = request.json or {}
+    product_code = data.get("product_code", "").strip()
+    new_status = data.get("status", "").strip()
+
+    if not product_code or new_status not in ("대기", "완료", "중복"):
+        return jsonify({"ok": False, "message": "잘못된 요청입니다"})
+
+    products = load_latest_products()
+    found = False
+    for p in products:
+        if p.get("product_code") == product_code:
+            p["cafe_status"] = new_status
+            if new_status == "완료":
+                p["cafe_uploaded"] = True
+                p["cafe_uploaded_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+            elif new_status == "대기":
+                p["cafe_uploaded"] = False
+                p.pop("cafe_uploaded_at", None)
+            found = True
+            break
+
+    if not found:
+        return jsonify({"ok": False, "message": "상품을 찾을 수 없습니다"})
+
+    from xebio_search import save_products
+    save_products(products)
+    return jsonify({"ok": True, "product_code": product_code, "status": new_status})
 
 
 @app.route(f"{URL_PREFIX}/status")
@@ -676,6 +742,123 @@ def update_price_settings():
     return jsonify({"ok": True, **cfg, "message": msg})
 
 
+# ── 데이터 경로 설정 ─────────────────────
+
+@app.route(f"{URL_PREFIX}/settings/data-path", methods=["GET"])
+@login_required
+def get_data_path():
+    """데이터 저장 경로 상태 조회"""
+    return jsonify({"ok": True, **get_data_status()})
+
+
+@app.route(f"{URL_PREFIX}/settings/data-path", methods=["POST"])
+@login_required
+def update_data_path():
+    """데이터 저장 경로 변경"""
+    data = request.json or {}
+    new_path = data.get("path", "").strip()
+    if not new_path:
+        return jsonify({"ok": False, "message": "경로를 입력해주세요"})
+
+    ok = set_data_root(new_path)
+    if ok:
+        push_log(f"📁 데이터 경로 변경: {new_path}")
+        return jsonify({"ok": True, "message": f"경로 변경 완료: {new_path}", **get_data_status()})
+    else:
+        return jsonify({"ok": False, "message": "경로 생성 실패 — 경로를 확인해주세요"})
+
+
+@app.route(f"{URL_PREFIX}/settings/data-path/reset", methods=["POST"])
+@login_required
+def reset_data_path():
+    """데이터 저장 경로 초기화 (OS 기본값)"""
+    from data_manager import _default_path
+    default = _default_path()
+    ok = set_data_root(default)
+    if ok:
+        push_log(f"📁 데이터 경로 초기화: {default}")
+        return jsonify({"ok": True, "message": f"기본 경로로 초기화: {default}", **get_data_status()})
+    return jsonify({"ok": False, "message": "초기화 실패"})
+
+
+# ── AI 설정 ─────────────────────────────
+
+@app.route(f"{URL_PREFIX}/settings/ai", methods=["GET"])
+@login_required
+def get_ai_settings():
+    """AI 설정 조회"""
+    return jsonify(get_ai_config())
+
+
+@app.route(f"{URL_PREFIX}/settings/ai", methods=["POST"])
+@login_required
+def update_ai_settings():
+    """AI 설정 변경 (provider, gemini_key, claude_key)"""
+    data = request.json or {}
+    set_ai_config(
+        provider=data.get("provider"),
+        gemini_key=data.get("gemini_key"),
+        claude_key=data.get("claude_key"),
+    )
+    push_log(f"🤖 AI 설정 변경: {data.get('provider', '변경없음')}")
+    return jsonify({"ok": True, **get_ai_config()})
+
+
+@app.route(f"{URL_PREFIX}/settings/ai/test", methods=["POST"])
+@login_required
+def test_ai():
+    """AI 연결 테스트"""
+    try:
+        from post_generator import _call_gemini, _call_claude, _ai_config
+        provider = _ai_config["provider"]
+        if provider == "gemini":
+            result = _call_gemini("한 문장으로 '안녕하세요'라고 인사해주세요.")
+        elif provider == "claude":
+            result = _call_claude("한 문장으로 '안녕하세요'라고 인사해주세요.")
+        else:
+            return jsonify({"ok": False, "message": "AI 미사용 설정"})
+        return jsonify({"ok": True, "provider": provider, "response": result[:100]})
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)})
+
+
+# ── 텔레그램 알림 설정 ────────────────────
+
+@app.route(f"{URL_PREFIX}/settings/telegram", methods=["GET"])
+@login_required
+def get_telegram_settings():
+    """텔레그램 설정 조회"""
+    from notifier import get_telegram_config
+    return jsonify({"ok": True, **get_telegram_config()})
+
+
+@app.route(f"{URL_PREFIX}/settings/telegram", methods=["POST"])
+@login_required
+def update_telegram_settings():
+    """텔레그램 설정 변경"""
+    from notifier import set_telegram_config, get_telegram_config
+    data = request.json or {}
+    set_telegram_config(
+        bot_token=data.get("bot_token"),
+        chat_id=data.get("chat_id"),
+    )
+    push_log("📬 텔레그램 설정 변경")
+    return jsonify({"ok": True, **get_telegram_config()})
+
+
+@app.route(f"{URL_PREFIX}/settings/telegram/test", methods=["POST"])
+@login_required
+def test_telegram():
+    """텔레그램 연결 테스트"""
+    from notifier import send_telegram, is_configured
+    if not is_configured():
+        return jsonify({"ok": False, "message": "텔레그램 설정이 필요합니다 (Bot Token + Chat ID)"})
+    ok = send_telegram("🔔 JP Sourcing 텔레그램 알림 테스트!")
+    if ok:
+        return jsonify({"ok": True, "message": "테스트 메시지 전송 성공!"})
+    return jsonify({"ok": False, "message": "전송 실패 — Token/Chat ID를 확인해주세요"})
+
+
 # ── 네이버 로그인 (쿠키 저장) ────────────
 
 @app.route(f"{URL_PREFIX}/naver/status")
@@ -809,9 +992,13 @@ def log_stream():
 # =============================================
 
 if __name__ == "__main__":
-    # output 폴더 생성
-    os.makedirs("output", exist_ok=True)
-    os.makedirs("logs", exist_ok=True)
+    # 데이터 폴더 생성 (외부 저장소)
+    try:
+        ensure_dirs()
+    except Exception:
+        # 외부 저장소 미연결 시 로컬 fallback
+        os.makedirs("output", exist_ok=True)
+        os.makedirs("logs", exist_ok=True)
 
     print(f"\n  Xebio Dashboard: http://{SERVER_HOST}:{SERVER_PORT}{URL_PREFIX}\n")
 

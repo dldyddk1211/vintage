@@ -38,8 +38,14 @@ JP_PLATFORM_FEE_RATE       = 0.03   # 일본 업체 수수료 3%
 JP_INTL_SHIPPING           = 1500   # 국제 배송비 (엔)
 EXCHANGE_RATE_MARKUP       = 1.015  # 송금 환율 마진 1.5%
 
-# ── Claude API 설정 ───────────────────────
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")  # 환경변수 또는 직접 입력
+# ── AI API 설정 ─────────────────────────
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "AIzaSyC_Qm8Dd1RwQLkRdEYd6fVDKq1Lu_y3F60")
+AI_PROVIDER       = "gemini"   # "gemini" | "claude" | "none"
+
+# ── 텔레그램 알림 설정 ─────────────────────
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")   # @BotFather에서 발급
+TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")     # 개인 또는 그룹 채팅 ID
 
 # ── 네이버 카페 설정 ──────────────────────
 CAFE_URL       = "https://cafe.naver.com/sohosupport"
@@ -60,7 +66,10 @@ LOGIN_USERS = {
 
 SECRET_KEY = "jp-sourcing-secret-key-change-me"  # 세션 암호화 키 (운영 시 변경)
 
-# ── 출력 경로 ─────────────────────────────
-OUTPUT_DIR = "output"
-IMAGE_DIR  = "output/images"
-LOG_DIR    = "logs"
+# ── 출력 경로 (외부 저장소 기반) ─────────────
+from data_manager import get_path
+
+OUTPUT_DIR = get_path("outputs")
+IMAGE_DIR  = os.path.join(get_path("outputs"), "images")
+LOG_DIR    = get_path("logs")
+DB_DIR     = get_path("db")
