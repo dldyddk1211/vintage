@@ -754,27 +754,23 @@ async def type_content_to_editor_iframe(page, frame_locator, content: str, log=N
                 await target_el.press("Enter")  # 빈 줄
                 await asyncio.sleep(0.05)
 
-            # ── URL: 텍스트로 먼저 입력 후 링크 삽입 시도 ──
+            # ── URL: 붙여넣기로 삽입 (OG 미리보기 카드 생성) ──
             if stripped and url_pattern.match(stripped):
-                # 1) URL 텍스트를 먼저 타이핑 (항상 보이도록)
-                await target_el.type(stripped, delay=10)
-                await asyncio.sleep(0.3)
-                # 2) 방금 입력한 URL 텍스트를 선택 (Shift+Home)
-                await target_el.press("End")
-                await target_el.press("Home+Shift+End", delay=50) if False else None
-                # 전체 URL 길이만큼 Shift+Left로 선택
-                for _ in range(len(stripped)):
-                    await target_el.press("Shift+ArrowLeft")
-                await asyncio.sleep(0.2)
-                # 3) 선택된 텍스트에 링크 걸기
-                linked = await _insert_link_on_selection(page, frame_locator, stripped, log)
-                if not linked:
-                    # 링크 실패해도 텍스트는 이미 입력됨
-                    await target_el.press("End")  # 커서를 끝으로
+                try:
+                    # 클립보드에 URL 복사 후 붙여넣기 → 네이버 에디터가 OG 프리뷰 자동 생성
+                    await page.evaluate(f"navigator.clipboard.writeText('{stripped}')")
+                    await asyncio.sleep(0.2)
+                    await target_el.press("Control+v")
+                    await asyncio.sleep(3)  # OG 미리보기 로딩 대기
                     if log:
-                        log(f"   🔗 URL 텍스트 입력 (링크 미적용): {stripped}")
-                else:
-                    await target_el.press("End")  # 커서를 끝으로
+                        log(f"   🔗 URL 붙여넣기 (OG 미리보기): {stripped}")
+                except Exception:
+                    # 클립보드 실패 시 타이핑 폴백
+                    await target_el.type(stripped, delay=10)
+                    await target_el.press("Space")
+                    await asyncio.sleep(2)
+                    if log:
+                        log(f"   🔗 URL 입력 (타이핑): {stripped}")
             elif stripped:
                 await target_el.type(line, delay=10)
 
