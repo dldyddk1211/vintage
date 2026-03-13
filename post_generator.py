@@ -376,6 +376,10 @@ def _build_prompt(product: dict, price_info: dict) -> str:
 
     description = product.get("description_ko") or product.get("description", "")
 
+    # 상세 설명에 일본어가 남아있으면 Gemini로 미리 번역
+    if description and _has_japanese(description):
+        description = _translate_description(description)
+
     # 인트로 랜덤 선택
     full_name = f"{name_ko_clean} {code}".strip()
     intro_line1, intro_line2 = _pick_intro(full_name)
@@ -463,6 +467,34 @@ def _call_claude(prompt: str) -> str:
         messages=[{"role": "user", "content": prompt}]
     ) as stream:
         return stream.get_final_message().content[0].text.strip()
+
+
+def _translate_description(desc: str) -> str:
+    """상품 상세 설명(일본어)을 Gemini로 한국어 번역"""
+    if not _has_japanese(desc):
+        return desc
+    if _ai_config["provider"] == "none" or not _ai_config["gemini_key"]:
+        return desc
+
+    try:
+        prompt = f"""아래 일본어 상품 설명을 한국어로 번역해주세요.
+소재명, 기술명 등 전문 용어도 모두 한국어로 번역하세요.
+예: 合成繊維→합성섬유, ゴム底→고무밑창, 合成樹脂→합성수지, ベトナム製→베트남제
+번역 결과만 출력하세요.
+
+{desc[:800]}"""
+        result = _call_gemini(prompt)
+        result = result.strip()
+        if result and not _has_japanese(result):
+            logger.info(f"✅ 상세 설명 번역 완료 ({len(desc)}자 → {len(result)}자)")
+            return result
+        elif result:
+            logger.warning("⚠️ 상세 설명 번역 후에도 일본어 잔존")
+            return result  # 그래도 원문보다는 나음
+    except Exception as e:
+        logger.warning(f"상세 설명 번역 실패: {e}")
+
+    return desc
 
 
 def _retranslate_content(content: str) -> str:
