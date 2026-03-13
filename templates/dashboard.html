@@ -8,10 +8,12 @@
   <title>TheOne - JP 소싱</title>
   <style>
     :root {
-      --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a;
-      --accent:#4f8ef7; --accent2:#7c5cbf;
-      --green:#2ecc71; --red:#e74c3c; --yellow:#f39c12; --orange:#e67e22;
-      --text:#e0e0e0; --muted:#7a7f9a;
+      --bg:#0a0a0a; --card:#141414; --border:#2a2518;
+      --accent:#d4a54a; --accent2:#b8860b;
+      --green:#4caf50; --red:#e53935; --yellow:#d4a54a; --orange:#e6a817;
+      --blue:#5a9fd4; --purple:#9c7cba;
+      --text:#e8e0d0; --muted:#8a8070;
+      --gold:#d4a54a; --gold-light:#f0d890; --gold-dark:#8b6914;
       --sidebar-w:230px;
     }
     * { box-sizing:border-box; margin:0; padding:0; }
@@ -43,14 +45,14 @@
       color:var(--text); transition:all .15s; user-select:none;
       border-left:3px solid transparent;
     }
-    .nav-category:hover { background:rgba(79,142,247,0.06); }
+    .nav-category:hover { background:rgba(212,165,74,0.06); }
     .nav-category.active { border-left-color:var(--accent); }
     .cat-icon { font-size:1.05rem; width:22px; text-align:center; }
     .cat-arrow { margin-left:auto; font-size:0.6rem; color:var(--muted); transition:transform .2s; }
     .cat-arrow.open { transform:rotate(180deg); }
     .cat-label { flex:1; }
     .cat-badge {
-      background:rgba(79,142,247,0.15); color:var(--accent);
+      background:rgba(212,165,74,0.15); color:var(--accent);
       font-size:0.6rem; font-weight:700; padding:2px 7px; border-radius:10px;
     }
 
@@ -63,9 +65,9 @@
       padding:9px 20px 9px 52px; cursor:pointer; font-size:0.82rem;
       color:var(--muted); transition:all .15s; border-left:3px solid transparent;
     }
-    .nav-item:hover { background:rgba(79,142,247,0.06); color:var(--text); }
+    .nav-item:hover { background:rgba(212,165,74,0.06); color:var(--text); }
     .nav-item.active {
-      background:rgba(79,142,247,0.1); color:var(--accent);
+      background:rgba(212,165,74,0.1); color:var(--accent);
       border-left-color:var(--accent); font-weight:600;
     }
     .nav-icon { font-size:0.9rem; width:18px; text-align:center; }
@@ -109,7 +111,7 @@
     }
     .topbar-title { font-size:1rem; font-weight:600; }
     .topbar-right { margin-left:auto; display:flex; align-items:center; gap:14px; }
-    .rate-badge { background:#1e2433; border:1px solid var(--border); border-radius:8px; padding:6px 14px; font-size:0.85rem; }
+    .rate-badge { background:#1a1710; border:1px solid var(--border); border-radius:8px; padding:6px 14px; font-size:0.85rem; }
     .rate-badge span { color:var(--yellow); font-weight:700; }
 
     .content { padding:24px 28px; }
@@ -124,7 +126,7 @@
     .stat-card .lbl { font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
     .stat-card .val { font-size:1.7rem; font-weight:700; }
     .stat-card .hint{ font-size:0.7rem; color:var(--muted); margin-top:4px; }
-    .c-blue{color:var(--accent)} .c-green{color:var(--green)} .c-yellow{color:var(--yellow)} .c-red{color:var(--red)}
+    .c-blue{color:var(--accent)} .c-green{color:var(--green)} .c-yellow{color:var(--gold-light)} .c-red{color:var(--red)} .c-purple{color:var(--purple)}
 
     .panel { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:18px; }
     .panel-title { font-size:0.92rem; font-weight:600; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -144,21 +146,21 @@
     .opts { display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap; }
     .opts label { font-size:0.78rem; color:var(--muted); }
 
-    .schedule-pill { display:inline-flex; align-items:center; gap:6px; background:#1e2433; border:1px solid var(--border); border-radius:20px; padding:4px 12px; font-size:0.78rem; color:var(--yellow); margin-top:12px; }
+    .schedule-pill { display:inline-flex; align-items:center; gap:6px; background:#1a1710; border:1px solid var(--border); border-radius:20px; padding:4px 12px; font-size:0.78rem; color:var(--yellow); margin-top:12px; }
     .dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:pulse 1.5s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
     .log-box { background:#080a0f; border:1px solid var(--border); border-radius:8px; height:400px; overflow-y:auto; padding:12px 14px; font-family:'Consolas',monospace; font-size:0.77rem; line-height:1.8; }
-    .log-line      { color:#9ca3af; }
+    .log-line      { color:#a09880; }
     .log-line.ok   { color:var(--green); }
     .log-line.err  { color:var(--red); }
-    .log-line.warn { color:var(--yellow); }
-    .log-line.info { color:#60a5fa; }
+    .log-line.warn { color:var(--gold-light); }
+    .log-line.info { color:var(--accent); }
 
     .filter-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
-    .search-input { background:#0f1117; border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:7px; font-size:0.85rem; width:220px; }
+    .search-input { background:#0d0d0a; border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:7px; font-size:0.85rem; width:220px; }
     .search-input:focus { outline:none; border-color:var(--accent); }
-    .brand-select { background:#0f1117; border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:7px; font-size:0.85rem; cursor:pointer; }
+    .brand-select { background:#0d0d0a; border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:7px; font-size:0.85rem; cursor:pointer; }
     .brand-select:focus { outline:none; border-color:var(--accent); }
 
     .select-bar { display:flex; align-items:center; gap:14px; padding:10px 14px; background:#1a2433; border:1px solid #2a3a4a; border-radius:8px; margin-bottom:12px; font-size:0.85rem; }
@@ -175,7 +177,7 @@
     th { color:var(--muted); font-size:0.73rem; font-weight:500; background:#141720; position:sticky; top:0; }
     tr:hover td { background:#1e2130; }
     tr.selected-row td { background:#1a2433; }
-    .pimg { width:44px; height:44px; object-fit:cover; border-radius:5px; background:#1e2433; }
+    .pimg { width:44px; height:44px; object-fit:cover; border-radius:5px; background:#1a1710; }
     .badge { display:inline-block; padding:2px 7px; border-radius:4px; font-size:0.73rem; font-weight:600; }
     .b-jpy { background:#1a2a3a; color:#60a5fa; }
     .b-krw { background:#1a2e1a; color:#4ade80; }
@@ -358,13 +360,13 @@
         <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
           <div style="display:flex;align-items:center;gap:6px;">
             <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;">사이트</label>
-            <select id="sel-site" onchange="onSiteChange()" style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;min-width:140px;">
+            <select id="sel-site" onchange="onSiteChange()" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;min-width:140px;">
               <option value="">로딩중...</option>
             </select>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
             <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;">카테고리</label>
-            <select id="sel-category" style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;min-width:140px;">
+            <select id="sel-category" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;min-width:140px;">
               <option value="">사이트를 선택하세요</option>
             </select>
           </div>
@@ -382,16 +384,16 @@
         </div>
         <div class="opts">
           <label>스크래핑 페이지 수</label>
-          <input type="text" id="max-pages" placeholder="전부" style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:5px;width:80px;font-size:0.82rem">
+          <input type="text" id="max-pages" placeholder="전부" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:5px;width:80px;font-size:0.82rem">
           <span style="font-size:0.75rem;color:var(--muted)">&#x203b; 비워두면 전체 수집</span>
           <label style="margin-left:10px">업로드 최대 개수</label>
-          <input type="number" id="max-upload" placeholder="전체" min="1" style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:5px;width:80px;font-size:0.82rem">
+          <input type="number" id="max-upload" placeholder="전체" min="1" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:5px;width:80px;font-size:0.82rem">
         </div>
         <div id="page-preview" style="margin-top:8px;font-size:0.78rem;color:var(--muted)">
           &#x1f4c4; 현재 설정: <span id="page-preview-text" style="color:var(--yellow)">전체 페이지 수집</span>
         </div>
         <!-- 진행 시간 표시 -->
-        <div id="time-bar" style="display:none;margin-top:12px;background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:12px 16px;">
+        <div id="time-bar" style="display:none;margin-top:12px;background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:12px 16px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <span style="font-size:0.8rem;color:var(--muted)">&#x23f1;&#xfe0f; 예상 소요시간</span>
             <span id="t-estimated" style="font-size:0.85rem;color:var(--yellow);font-weight:600">-</span>
@@ -404,7 +406,7 @@
             <span style="font-size:0.78rem;color:var(--muted)">경과 시간</span>
             <span id="t-elapsed" style="font-size:0.78rem;color:var(--muted)">-</span>
           </div>
-          <div style="background:#1a1d27;border-radius:4px;height:6px;overflow:hidden;">
+          <div style="background:#1a1710;border-radius:4px;height:6px;overflow:hidden;">
             <div id="t-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px;width:0%;transition:width 0.5s;"></div>
           </div>
           <div style="display:flex;justify-content:space-between;margin-top:4px;">
@@ -537,30 +539,30 @@
         <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
 
           <!-- 변수 설정 -->
-          <div style="background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:16px;min-width:240px">
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:16px;min-width:240px">
             <div style="font-size:0.78rem;color:var(--muted);margin-bottom:12px">&#x1f527; 가격 변수 설정</div>
             <div style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px 10px;font-size:0.82rem">
               <span style="color:var(--muted)">일본 수수료율</span>
               <input type="number" id="jp-fee-input" min="0" max="30" step="0.1" value="3"
-                style="background:#1a1d27;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
                 oninput="calcExample()">
               <span style="color:var(--muted)">%</span>
 
               <span style="color:var(--muted)">환율 추가 마진</span>
               <input type="number" id="buy-markup-input" min="0" max="20" step="0.1" value="2"
-                style="background:#1a1d27;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
                 oninput="calcExample()">
               <span style="color:var(--muted)">%</span>
 
               <span style="color:var(--muted)">구매대행 마진율</span>
               <input type="number" id="margin-input" min="0" max="200" step="0.1" value="10"
-                style="background:#1a1d27;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
                 oninput="calcExample()">
               <span style="color:var(--muted)">%</span>
 
               <span style="color:var(--muted)">국제배송비</span>
               <input type="number" id="intl-shipping-input" min="0" max="100000" step="100" value="15000"
-                style="background:#1a1d27;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
                 oninput="calcExample()">
               <span style="color:var(--muted)">원</span>
             </div>
@@ -568,7 +570,7 @@
           </div>
 
           <!-- 원가 계산 구조 -->
-          <div style="background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:16px;font-size:0.78rem;color:var(--muted);line-height:2">
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:16px;font-size:0.78rem;color:var(--muted);line-height:2">
             <div style="color:var(--text);font-weight:600;margin-bottom:6px">&#x1f4cb; 가격 계산 공식</div>
             <div>일본 상품가 (엔)</div>
             <div>&#xd7; (1 + 일본수수료율) <span id="fee-formula" style="color:var(--yellow)">1.03</span></div>
@@ -580,12 +582,12 @@
           </div>
 
           <!-- 예시 계산기 -->
-          <div style="background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:16px;min-width:220px">
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:16px;min-width:220px">
             <div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px">&#x1f9ee; 예시 계산</div>
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
               <span style="font-size:0.78rem;color:var(--muted)">&#xa5;</span>
               <input type="number" id="calc-jpy" value="9980" min="1"
-                style="background:#1a1d27;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;width:90px;font-size:0.9rem"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;width:90px;font-size:0.9rem"
                 oninput="calcExample()">
               <button class="btn b-gray" onclick="calcExample()" style="padding:5px 10px;font-size:0.78rem">계산</button>
             </div>
@@ -752,13 +754,49 @@
           </div>
         </div>
 
-        <div style="font-size:0.78rem;color:var(--muted);line-height:1.7;padding:14px;background:#0f1117;border:1px solid var(--border);border-radius:8px;margin-top:16px;">
+        <div style="font-size:0.78rem;color:var(--muted);line-height:1.7;padding:14px;background:#0d0d0a;border:1px solid var(--border);border-radius:8px;margin-top:16px;">
           <div style="font-weight:600;color:var(--text);margin-bottom:6px;">&#x1f4a1; 텔레그램 봇 설정 방법</div>
           1. 텔레그램에서 <b>@BotFather</b> 검색 &#x2192; /newbot 명령<br>
           2. 봇 이름 설정 후 발급된 <b>Bot Token</b>을 위에 입력<br>
           3. 생성된 봇에게 아무 메시지 전송<br>
           4. <b>Chat ID</b> 확인: 브라우저에서 <code>https://api.telegram.org/bot{TOKEN}/getUpdates</code> 접속 &#x2192; chat.id 값 복사<br>
           5. 테스트 전송 버튼으로 확인
+        </div>
+
+        <!-- 카페 모니터 & 자동 댓글 -->
+        <div style="margin-top:20px;padding:18px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
+          <div style="font-weight:700;font-size:0.95rem;color:var(--text);margin-bottom:12px;">
+            &#x1f514; 카페 모니터 & 자동 댓글
+          </div>
+          <div style="font-size:0.8rem;color:var(--muted);margin-bottom:14px;line-height:1.6;">
+            카페에 새 글이 올라오면 텔레그램으로 알림을 보냅니다.<br>
+            텔레그램에서 해당 알림에 <b>답장</b>하면 카페 댓글로 자동 등록됩니다.
+          </div>
+
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span id="monitor-dot" style="width:10px;height:10px;border-radius:50%;background:var(--red);display:inline-block;"></span>
+              <span id="monitor-status-text" style="font-size:0.82rem;color:var(--muted);">중지됨</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <label style="font-size:0.8rem;color:var(--muted);white-space:nowrap;">체크 간격</label>
+              <select id="monitor-interval" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.82rem;">
+                <option value="60">1분</option>
+                <option value="180" selected>3분</option>
+                <option value="300">5분</option>
+                <option value="600">10분</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;">
+            <button class="btn b-green" onclick="startMonitor()" id="btn-monitor-start" style="padding:8px 20px;">&#x25b6;&#xfe0f; 모니터 시작</button>
+            <button class="btn b-red" onclick="stopMonitor()" id="btn-monitor-stop" style="padding:8px 20px;display:none;">&#x23f9;&#xfe0f; 모니터 중지</button>
+          </div>
+
+          <div style="margin-top:12px;font-size:0.75rem;color:var(--muted);line-height:1.6;">
+            &#x1f4a1; <b>사용법</b>: 모니터 시작 &#x2192; 카페 새 글 감지 &#x2192; 텔레그램 알림 수신 &#x2192; 답장으로 댓글 작성
+          </div>
         </div>
       </div>
     </div>
@@ -811,11 +849,11 @@
       <div class="panel">
         <div class="panel-title"><span>&#x1f50d; 상품 검색</span></div>
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-          <input type="text" id="bd-search" placeholder="상품명, 품번, 브랜드 검색..." style="flex:1;min-width:200px;background:#0f1117;border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:6px;font-size:0.82rem">
-          <select id="bd-site-filter" style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:0.82rem">
+          <input type="text" id="bd-search" placeholder="상품명, 품번, 브랜드 검색..." style="flex:1;min-width:200px;background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:6px;font-size:0.82rem">
+          <select id="bd-site-filter" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:0.82rem">
             <option value="">전체 사이트</option>
           </select>
-          <select id="bd-brand-filter" style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:0.82rem">
+          <select id="bd-brand-filter" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:0.82rem">
             <option value="">전체 브랜드</option>
           </select>
           <button class="btn b-blue" onclick="loadBigdataProducts(1)" style="padding:7px 16px;font-size:0.82rem">검색</button>
@@ -871,7 +909,7 @@
         <div style="font-size:0.75rem;color:var(--muted);margin-bottom:14px">잘못 번역되는 단어를 직접 수정할 수 있습니다</div>
 
         <!-- 단어 추가 -->
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px;background:#0f1117;border:1px solid var(--border);border-radius:8px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px;background:#0d0d0a;border:1px solid var(--border);border-radius:8px">
           <input type="text" id="dict-ja" placeholder="일본어 (예: ズーム)" class="search-input" style="flex:1;min-width:120px">
           <span style="color:var(--muted);font-size:1.1rem">&#x2192;</span>
           <input type="text" id="dict-ko" placeholder="한국어 (예: 줌)" class="search-input" style="flex:1;min-width:120px">
@@ -905,7 +943,7 @@
         </div>
 
         <!-- 네이버 로그인 상태 -->
-        <div id="naver-login-section" style="margin-bottom:20px;padding:18px;background:#0f1117;border:1px solid var(--border);border-radius:10px;">
+        <div id="naver-login-section" style="margin-bottom:20px;padding:18px;background:#0d0d0a;border:1px solid var(--border);border-radius:10px;">
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
             <div>
               <div style="font-size:0.9rem;font-weight:600;margin-bottom:4px;">
@@ -939,13 +977,13 @@
         <div id="cafe-product-section" style="display:none;margin-bottom:16px;">
           <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
             <input type="text" id="cafe-search" placeholder="상품명 검색..." oninput="loadCafeProducts(1)"
-              style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;flex:1;min-width:160px;">
+              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;flex:1;min-width:160px;">
             <select id="cafe-brand-select" onchange="loadCafeProducts(1)"
-              style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
+              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
               <option value="ALL">전체 브랜드</option>
             </select>
             <select id="cafe-status-select" onchange="loadCafeProducts(1)"
-              style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
+              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
               <option value="대기" selected>대기</option>
               <option value="ALL">전체 상태</option>
               <option value="완료">완료</option>
@@ -982,12 +1020,12 @@
           <div style="display:flex;align-items:center;gap:6px;">
             <label style="font-size:0.8rem;color:var(--muted);">최대 업로드 수</label>
             <input type="number" id="cafe-max-upload" placeholder="전체" min="1"
-              style="background:#0f1117;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:80px;font-size:0.82rem;">
+              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:80px;font-size:0.82rem;">
           </div>
         </div>
 
         <!-- 안내 -->
-        <div style="font-size:0.78rem;color:var(--muted);line-height:1.7;padding:14px;background:#0f1117;border:1px solid var(--border);border-radius:8px;">
+        <div style="font-size:0.78rem;color:var(--muted);line-height:1.7;padding:14px;background:#0d0d0a;border:1px solid var(--border);border-radius:8px;">
           <div style="font-weight:600;color:var(--text);margin-bottom:6px;">&#x1f4dd; 업로드 흐름</div>
           1. 상품 목록에서 체크박스로 업로드할 상품 선택<br>
           2. 네이버 로그인 완료 확인<br>
@@ -1064,7 +1102,7 @@ function showPage(page) {
   if (page === "dictionary") loadDict();
   if (page === "data-path") loadDataPath();
   if (page === "ai-settings") loadAiSettings();
-  if (page === "telegram") loadTelegramSettings();
+  if (page === "telegram") { loadTelegramSettings(); checkMonitorStatus(); }
   if (page === "bigdata") { loadBigdataStats(); loadBigdataProducts(1); }
   if (page === "cafe-upload") {
     checkNaverStatus();
@@ -1832,6 +1870,49 @@ async function testTelegram() {
   } catch(e) { el.innerHTML = `<span style="color:var(--red)">오류: ${e}</span>`; }
 }
 
+// ── 카페 모니터 & 텔레그램 봇 ───────────────
+async function checkMonitorStatus() {
+  try {
+    const d = await fetch(PREFIX + "/monitor/status").then(r => r.json());
+    const dot = document.getElementById("monitor-dot");
+    const txt = document.getElementById("monitor-status-text");
+    const btnStart = document.getElementById("btn-monitor-start");
+    const btnStop = document.getElementById("btn-monitor-stop");
+    const running = d.monitor_running || d.bot_running;
+    if (running) {
+      dot.style.background = "var(--green)";
+      txt.textContent = "실행중";
+      txt.style.color = "var(--green)";
+      btnStart.style.display = "none";
+      btnStop.style.display = "";
+    } else {
+      dot.style.background = "var(--red)";
+      txt.textContent = "중지됨";
+      txt.style.color = "var(--muted)";
+      btnStart.style.display = "";
+      btnStop.style.display = "none";
+    }
+  } catch(e) {}
+}
+
+async function startMonitor() {
+  const interval = parseInt(document.getElementById("monitor-interval").value) || 180;
+  await fetch(PREFIX + "/monitor/start", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({interval})
+  });
+  setTimeout(checkMonitorStatus, 500);
+}
+
+async function stopMonitor() {
+  await fetch(PREFIX + "/monitor/stop", {method: "POST", headers: {"Content-Type": "application/json"}});
+  setTimeout(checkMonitorStatus, 500);
+}
+
+// 텔레그램 페이지 진입 시 모니터 상태 체크
+const _origLoadTelegram = typeof loadTelegramSettings === "function" ? loadTelegramSettings : null;
+
 async function loadDict() {
   try {
     const d = await fetch(PREFIX + "/settings/dict").then(r => r.json());
@@ -2007,7 +2088,7 @@ async function loadScrapeHistory() {
         <td>${h.date}</td>
         <td>${h.site_name}</td>
         <td>${h.category_name}</td>
-        <td style="text-align:center;font-weight:600;color:var(--blue)">${h.product_count}개</td>
+        <td style="text-align:center;font-weight:600;color:var(--accent)">${h.product_count}개</td>
         <td style="text-align:center;font-weight:600;color:var(--green)">${h.uploaded_count || 0}개</td>
         <td style="text-align:center;color:${stColor};font-size:0.75rem">${h.status}</td>
       </tr>`;
@@ -2036,7 +2117,7 @@ async function loadBigdataStats() {
       let html = '<table class="tbl" style="font-size:0.8rem;"><thead><tr><th>사이트</th><th>카테고리</th><th>수량</th></tr></thead><tbody>';
       for (const [sid, info] of Object.entries(sites)) {
         for (const [cid, cnt] of Object.entries(info.categories || {})) {
-          html += `<tr><td>${sid}</td><td>${cid}</td><td style="text-align:center;font-weight:600;color:var(--blue)">${cnt.toLocaleString()}개</td></tr>`;
+          html += `<tr><td>${sid}</td><td>${cid}</td><td style="text-align:center;font-weight:600;color:var(--accent)">${cnt.toLocaleString()}개</td></tr>`;
         }
         html += `<tr style="border-top:1px solid var(--border)"><td colspan="2" style="font-weight:600">${sid} 합계</td><td style="text-align:center;font-weight:700;color:var(--accent)">${info.total.toLocaleString()}개</td></tr>`;
       }

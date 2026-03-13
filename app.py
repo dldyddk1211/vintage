@@ -30,6 +30,8 @@ from post_generator import get_ai_config, set_ai_config
 from site_config import get_sites_for_ui
 from scrape_history import get_history as get_scrape_history
 from product_db import init_db as init_product_db, get_stats as bigdata_get_stats, search_products as bigdata_search, get_brands as bigdata_get_brands, delete_all as bigdata_delete_all, delete_by_site as bigdata_delete_site, get_total_count as bigdata_total
+from cafe_monitor import start_monitor, stop_monitor, is_monitoring
+from telegram_bot import start_bot, stop_bot, is_bot_running
 
 # =============================================
 # 앱 초기화
@@ -673,6 +675,44 @@ def api_bigdata_delete():
         count = bigdata_delete_site(site_id)
         return jsonify({"ok": True, "deleted": count, "message": f"{site_id} {count}개 삭제"})
     return jsonify({"ok": False, "message": "scope 지정 필요 (all 또는 site)"})
+
+
+# ── 카페 모니터 & 텔레그램 봇 API ─────────────
+
+@app.route(f"{URL_PREFIX}/monitor/status", methods=["GET"])
+@login_required
+def api_monitor_status():
+    """모니터/봇 상태"""
+    return jsonify({
+        "monitor_running": is_monitoring(),
+        "bot_running": is_bot_running(),
+    })
+
+
+@app.route(f"{URL_PREFIX}/monitor/start", methods=["POST"])
+@login_required
+def api_monitor_start():
+    """카페 모니터 + 텔레그램 봇 시작"""
+    data = request.json or {}
+    interval = data.get("interval", 180)
+
+    monitor_ok = start_monitor(log_callback=push_log, interval=interval)
+    bot_ok = start_bot(log_callback=push_log)
+
+    return jsonify({
+        "ok": True,
+        "monitor": "시작됨" if monitor_ok else "이미 실행중",
+        "bot": "시작됨" if bot_ok else "이미 실행중",
+    })
+
+
+@app.route(f"{URL_PREFIX}/monitor/stop", methods=["POST"])
+@login_required
+def api_monitor_stop():
+    """카페 모니터 + 텔레그램 봇 종료"""
+    stop_monitor()
+    stop_bot()
+    return jsonify({"ok": True, "message": "모니터 & 봇 종료"})
 
 
 @app.route(f"{URL_PREFIX}/run/upload", methods=["POST"])
