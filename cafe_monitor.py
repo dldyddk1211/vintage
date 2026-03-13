@@ -367,6 +367,11 @@ async def search_cafe_by_browser(page, keyword: str, nickname: str = "", days: i
             if nk in page_text:
                 return None
 
+        # 디버그: 페이지 텍스트 일부 로그 (최초 500자)
+        if log:
+            snippet = page_text[:500].replace("\n", " ").strip()
+            log(f"      📄 페이지 텍스트(500자): {snippet}")
+
         # 닉네임이 페이지에 있는지 전체 텍스트 확인
         if nickname and nickname in page_text:
             # 닉네임 주변 텍스트에서 날짜 추출
@@ -421,6 +426,13 @@ async def search_cafe_by_browser(page, keyword: str, nickname: str = "", days: i
                     }
 
                 start = idx + 1
+
+        # 닉네임 못 찾음 — 디버그 로그
+        if log and nickname:
+            if nickname not in page_text:
+                log(f"      ❓ '{nickname}' 닉네임이 페이지에 없음")
+            else:
+                log(f"      ❓ '{nickname}' 있지만 {days}일 이내 날짜 매칭 실패")
 
         return None
 
