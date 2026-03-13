@@ -378,6 +378,7 @@ def _build_prompt(product: dict, price_info: dict) -> str:
 
     # 상세 설명에 일본어가 남아있으면 Gemini로 미리 번역
     if description and _has_japanese(description):
+        logger.info(f"📝 [{code}] 상세 설명 일본어 감지 — Gemini 번역 시도")
         description = _translate_description(description)
 
     # 인트로 랜덤 선택
@@ -553,40 +554,46 @@ def generate_cafe_post(product: dict, price_info: dict) -> dict:
     """
     title = make_title(product)
     tags = make_tags(product)
+    code = product.get("product_code", "?")
 
     provider = _ai_config["provider"]
+    logger.info(f"📝 [{code}] 게시글 생성 시작 — AI: {provider}")
 
     # API 키 확인
     if provider == "gemini" and not _ai_config["gemini_key"]:
-        logger.warning("⚠️ GEMINI_API_KEY 미설정 — 기본 템플릿 사용")
+        logger.warning(f"⚠️ [{code}] GEMINI_API_KEY 미설정 — 기본 템플릿 사용")
         return {"title": title, "content": _make_fallback_content(product, price_info), "tags": tags}
     elif provider == "claude" and not _ai_config["claude_key"]:
-        logger.warning("⚠️ ANTHROPIC_API_KEY 미설정 — 기본 템플릿 사용")
+        logger.warning(f"⚠️ [{code}] ANTHROPIC_API_KEY 미설정 — 기본 템플릿 사용")
         return {"title": title, "content": _make_fallback_content(product, price_info), "tags": tags}
     elif provider == "none":
+        logger.info(f"📝 [{code}] AI=none — 기본 템플릿 사용")
         return {"title": title, "content": _make_fallback_content(product, price_info), "tags": tags}
 
     prompt = _build_prompt(product, price_info)
+    logger.info(f"📝 [{code}] {provider} API 호출 중...")
 
     try:
         if provider == "gemini":
             content = _call_gemini(prompt)
-            logger.info("✅ Gemini 게시글 생성 완료")
+            logger.info(f"✅ [{code}] Gemini 게시글 생성 완료 ({len(content)}자)")
         else:
             content = _call_claude(prompt)
-            logger.info("✅ Claude 게시글 생성 완료")
+            logger.info(f"✅ [{code}] Claude 게시글 생성 완료 ({len(content)}자)")
 
         content = _clean_ai_response(content)
 
         # 본문에 일본어가 남아있으면 재번역 시도
         if _has_japanese(content):
-            logger.warning("⚠️ 본문에 일본어 잔존 — 재번역 시도")
+            logger.warning(f"⚠️ [{code}] 본문에 일본어 잔존 — 재번역 시도")
             content = _retranslate_content(content)
+        else:
+            logger.info(f"✅ [{code}] 일본어 없음 — 번역 OK")
 
         return {"title": title, "content": content, "tags": tags}
 
     except Exception as e:
-        logger.error(f"❌ {provider} API 오류: {e} — 기본 템플릿 사용")
+        logger.error(f"❌ [{code}] {provider} API 오류: {e} — 기본 템플릿 사용")
         return {"title": title, "content": _make_fallback_content(product, price_info), "tags": tags}
 
 
