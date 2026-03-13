@@ -337,7 +337,7 @@ async def search_cafe_by_browser(page, keyword: str, nickname: str = "", days: i
         if log:
             log(f"      🔍 검색: {keyword}")
         await page.goto(search_url, wait_until="domcontentloaded", timeout=15000)
-        await asyncio.sleep(4)
+        await asyncio.sleep(2)
 
         # 검색 결과 로딩 대기 — 여러 셀렉터 시도
         result_loaded = False
