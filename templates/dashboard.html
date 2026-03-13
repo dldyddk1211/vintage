@@ -972,11 +972,22 @@
           </div>
         </div>
 
-        <!-- 상품목록 불러오기 -->
-        <div style="margin-bottom:16px;">
+        <!-- 버튼 바 (상품목록 + 업로드 체크 + 업로드 + 최대 수) -->
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
           <button class="btn b-gray" id="btn-load-cafe-products" onclick="toggleCafeProducts()" style="padding:9px 18px;">
             &#x1f4cb; 상품목록 들고 오기
           </button>
+          <button class="btn b-blue" id="btn-upload-check" onclick="runUploadCheck()" style="padding:9px 18px;">
+            &#x1f50d; 업로드 체크
+          </button>
+          <button class="btn b-green" id="btn-cafe-upload" onclick="uploadSelected()" style="padding:9px 18px;">
+            &#x1f4e4; 선택 상품 업로드 (<span id="cafe-sel-cnt">0</span>개)
+          </button>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:0.8rem;color:var(--muted);">최대 업로드 수</span>
+            <input type="number" id="cafe-max-upload" placeholder="전체" min="1" autocomplete="off" max="9999"
+              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:80px;font-size:0.82rem;">
+          </div>
         </div>
 
         <!-- 카페 상품 목록 -->
@@ -1016,30 +1027,6 @@
             </table>
           </div>
           <div id="cafe-pager" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:10px;"></div>
-        </div>
-
-        <!-- 업로드 컨트롤 -->
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
-          <button class="btn b-blue" id="btn-upload-check" onclick="runUploadCheck()" style="padding:9px 18px;">
-            &#x1f50d; 업로드 체크
-          </button>
-          <button class="btn b-green" id="btn-cafe-upload" onclick="uploadSelected()" style="padding:9px 18px;">
-            &#x1f4e4; 선택 상품 업로드 (<span id="cafe-sel-cnt">0</span>개)
-          </button>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span style="font-size:0.8rem;color:var(--muted);">최대 업로드 수</span>
-            <input type="number" id="cafe-max-upload" placeholder="전체" min="1" autocomplete="off"
-              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:80px;font-size:0.82rem;">
-          </div>
-        </div>
-
-        <!-- 안내 -->
-        <div style="font-size:0.78rem;color:var(--muted);line-height:1.7;padding:14px;background:#0d0d0a;border:1px solid var(--border);border-radius:8px;">
-          <div style="font-weight:600;color:var(--text);margin-bottom:6px;">&#x1f4dd; 업로드 흐름</div>
-          1. 상품 목록에서 체크박스로 업로드할 상품 선택<br>
-          2. 네이버 로그인 완료 확인<br>
-          3. 업로드 버튼 클릭 &#x2192; 선택된 상품이 카페에 게시글로 등록<br>
-          <div style="margin-top:8px;color:var(--yellow);">&#x26a0;&#xfe0f; 업로드 중에는 브라우저를 닫지 마세요</div>
         </div>
       </div>
     </div>
