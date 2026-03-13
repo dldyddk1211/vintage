@@ -474,15 +474,22 @@ def get_brands():
 def update_products():
     """상품 선택 상태 업데이트 (체크박스)"""
     data = request.json or {}
-    selected_ids = set(data.get("selected", []))  # 선택된 인덱스 목록
+    # product_code 기반 선택 (우선) 또는 인덱스 기반 (하위호환)
+    selected_codes = set(data.get("selected_codes", []))
+    selected_ids = set(data.get("selected", []))
 
     products = load_latest_products()
-    for i, p in enumerate(products):
-        p["selected"] = i in selected_ids
+    if selected_codes:
+        for p in products:
+            p["selected"] = p.get("product_code", "") in selected_codes
+    else:
+        for i, p in enumerate(products):
+            p["selected"] = i in selected_ids
 
     from xebio_search import save_products
     save_products(products)
-    return jsonify({"ok": True, "selected_count": len(selected_ids)})
+    count = sum(1 for p in products if p.get("selected"))
+    return jsonify({"ok": True, "selected_count": count})
 
 
 @app.route(f"{URL_PREFIX}/products/delete", methods=["POST"])

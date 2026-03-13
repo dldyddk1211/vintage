@@ -1065,7 +1065,8 @@ const PREFIX = "{{ url_prefix }}";
 let curPage = 1;
 const PER = 50;
 let isPaused = false;
-let checkedIndices = new Set();
+let checkedIndices = new Set();  // 스크래핑 페이지용 (인덱스)
+let checkedCodes = new Set();   // 카페 업로드용 (product_code)
 let pageIndexMap = [];
 
 // ── 카테고리 토글 ──────────────────────────
@@ -1115,7 +1116,7 @@ function showPage(page) {
   if (page === "bigdata") { loadBigdataStats(); loadBigdataProducts(1); }
   if (page === "cafe-upload") {
     checkNaverStatus();
-    document.getElementById("cafe-sel-cnt").textContent = checkedIndices.size;
+    document.getElementById("cafe-sel-cnt").textContent = checkedCodes.size;
   }
 }
 
@@ -1250,10 +1251,9 @@ async function loadCafeProducts(page = 1) {
       return;
     }
     document.getElementById("cafe-filter-result").textContent = `총 ${d.total.toLocaleString()}개`;
-    const startIdx = (page - 1) * PER;
     tb.innerHTML = d.products.map((p, i) => {
-      const globalIdx = startIdx + i;
-      const isChecked = checkedIndices.has(globalIdx);
+      const code = p.product_code || "";
+      const isChecked = checkedCodes.has(code);
       const img = p.img_url ? `<img src="${p.img_url}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;" onerror="this.style.opacity=0">` : "";
       const jpy = p.price_jpy ? `¥${p.price_jpy.toLocaleString()}` : "-";
       const krw = p.price_info ? `${p.price_info.price_final.toLocaleString()}원` : "-";
@@ -1262,7 +1262,7 @@ async function loadCafeProducts(page = 1) {
       const statusColors = {"대기":"#64748b","완료":"#22c55e","중복":"#f59e0b"};
       const sc = statusColors[cafeStatus] || "#64748b";
       const dupLabel = (cafeStatus === "중복" && dupDate) ? `<div style="font-size:9px;color:#f59e0b;margin-top:2px;">${dupDate} 등록</div>` : "";
-      const statusSelect = `<select data-code="${p.product_code}" onchange="changeStatus(this)"
+      const statusSelect = `<select data-code="${code}" onchange="changeStatus(this)"
         style="padding:3px 6px;border-radius:8px;border:1px solid ${sc}44;background:${sc}18;color:${sc};font-size:11px;font-weight:600;cursor:pointer;outline:none;">
         <option value="대기" ${cafeStatus==="대기"?"selected":""}>대기</option>
         <option value="완료" ${cafeStatus==="완료"?"selected":""}>완료</option>
@@ -1270,7 +1270,7 @@ async function loadCafeProducts(page = 1) {
       </select>${dupLabel}`;
       const rowOpacity = cafeStatus === "완료" ? "opacity:0.7;" : cafeStatus === "중복" ? "opacity:0.5;" : "";
       return `<tr class="${isChecked?'selected-row':''}" style="border-bottom:1px solid var(--border);${rowOpacity}">
-        <td style="padding:6px"><input type="checkbox" class="cafe-row-chk" data-idx="${globalIdx}" ${isChecked?'checked':''} onchange="onCafeRowCheck(this)"></td>
+        <td style="padding:6px"><input type="checkbox" class="cafe-row-chk" data-code="${code}" ${isChecked?'checked':''} onchange="onCafeRowCheck(this)"></td>
         <td style="padding:6px">${img}</td>
         <td style="padding:6px"><span class="badge b-brand">${p.brand_ko || p.brand || "-"}</span></td>
         <td style="padding:6px;max-width:220px;word-break:break-word">${p.name_ko || p.name || "-"}</td>
@@ -1299,10 +1299,10 @@ async function changeStatus(sel) {
 }
 
 function onCafeRowCheck(chk) {
-  const idx = +chk.dataset.idx;
-  if (chk.checked) checkedIndices.add(idx); else checkedIndices.delete(idx);
+  const code = chk.dataset.code;
+  if (chk.checked) checkedCodes.add(code); else checkedCodes.delete(code);
   chk.closest("tr").classList.toggle("selected-row", chk.checked);
-  document.getElementById("cafe-sel-cnt").textContent = checkedIndices.size;
+  document.getElementById("cafe-sel-cnt").textContent = checkedCodes.size;
   const all = document.querySelectorAll(".cafe-row-chk");
   document.getElementById("cafe-chk-all").checked = [...all].every(c => c.checked);
 }
@@ -1311,11 +1311,11 @@ function cafeSel(checked) {
   document.getElementById("cafe-chk-all").checked = checked;
   document.querySelectorAll(".cafe-row-chk").forEach(chk => {
     chk.checked = checked;
-    const idx = +chk.dataset.idx;
-    if (checked) checkedIndices.add(idx); else checkedIndices.delete(idx);
+    const code = chk.dataset.code;
+    if (checked) checkedCodes.add(code); else checkedCodes.delete(code);
     chk.closest("tr").classList.toggle("selected-row", checked);
   });
-  document.getElementById("cafe-sel-cnt").textContent = checkedIndices.size;
+  document.getElementById("cafe-sel-cnt").textContent = checkedCodes.size;
 }
 
 function renderCafePager(cur, total) {
@@ -1357,16 +1357,16 @@ async function runUploadCheck() {
 }
 
 async function uploadSelected() {
-  if (checkedIndices.size === 0) {
+  if (checkedCodes.size === 0) {
     addLog("\u26A0\uFE0F \uC120\uD0DD\uB41C \uC0C1\uD488\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uCCB4\uD06C\uBC15\uC2A4\uB85C \uC0C1\uD488\uC744 \uC120\uD0DD\uD574\uC8FC\uC138\uC694", "warn");
     return;
   }
   await fetch(PREFIX + "/products/update", {
     method: "POST", headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({ selected: [...checkedIndices] })
+    body: JSON.stringify({ selected_codes: [...checkedCodes] })
   });
   const mu = document.getElementById("cafe-max-upload").value;
-  addLog(`\uD83D\uDCE4 ${checkedIndices.size}\uAC1C \uC0C1\uD488 \uC5C5\uB85C\uB4DC \uC2DC\uC791...`, "info");
+  addLog(`\uD83D\uDCE4 ${checkedCodes.size}\uAC1C \uC0C1\uD488 \uC5C5\uB85C\uB4DC \uC2DC\uC791...`, "info");
   await post("/run/upload", { max_upload: mu ? +mu : null });
 }
 
