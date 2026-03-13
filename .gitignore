@@ -6,3 +6,4 @@ data_path.json
 naver_cookies.json
 article_tg_map.json
 *.db
+.env

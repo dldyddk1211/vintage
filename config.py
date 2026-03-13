@@ -1,6 +1,16 @@
 import os
 import platform
 
+# .env 파일 로드 (있으면)
+_env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(_env_path):
+    with open(_env_path, encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 # =============================================
 # 전체 프로젝트 설정값
 # =============================================
@@ -40,7 +50,7 @@ EXCHANGE_RATE_MARKUP       = 1.015  # 송금 환율 마진 1.5%
 
 # ── AI API 설정 ─────────────────────────
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "AIzaSyC_Qm8Dd1RwQLkRdEYd6fVDKq1Lu_y3F60")
+GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
 AI_PROVIDER       = "gemini"   # "gemini" | "claude" | "none"
 
 # ── 텔레그램 알림 설정 ─────────────────────
