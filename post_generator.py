@@ -605,6 +605,8 @@ def _make_fallback_content(product: dict, price_info: dict) -> str:
     size_text = " / ".join(available) if available else "문의 바랍니다"
 
     description = product.get("description_ko") or product.get("description", "")
+    if description and _has_japanese(description):
+        description = _translate_description(description)
     desc_section = ""
     if description:
         desc_lines = description.strip().split("\n")
