@@ -29,7 +29,7 @@ from exchange import get_jpy_to_krw_rate, get_cached_rate, calc_buying_price, se
 from post_generator import get_ai_config, set_ai_config
 from site_config import get_sites_for_ui
 from scrape_history import get_history as get_scrape_history
-from product_db import init_db as init_product_db, get_stats as bigdata_get_stats, search_products as bigdata_search, get_brands as bigdata_get_brands, delete_all as bigdata_delete_all, delete_by_site as bigdata_delete_site, get_total_count as bigdata_total
+from product_db import init_db as init_product_db, get_stats as bigdata_get_stats, search_products as bigdata_search, get_brands as bigdata_get_brands, delete_all as bigdata_delete_all, delete_by_site as bigdata_delete_site, get_total_count as bigdata_total, export_all as bigdata_export
 from cafe_monitor import start_monitor, stop_monitor, is_monitoring
 from telegram_bot import start_bot, stop_bot, is_bot_running
 
@@ -675,6 +675,141 @@ def api_bigdata_delete():
         count = bigdata_delete_site(site_id)
         return jsonify({"ok": True, "deleted": count, "message": f"{site_id} {count}개 삭제"})
     return jsonify({"ok": False, "message": "scope 지정 필요 (all 또는 site)"})
+
+
+@app.route(f"{URL_PREFIX}/bigdata/download")
+@login_required
+def api_bigdata_download():
+    """빅데이터 엑셀 다운로드"""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from flask import send_file
+
+    q = request.args.get("q", "")
+    site_id = request.args.get("site_id", "")
+    brand = request.args.get("brand", "")
+
+    products = bigdata_export(query=q, site_id=site_id, brand=brand)
+
+    # 환율 정보
+    rate = get_cached_rate()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "수집상품"
+
+    # ── 스타일 ─────────────────────────
+    header_font = Font(bold=True, color="FFFFFF", name="Arial", size=10)
+    header_fill = PatternFill("solid", start_color="1a1710")
+    header_align = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin")
+    )
+    alt_fill = PatternFill("solid", start_color="F5F0E0")
+    gold_fill = PatternFill("solid", start_color="D4A54A")
+
+    # ── 헤더 ───────────────────────────
+    headers = [
+        ("사이트", 12),
+        ("카테고리", 12),
+        ("품번", 16),
+        ("브랜드", 14),
+        ("상품명(한국어)", 40),
+        ("상품명(일본어)", 40),
+        ("일본가(엔)", 14),
+        ("할인전가", 14),
+        ("할인율(%)", 10),
+        ("구매대행원가", 16),
+        ("재고", 8),
+        ("링크", 40),
+        ("수집일", 18),
+    ]
+
+    for col, (title, width) in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font = header_font
+        cell.fill = gold_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+        ws.column_dimensions[get_column_letter(col)].width = width
+    ws.row_dimensions[1].height = 24
+
+    # ── 데이터 ─────────────────────────
+    normal_font = Font(name="Arial", size=9)
+    center_align = Alignment(horizontal="center", vertical="center")
+    left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    for row_idx, p in enumerate(products, 2):
+        cost_krw = 0
+        if p.get("price_jpy") and rate:
+            try:
+                from exchange import calc_buying_price
+                info = calc_buying_price(p["price_jpy"], rate=rate)
+                cost_krw = info["cost_krw"]
+            except Exception:
+                pass
+
+        row_data = [
+            p.get("site_id", ""),
+            p.get("category_id", ""),
+            p.get("product_code", ""),
+            p.get("brand_ko", ""),
+            p.get("name_ko", ""),
+            p.get("name", ""),
+            p.get("price_jpy", 0),
+            p.get("original_price", 0),
+            p.get("discount_rate", 0),
+            cost_krw,
+            "O" if p.get("in_stock") else "X",
+            p.get("link", ""),
+            p.get("created_at", ""),
+        ]
+
+        fill = alt_fill if row_idx % 2 == 0 else None
+        for col, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col, value=value)
+            cell.border = thin_border
+            cell.font = normal_font
+            if col in (1, 2, 3, 4, 9, 11):
+                cell.alignment = center_align
+            elif col in (5, 6, 12):
+                cell.alignment = left_align
+            elif col in (7, 8, 10):
+                cell.alignment = center_align
+                if col == 7:
+                    cell.number_format = '#,##0'
+                elif col == 8:
+                    cell.number_format = '#,##0'
+                elif col == 10:
+                    cell.number_format = '#,##0'
+            if fill:
+                cell.fill = fill
+        ws.row_dimensions[row_idx].height = 18
+
+    # ── 요약 ───────────────────────────
+    sum_row = len(products) + 2
+    ws.cell(row=sum_row, column=1, value=f"합계 {len(products)}건").font = Font(bold=True, name="Arial", size=9)
+    ws.cell(row=sum_row, column=7, value=f'=SUM(G2:G{sum_row-1})').number_format = '#,##0'
+    ws.cell(row=sum_row, column=10, value=f'=SUM(J2:J{sum_row-1})').number_format = '#,##0'
+    for col in range(1, 14):
+        ws.cell(row=sum_row, column=col).fill = PatternFill("solid", start_color="E8E0D0")
+        ws.cell(row=sum_row, column=col).border = thin_border
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    suffix = f"_{site_id}" if site_id else ""
+    filename = f"bigdata{suffix}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 # ── 카페 모니터 & 텔레그램 봇 API ─────────────

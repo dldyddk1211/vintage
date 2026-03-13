@@ -270,6 +270,51 @@ def get_brands() -> list:
         conn.close()
 
 
+def export_all(query="", site_id="", brand="") -> list:
+    """전체 상품 내보내기 (필터 적용 가능)"""
+    conn = _conn()
+    try:
+        conditions = []
+        params = []
+        if query:
+            conditions.append("(name_ko LIKE ? OR product_code LIKE ? OR brand_ko LIKE ?)")
+            q = f"%{query}%"
+            params.extend([q, q, q])
+        if site_id:
+            conditions.append("site_id = ?")
+            params.append(site_id)
+        if brand:
+            conditions.append("brand_ko = ?")
+            params.append(brand)
+
+        where = "WHERE " + " AND ".join(conditions) if conditions else ""
+        rows = conn.execute(
+            f"SELECT * FROM products {where} ORDER BY created_at DESC", params
+        ).fetchall()
+
+        products = []
+        for r in rows:
+            products.append({
+                "site_id": r["site_id"],
+                "category_id": r["category_id"],
+                "product_code": r["product_code"],
+                "name": r["name"],
+                "name_ko": r["name_ko"] or r["name"],
+                "brand": r["brand"],
+                "brand_ko": r["brand_ko"] or r["brand"],
+                "price_jpy": r["price_jpy"],
+                "original_price": r["original_price"],
+                "discount_rate": r["discount_rate"],
+                "link": r["link"],
+                "img_url": r["img_url"],
+                "in_stock": r["in_stock"],
+                "created_at": r["created_at"],
+            })
+        return products
+    finally:
+        conn.close()
+
+
 def delete_all() -> int:
     """전체 삭제"""
     conn = _conn()

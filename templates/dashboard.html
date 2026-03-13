@@ -887,6 +887,7 @@
       <div class="panel">
         <div class="panel-title"><span>&#x1f5d1;&#xfe0f; 데이터 관리</span></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn b-green" onclick="downloadBigdataExcel()" style="padding:8px 16px;font-size:0.82rem">&#x1f4e5; 엑셀 다운로드</button>
           <button class="btn b-red" onclick="deleteBigdata('all')" style="padding:8px 16px;font-size:0.82rem">&#x1f5d1;&#xfe0f; 전체 초기화</button>
           <button class="btn b-yellow" onclick="deleteBigdataSite()" style="padding:8px 16px;font-size:0.82rem">&#x1f5d1;&#xfe0f; 사이트별 삭제</button>
         </div>
@@ -2213,6 +2214,17 @@ async function deleteBigdataSite() {
   alert(d.message || "삭제 완료");
   loadBigdataStats();
   loadBigdataProducts(1);
+}
+
+function downloadBigdataExcel() {
+  const q = document.getElementById("bd-search")?.value || "";
+  const site = document.getElementById("bd-site-filter")?.value || "";
+  const brand = document.getElementById("bd-brand-filter")?.value || "";
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (site) params.set("site_id", site);
+  if (brand) params.set("brand", brand);
+  window.location.href = PREFIX + "/bigdata/download?" + params.toString();
 }
 
 // 검색 엔터키

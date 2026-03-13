@@ -16,7 +16,7 @@ import threading
 import requests
 from datetime import datetime
 
-from config import CAFE_ID, CAFE_URL, CAFE_MENU_ID, NAVER_COOKIE_PATH
+from config import CAFE_ID, CAFE_URL, CAFE_MENU_ID, NAVER_COOKIE_PATH, CAFE_MY_NICKNAME
 from notifier import send_telegram, is_configured
 
 logger = logging.getLogger(__name__)
@@ -118,7 +118,7 @@ def fetch_recent_articles(limit=20) -> list:
 
 
 def fetch_article_content(article_id: str) -> str:
-    """게시글 본문 미리보기 (200자)"""
+    """게시글 본문 전체 텍스트 가져오기"""
     session = _get_naver_session()
     if not session:
         return ""
@@ -136,13 +136,18 @@ def fetch_article_content(article_id: str) -> str:
         # contentHtml에서 텍스트 추출
         content = article.get("contentHtml", "") or article.get("content", "")
 
-        # HTML 태그 제거
+        # HTML 태그 → 줄바꿈 보존
         import re
-        text = re.sub(r'<[^>]+>', '', content)
+        text = re.sub(r'<br\s*/?>', '\n', content)
+        text = re.sub(r'</(p|div|li|tr)>', '\n', text)
+        text = re.sub(r'<[^>]+>', '', text)
         text = re.sub(r'&nbsp;', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r'&amp;', '&', text)
+        text = re.sub(r'&lt;', '<', text)
+        text = re.sub(r'&gt;', '>', text)
+        text = re.sub(r'\n{3,}', '\n\n', text).strip()
 
-        return text[:200]
+        return text
 
     except Exception as e:
         logger.debug(f"게시글 내용 조회 실패: {e}")
@@ -158,20 +163,31 @@ def _send_new_article_alert(article: dict) -> int:
     if not token or not chat_id:
         return 0
 
-    # 본문 미리보기 가져오기
-    preview = fetch_article_content(article["article_id"])
-    preview_text = f"\n\n📝 {preview}..." if preview else ""
+    # 본문 전체 가져오기
+    body = fetch_article_content(article["article_id"])
 
-    msg = (
+    header = (
         f"📬 <b>카페 새 글</b>\n"
         f"━━━━━━━━━━━━━━━\n"
         f"📌 {article['title']}\n"
         f"✍️ {article['writer']}\n"
-        f"👁 조회 {article.get('read_count', 0)} · 💬 댓글 {article.get('comment_count', 0)}"
-        f"{preview_text}\n\n"
-        f"🔗 {article['link']}\n\n"
+        f"👁 조회 {article.get('read_count', 0)} · 💬 댓글 {article.get('comment_count', 0)}\n\n"
+    )
+    footer = (
+        f"\n\n🔗 {article['link']}\n\n"
         f"💡 <i>이 메시지에 답장하면 카페 댓글로 등록됩니다</i>"
     )
+
+    # 텔레그램 메시지 최대 4096자 — 헤더/푸터 제외한 만큼 본문 삽입
+    max_body = 4096 - len(header) - len(footer) - 20
+    if body:
+        if len(body) > max_body:
+            body = body[:max_body] + "..."
+        body_text = f"📝 <b>본문</b>\n{body}"
+    else:
+        body_text = ""
+
+    msg = header + body_text + footer
 
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -209,6 +225,12 @@ def _check_new_articles(known_ids: set, log_callback=None) -> set:
         new_ids.add(aid)
 
         if aid not in known_ids and known_ids:  # 첫 실행 시에는 알림 안 보냄
+            # 내가 쓴 글은 알림 제외
+            writer = a.get("writer", "")
+            if CAFE_MY_NICKNAME and CAFE_MY_NICKNAME in writer:
+                logger.info(f"⏭️ 내 글 건너뜀: [{aid}] {a['title']}")
+                continue
+
             # 새 글 발견!
             logger.info(f"🆕 새 글 감지: [{aid}] {a['title']}")
             if log_callback:

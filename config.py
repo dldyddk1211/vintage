@@ -52,6 +52,7 @@ CAFE_URL       = "https://cafe.naver.com/sohosupport"
 CAFE_ID        = "28938799"        # 카페 고유 ID
 CAFE_MENU_ID   = "100"            # 게시판 메뉴 ID
 CAFE_MENU_NAME = "일본구매대행"    # 게시판 이름
+CAFE_MY_NICKNAME = "서포트센터장"  # 내 닉네임 (내 글은 알림 제외)
 
 # ── 네이버 쿠키 기반 로그인 ──────────────
 NAVER_COOKIE_PATH = "naver_cookies.json"   # 쿠키 저장 경로
