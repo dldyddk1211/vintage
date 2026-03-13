@@ -389,7 +389,7 @@ async def search_cafe_by_browser(page, keyword: str, nickname: str = "", days: i
                 context_end = min(len(search_text), idx + len(nickname) + 200)
                 context = search_text[context_start:context_end]
 
-                # 상대 날짜 ("오늘", "어제", "N분 전", "N시간 전", "방금")
+                # 상대 날짜 ("오늘", "어제", "N분 전", "N시간 전", "방금", "HH:MM")
                 write_date = None
                 if re.search(r'오늘|방금|분\s*전|시간\s*전', context):
                     write_date = now
@@ -398,6 +398,9 @@ async def search_cafe_by_browser(page, keyword: str, nickname: str = "", days: i
                 elif re.search(r'(\d+)일\s*전', context):
                     d_ago = int(re.search(r'(\d+)일\s*전', context).group(1))
                     write_date = now - __import__('datetime').timedelta(days=d_ago)
+                elif re.search(r'(?<!\d)\d{1,2}:\d{2}(?!\d)', context):
+                    # "13:45" 같은 시간만 표시 = 오늘
+                    write_date = now
 
                 # YYYY.MM.DD 형식
                 if not write_date:
