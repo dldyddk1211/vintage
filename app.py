@@ -26,7 +26,7 @@ from data_manager import get_status as get_data_status, set_data_root, get_data_
 from xebio_search import scrape_nike_sale, load_latest_products, set_app_status, force_close_browser
 from cafe_uploader import upload_products, naver_manual_login, has_saved_cookies, delete_cookies
 from exchange import get_jpy_to_krw_rate, get_cached_rate, calc_buying_price, set_margin_rate, get_margin_rate, set_price_config, get_price_config
-from post_generator import get_ai_config, set_ai_config
+from post_generator import get_ai_config, set_ai_config, verify_ai_key
 from site_config import get_sites_for_ui
 from scrape_history import get_history as get_scrape_history
 from product_db import init_db as init_product_db, get_stats as bigdata_get_stats, search_products as bigdata_search, get_brands as bigdata_get_brands, delete_all as bigdata_delete_all, delete_by_site as bigdata_delete_site, get_total_count as bigdata_total, export_all as bigdata_export
@@ -905,6 +905,14 @@ def _run_upload_check():
 
     except Exception as e:
         push_log(f"❌ 체크 오류: {e}")
+
+
+@app.route(f"{URL_PREFIX}/ai/verify", methods=["POST"])
+@login_required
+def ai_verify():
+    """AI API 키 정상 작동 여부 확인"""
+    result = verify_ai_key()
+    return jsonify(result)
 
 
 @app.route(f"{URL_PREFIX}/run/upload-check", methods=["POST"])

@@ -1348,12 +1348,26 @@ async function uploadSelected() {
     addLog("\u26A0\uFE0F \uC120\uD0DD\uB41C \uC0C1\uD488\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uCCB4\uD06C\uBC15\uC2A4\uB85C \uC0C1\uD488\uC744 \uC120\uD0DD\uD574\uC8FC\uC138\uC694", "warn");
     return;
   }
+  // AI API 키 사전 검증
+  addLog("🔑 AI API 키 확인 중...", "info");
+  try {
+    const aiRes = await fetch(PREFIX + "/ai/verify", {method:"POST"}).then(r => r.json());
+    if (!aiRes.ok) {
+      addLog(`❌ AI API 오류: ${aiRes.message}`, "error");
+      alert(`⚠️ AI API 확인 필요!\n\n${aiRes.message}\n\n설정 > AI 글쓰기 설정에서 API 키를 확인해주세요.`);
+      return;
+    }
+    addLog(`✅ ${aiRes.message}`, "info");
+  } catch(e) {
+    addLog("⚠️ AI 키 검증 실패 — 업로드를 계속합니다", "warn");
+  }
+
   await fetch(PREFIX + "/products/update", {
     method: "POST", headers: {"Content-Type":"application/json"},
     body: JSON.stringify({ selected_codes: [...checkedCodes] })
   });
   const mu = document.getElementById("cafe-max-upload").value;
-  addLog(`\uD83D\uDCE4 ${checkedCodes.size}\uAC1C \uC0C1\uD488 \uC5C5\uB85C\uB4DC \uC2DC\uC791...`, "info");
+  addLog(`📤 ${checkedCodes.size}개 상품 업로드 시작...`, "info");
   await post("/run/upload", { max_upload: mu ? +mu : null });
 }
 

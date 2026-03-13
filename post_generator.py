@@ -443,6 +443,42 @@ def _build_prompt(product: dict, price_info: dict) -> str:
 공급사/매입처(Xebio, SuperSports 등) 이름은 절대 언급하지 마세요."""
 
 
+# ── AI 키 검증 ────────────────────────────
+
+def verify_ai_key() -> dict:
+    """현재 AI provider의 API 키가 정상 작동하는지 확인
+    Returns: {"ok": bool, "provider": str, "message": str}
+    """
+    provider = _ai_config["provider"]
+
+    if provider == "none":
+        return {"ok": False, "provider": "none", "message": "AI provider가 'none'으로 설정되어 있습니다. 기본 템플릿이 사용됩니다."}
+
+    if provider == "gemini":
+        key = _ai_config["gemini_key"]
+        if not key:
+            return {"ok": False, "provider": "gemini", "message": "GEMINI_API_KEY가 설정되지 않았습니다."}
+        try:
+            result = _call_gemini("테스트입니다. '확인'이라고만 답해주세요.")
+            if result:
+                return {"ok": True, "provider": "gemini", "message": f"Gemini API 정상 작동 (응답: {result[:20]})"}
+        except Exception as e:
+            return {"ok": False, "provider": "gemini", "message": f"Gemini API 오류: {e}"}
+
+    elif provider == "claude":
+        key = _ai_config["claude_key"]
+        if not key:
+            return {"ok": False, "provider": "claude", "message": "ANTHROPIC_API_KEY가 설정되지 않았습니다."}
+        try:
+            result = _call_claude("테스트입니다. '확인'이라고만 답해주세요.")
+            if result:
+                return {"ok": True, "provider": "claude", "message": f"Claude API 정상 작동 (응답: {result[:20]})"}
+        except Exception as e:
+            return {"ok": False, "provider": "claude", "message": f"Claude API 오류: {e}"}
+
+    return {"ok": False, "provider": provider, "message": f"알 수 없는 provider: {provider}"}
+
+
 # ── AI 호출 ────────────────────────────────
 
 def _call_gemini(prompt: str) -> str:
