@@ -581,11 +581,66 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                         _log(f"   ❌ [검증] 섹션 순서 이상! 등록 중단")
                         verify_ok = False
 
-                # 네이버 폼 URL 존재 확인
+                # [검증 2-2] 네이버 폼 URL 존재 확인 (텍스트 또는 OG 카드)
+                form_found = False
                 if "naver.me" in body_text or "네이버 폼" in body_text:
-                    _log(f"   ✅ [검증] 네이버 폼 링크 확인됨")
+                    form_found = True
+                    _log(f"   ✅ [검증] 네이버 폼 링크 확인됨 (텍스트)")
                 else:
-                    _log(f"   ⚠️ [검증] 네이버 폼 링크가 본문에 없을 수 있음 (OG 미리보기로 삽입된 경우 정상)")
+                    # OG 미리보기 카드로 삽입된 경우 — 링크/이미지에서 확인
+                    try:
+                        og_selectors = [
+                            "a[href*='naver.me']",
+                            "[class*='oglink'] a[href*='naver']",
+                            ".se-oglink a",
+                            "a[href*='form.naver']",
+                            "[data-linktype='oglink']",
+                        ]
+                        for sel in og_selectors:
+                            try:
+                                cnt = await frame_locator.locator(sel).count()
+                                if cnt > 0:
+                                    form_found = True
+                                    _log(f"   ✅ [검증] 네이버 폼 링크 확인됨 (OG 카드)")
+                                    break
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+
+                if not form_found:
+                    _log(f"   ❌ [검증] 네이버 폼 링크 누락! — 재삽입 시도...")
+                    # 에디터 끝으로 이동 후 폼 URL 강제 삽입
+                    try:
+                        from post_generator import NAVER_FORM_URL as _FORM_URL
+                        # 에디터 영역 찾아서 끝에 URL 삽입
+                        for sel in [".se-content", ".se-section-text", "[contenteditable='true']"]:
+                            try:
+                                ed = frame_locator.locator(sel).first
+                                if await ed.count() > 0:
+                                    await ed.press("Control+End")
+                                    await asyncio.sleep(0.3)
+                                    await ed.press("Enter")
+                                    await ed.press("Enter")
+                                    # 클립보드로 URL 삽입
+                                    try:
+                                        await page.evaluate(f"navigator.clipboard.writeText('{_FORM_URL}')")
+                                        await asyncio.sleep(0.3)
+                                        await ed.press("Control+v")
+                                    except Exception:
+                                        await ed.type(_FORM_URL, delay=20)
+                                    await asyncio.sleep(5)
+                                    _log(f"   🔄 [검증] 네이버 폼 URL 강제 삽입 완료")
+                                    form_found = True
+                                    break
+                            except Exception:
+                                continue
+                    except Exception as e:
+                        _log(f"   ⚠️ [검증] 네이버 폼 재삽입 실패: {e}")
+
+                if not form_found:
+                    _log(f"   ❌ [검증] 네이버 폼 링크 재삽입도 실패 — 등록 중단!")
+                    verify_ok = False
 
                 # [검증 2-1] 본문 일본어 잔존 체크
                 import re as _re
@@ -1027,16 +1082,51 @@ async def type_content_to_editor_iframe(page, frame_locator, content: str, log=N
 
             # URL: 붙여넣기로 삽입 (OG 미리보기 카드 생성)
             if stripped and url_pattern.match(stripped):
+                url_inserted = False
+                # 방법 1: clipboard API (메인 페이지 컨텍스트)
                 try:
                     await page.evaluate(f"navigator.clipboard.writeText('{stripped}')")
                     await asyncio.sleep(0.5)
                     await target_el.press("Control+v")
-                    await asyncio.sleep(6)  # OG 미리보기 로딩 대기 (넉넉히)
+                    await asyncio.sleep(6)  # OG 미리보기 로딩 대기
+                    url_inserted = True
                     if log:
                         log(f"   🔗 URL 붙여넣기 (OG 미리보기): {stripped}")
-                except Exception:
-                    await target_el.type(stripped, delay=30)
-                    await asyncio.sleep(3)
+                except Exception as clip_err:
+                    logger.warning(f"클립보드 방법 실패: {clip_err}")
+
+                # 방법 2: execCommand insertText (iframe 내부에서 직접)
+                if not url_inserted:
+                    try:
+                        for frame in page.frames:
+                            try:
+                                editable = frame.locator("[contenteditable='true'], .se-content, .se-section-text").first
+                                if await editable.count() > 0:
+                                    await frame.evaluate(f"""
+                                        document.execCommand('insertText', false, '{stripped}');
+                                    """)
+                                    await asyncio.sleep(6)
+                                    url_inserted = True
+                                    if log:
+                                        log(f"   🔗 URL execCommand 삽입: {stripped}")
+                                    break
+                            except Exception:
+                                continue
+                    except Exception as exec_err:
+                        logger.warning(f"execCommand 방법 실패: {exec_err}")
+
+                # 방법 3: 타이핑 fallback
+                if not url_inserted:
+                    try:
+                        await target_el.type(stripped, delay=20)
+                        await asyncio.sleep(4)
+                        url_inserted = True
+                        if log:
+                            log(f"   🔗 URL 타이핑 삽입 (OG 미리보기 없을 수 있음): {stripped}")
+                    except Exception as type_err:
+                        logger.warning(f"URL 타이핑도 실패: {type_err}")
+                        if log:
+                            log(f"   ❌ URL 삽입 실패: {stripped}")
             elif stripped:
                 await target_el.type(stripped, delay=30)
                 await asyncio.sleep(0.1)
