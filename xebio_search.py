@@ -407,7 +407,12 @@ async def scrape_nike_sale(status_callback=None,
         # 수집 이력 기록
         try:
             from scrape_history import add_history
-            add_history(site_id, category_id, len(products), keyword=keyword)
+            brand_label_for_history = ""
+            if brand_code:
+                from site_config import get_brands
+                brand_names = get_brands(site_id)
+                brand_label_for_history = brand_names.get(brand_code, brand_code)
+            add_history(site_id, category_id, len(products), keyword=keyword, brand=brand_label_for_history)
         except Exception as e:
             logger.warning(f"수집 이력 저장 실패: {e}")
 

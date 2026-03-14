@@ -488,6 +488,7 @@
                 <th style="width:130px">날짜</th>
                 <th>사이트</th>
                 <th>카테고리</th>
+                <th>브랜드</th>
                 <th>키워드</th>
                 <th style="width:80px">수집</th>
                 <th style="width:80px">업로드</th>
@@ -495,7 +496,7 @@
               </tr>
             </thead>
             <tbody id="history-body">
-              <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">이력이 없습니다</td></tr>
+              <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px;">이력이 없습니다</td></tr>
             </tbody>
           </table>
         </div>
@@ -2479,16 +2480,18 @@ async function loadScrapeHistory() {
     const history = await res.json();
     const tbody = document.getElementById("history-body");
     if (!history.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px;">이력이 없습니다</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px;">이력이 없습니다</td></tr>';
       return;
     }
     tbody.innerHTML = history.map(h => {
       const stColor = h.status === "업로드완료" ? "var(--green)" : "var(--blue)";
+      const brand = h.brand ? `<span style="color:var(--orange,#f0a040);font-size:0.75rem;font-weight:600">${h.brand}</span>` : '<span style="color:var(--muted);font-size:0.72rem">-</span>';
       const kw = h.keyword ? `<span style="color:var(--accent);font-size:0.75rem">${h.keyword}</span>` : '<span style="color:var(--muted);font-size:0.72rem">-</span>';
       return `<tr>
         <td>${h.date}</td>
         <td>${h.site_name}</td>
         <td>${h.category_name}</td>
+        <td>${brand}</td>
         <td>${kw}</td>
         <td style="text-align:center;font-weight:600;color:var(--accent)">${h.product_count}개</td>
         <td style="text-align:center;font-weight:600;color:var(--green)">${h.uploaded_count || 0}개</td>
