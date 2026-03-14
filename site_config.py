@@ -52,6 +52,67 @@ SITES = {
                 "name_ja": "トレーニング",
                 "params": {"category": "training"},
             },
+            # ── 세일 + 브랜드별 ──
+            "sale-nike": {
+                "name": "세일 > 나이키",
+                "name_ja": "セール > ナイキ",
+                "params": {"discount": "sale", "brand": "004278"},
+            },
+            "sale-jordan": {
+                "name": "세일 > 조던",
+                "name_ja": "セール > ジョーダン",
+                "params": {"discount": "sale", "brand": "007009"},
+            },
+            "sale-newbalance": {
+                "name": "세일 > 뉴발란스",
+                "name_ja": "セール > ニューバランス",
+                "params": {"discount": "sale", "brand": "004150"},
+            },
+            "sale-adidas": {
+                "name": "세일 > 아디다스",
+                "name_ja": "セール > アディダス",
+                "params": {"discount": "sale", "brand": "004277"},
+            },
+            "sale-mizuno": {
+                "name": "세일 > 미즈노",
+                "name_ja": "セール > ミズノ",
+                "params": {"discount": "sale", "brand": "004052"},
+            },
+            "sale-asics": {
+                "name": "세일 > 아식스",
+                "name_ja": "セール > アシックス",
+                "params": {"discount": "sale", "brand": "004048"},
+            },
+            "sale-northface": {
+                "name": "세일 > 노스페이스",
+                "name_ja": "セール > ノースフェイス",
+                "params": {"discount": "sale", "brand": "004065"},
+            },
+            "sale-underarmour": {
+                "name": "세일 > 언더아머",
+                "name_ja": "セール > アンダーアーマー",
+                "params": {"discount": "sale", "brand": "005495"},
+            },
+            "sale-puma": {
+                "name": "세일 > 푸마",
+                "name_ja": "セール > プーマ",
+                "params": {"discount": "sale", "brand": "004059"},
+            },
+            "sale-descente": {
+                "name": "세일 > 데상트",
+                "name_ja": "セール > デサント",
+                "params": {"discount": "sale", "brand": "004044"},
+            },
+            "sale-yonex": {
+                "name": "세일 > 요넥스",
+                "name_ja": "セール > ヨネックス",
+                "params": {"discount": "sale", "brand": "004069"},
+            },
+            "sale-hoka": {
+                "name": "세일 > 호카",
+                "name_ja": "セール > ホカ",
+                "params": {"discount": "sale", "brand": "009630"},
+            },
         },
     },
     # ── 향후 추가 사이트 ──

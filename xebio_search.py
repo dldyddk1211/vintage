@@ -911,8 +911,12 @@ def load_latest_products() -> list:
     path = os.path.join(OUTPUT_DIR, "latest.json")
     if not os.path.exists(path):
         return []
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        # 스크래핑 중 파일 쓰기와 동시 읽기 시 안전 처리
+        return []
 
 
 # 단독 테스트

@@ -2052,7 +2052,17 @@ async function refreshStatus() {
       if (isPaused) isPaused = false;
       if (scrapeStartTime) stopTimer();
     }
-    document.getElementById("s-upload-status").textContent = d.uploading ? "\uC5C5\uB85C\uB4DC \uC9C4\uD589 \uC911..." : "\uB300\uAE30\uC911";
+    const upEl = document.getElementById("s-upload-status");
+    if (d.uploading) {
+      upEl.innerHTML = '<span class="c-yellow">업로드 진행 중 <span class="spinner"></span></span>';
+    } else {
+      upEl.textContent = "대기중";
+    }
+
+    // 동시 실행 상태 표시
+    if (d.scraping && d.uploading) {
+      upEl.innerHTML = '<span class="c-yellow">업로드 진행 중 <span class="spinner"></span> (수집과 동시 실행)</span>';
+    }
   } catch(e) {}
 }
 
