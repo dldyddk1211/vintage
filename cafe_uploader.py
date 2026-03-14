@@ -249,42 +249,55 @@ async def upload_products(products: list, status_callback=None, max_upload=None)
             await page.goto(cafe_home, wait_until="domcontentloaded", timeout=20000)
             await asyncio.sleep(2)
 
-            # 상품별 업로드
+            # 상품별 업로드 (실패 시 1회 재시도)
             for i, product in enumerate(upload_list, 1):
-                try:
-                    name_short = (product.get("name_ko") or product.get("name", ""))[:30]
-                    log(f"📤 [{i}/{len(upload_list)}] 업로드 중: {name_short}")
-                    result = await upload_single_product(page, product, log)
-                    if result:
-                        success_count += 1
-                        post_url = result if isinstance(result, str) else ""
-                        log(f"   ✅ 업로드 성공 ({success_count}개 완료)")
-                        # 매 건마다 게시글 URL 포함 텔레그램 알림
-                        notify_upload_success(name_short, success_count, len(upload_list), post_url)
-                        # 빅데이터 DB에 업로드 상태 저장
-                        try:
-                            from product_db import update_cafe_status
-                            code = product.get("product_code", "")
-                            if code:
-                                update_cafe_status(code, "업로드완료", datetime.now().isoformat())
-                        except Exception:
-                            pass
-                    else:
-                        log(f"   ⚠️ 업로드 실패")
-                        notify_upload_error(name_short, "업로드 실패")
+                name_short = (product.get("name_ko") or product.get("name", ""))[:30]
+                uploaded = False
 
-                    # 게시글 간 랜덤 딜레이 (8~13분) — 네이버 봇 탐지 방지
-                    if i < len(upload_list):
-                        delay_min = random.randint(8, 13)
-                        delay_sec = delay_min * 60
-                        next_name = (upload_list[i].get("name_ko") or upload_list[i].get("name", ""))[:30]
-                        log(f"   ⏳ 다음 게시글까지 {delay_min}분 대기...")
-                        notify_upload_waiting(next_name, i, len(upload_list), delay_min)
-                        await asyncio.sleep(delay_sec)
-                except Exception as e:
-                    log(f"   ❌ 오류: {e}")
-                    notify_upload_error(name_short, str(e))
-                    continue
+                for attempt in range(1, 3):  # 최대 2회 시도
+                    try:
+                        if attempt == 1:
+                            log(f"📤 [{i}/{len(upload_list)}] 업로드 중: {name_short}")
+                        else:
+                            log(f"🔄 [{i}/{len(upload_list)}] 재시도 중 (2/2): {name_short}")
+                            await asyncio.sleep(5)  # 재시도 전 짧은 대기
+
+                        result = await upload_single_product(page, product, log)
+                        if result:
+                            success_count += 1
+                            post_url = result if isinstance(result, str) else ""
+                            log(f"   ✅ 업로드 성공 ({success_count}개 완료)")
+                            notify_upload_success(name_short, success_count, len(upload_list), post_url)
+                            try:
+                                from product_db import update_cafe_status
+                                code = product.get("product_code", "")
+                                if code:
+                                    update_cafe_status(code, "업로드완료", datetime.now().isoformat())
+                            except Exception:
+                                pass
+                            uploaded = True
+                            break  # 성공 → 다음 상품으로
+                        else:
+                            if attempt == 1:
+                                log(f"   ⚠️ 업로드 실패 — 1회 재시도합니다")
+                            else:
+                                log(f"   ⛔ 2회 연속 실패 — 다음 상품으로 건너뜁니다")
+                                notify_upload_error(name_short, "2회 연속 업로드 실패")
+                    except Exception as e:
+                        if attempt == 1:
+                            log(f"   ⚠️ 오류 발생: {e} — 1회 재시도합니다")
+                        else:
+                            log(f"   ⛔ 2회 연속 오류: {e} — 다음 상품으로 건너뜁니다")
+                            notify_upload_error(name_short, str(e))
+
+                # 게시글 간 랜덤 딜레이 (8~13분) — 네이버 봇 탐지 방지
+                if i < len(upload_list):
+                    delay_min = random.randint(8, 13)
+                    delay_sec = delay_min * 60
+                    next_name = (upload_list[i].get("name_ko") or upload_list[i].get("name", ""))[:30]
+                    log(f"   ⏳ 다음 게시글까지 {delay_min}분 대기...")
+                    notify_upload_waiting(next_name, i, len(upload_list), delay_min)
+                    await asyncio.sleep(delay_sec)
 
         except Exception as e:
             log(f"❌ 전체 오류: {e}")
