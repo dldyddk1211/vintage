@@ -3,7 +3,9 @@ exchange.py
 구글 검색에서 엔화 → 원화 환율 스크래핑 (완전 무료)
 """
 
+import json
 import math
+import os
 import re
 import requests
 import logging
@@ -22,15 +24,46 @@ logger = logging.getLogger(__name__)
 _cache = {"rate": None, "time": None}
 CACHE_MINUTES = 120
 
-# ── 가격 계산 변수 (대시보드에서 변경 가능) ──────────────
-_jp_fee_rate       = JP_PLATFORM_FEE_RATE  # 일본 수수료율 (기본 0.03 = 3%)
-_exchange_buy_markup = 0.02                # 환율 추가 마진 (기본 0.02 = 2%)
-_margin_pct        = 0.10                  # 구매대행 마진율 (기본 0.10 = 10%)
-_intl_shipping_krw = 15000                 # 국제배송비 원화 (기본 15,000원)
+# ── 가격 설정 파일 경로 ──────────────
+from data_manager import get_path
+_PRICE_CONFIG_PATH = os.path.join(get_path("db"), "price_config.json")
+
+
+def _load_saved_price_config() -> dict:
+    """저장된 가격 설정 로드"""
+    if os.path.exists(_PRICE_CONFIG_PATH):
+        try:
+            with open(_PRICE_CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_price_config():
+    """가격 설정을 파일에 저장"""
+    os.makedirs(os.path.dirname(_PRICE_CONFIG_PATH), exist_ok=True)
+    data = {
+        "jp_fee_rate": _jp_fee_rate,
+        "exchange_buy_markup": _exchange_buy_markup,
+        "margin_pct": _margin_pct,
+        "intl_shipping_krw": _intl_shipping_krw,
+    }
+    with open(_PRICE_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    logger.info(f"💾 가격 설정 저장됨: {_PRICE_CONFIG_PATH}")
+
+
+# ── 가격 계산 변수 (저장된 값 우선, 없으면 기본값) ──────────────
+_saved = _load_saved_price_config()
+_jp_fee_rate       = _saved.get("jp_fee_rate", JP_PLATFORM_FEE_RATE)
+_exchange_buy_markup = _saved.get("exchange_buy_markup", 0.02)
+_margin_pct        = _saved.get("margin_pct", 0.10)
+_intl_shipping_krw = _saved.get("intl_shipping_krw", 15000)
 
 
 def set_price_config(jp_fee=None, buy_markup=None, margin=None, shipping=None):
-    """대시보드에서 가격 계산 변수 일괄 변경"""
+    """대시보드에서 가격 계산 변수 일괄 변경 + 파일 저장"""
     global _jp_fee_rate, _exchange_buy_markup, _margin_pct, _intl_shipping_krw
     if jp_fee is not None:
         _jp_fee_rate = jp_fee
@@ -40,6 +73,7 @@ def set_price_config(jp_fee=None, buy_markup=None, margin=None, shipping=None):
         _margin_pct = margin
     if shipping is not None:
         _intl_shipping_krw = int(shipping)
+    _save_price_config()
     logger.info(f"가격 설정 변경: 수수료={_jp_fee_rate*100:.1f}% 환율추가={_exchange_buy_markup*100:.1f}% 마진={_margin_pct*100:.1f}% 배송={_intl_shipping_krw}원")
 
 
@@ -56,6 +90,7 @@ def get_price_config() -> dict:
 def set_margin_rate(rate: float):
     global _margin_pct
     _margin_pct = rate - 1  # 1.1 → 0.1
+    _save_price_config()
     logger.info(f"마진율 변경: {_margin_pct*100:.0f}%")
 
 def get_margin_rate() -> float:
