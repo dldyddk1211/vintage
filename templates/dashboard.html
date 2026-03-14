@@ -533,6 +533,8 @@
           <span style="color:var(--muted);font-size:0.8rem" id="filter-result"></span>
         </div>
 
+        <div id="product-summary" style="display:none;margin-bottom:10px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:0.82rem;"></div>
+
         <div id="dup-area"></div>
 
         <div class="select-bar">
@@ -886,6 +888,30 @@
           <div class="lbl">브랜드 수</div>
           <div class="val c-purple" id="bd-brands">0</div>
           <div class="hint">고유 브랜드</div>
+        </div>
+      </div>
+
+      <!-- 카페 업로드 통계 -->
+      <div class="stat-grid" style="margin-top:12px;">
+        <div class="stat-card">
+          <div class="lbl">전체 카페 업로드</div>
+          <div class="val c-blue" id="bd-uploaded-total">0</div>
+          <div class="hint">카페 업로드 완료</div>
+        </div>
+        <div class="stat-card">
+          <div class="lbl">오늘 업로드</div>
+          <div class="val c-green" id="bd-uploaded-today">0</div>
+          <div class="hint">금일 카페 업로드</div>
+        </div>
+        <div class="stat-card">
+          <div class="lbl">이번주 업로드</div>
+          <div class="val c-yellow" id="bd-uploaded-week">0</div>
+          <div class="hint">최근 7일 업로드</div>
+        </div>
+        <div class="stat-card">
+          <div class="lbl">업로드 브랜드 수</div>
+          <div class="val c-purple" id="bd-uploaded-brands">0</div>
+          <div class="hint">업로드된 고유 브랜드</div>
         </div>
       </div>
 
@@ -1950,10 +1976,25 @@ async function loadProducts(page = 1) {
     if (!d.products || d.products.length === 0) {
       tb.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:40px">${search||brand!=="ALL" ? "\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4." : "\uC2A4\uD06C\uB798\uD551\uC744 \uBA3C\uC800 \uC2E4\uD589\uD558\uC138\uC694."}</td></tr>`;
       document.getElementById("filter-result").textContent = "0\uAC1C";
+      document.getElementById("product-summary").style.display = "none";
       return;
     }
     document.getElementById("filter-result").textContent = `\uCD1D ${d.total.toLocaleString()}\uAC1C`;
     document.getElementById("nav-count").textContent = d.total;
+
+    // 상품 요약 (총 개수 + 브랜드별)
+    const summaryDiv = document.getElementById("product-summary");
+    const bc = d.brand_counts || {};
+    const brandEntries = Object.entries(bc).sort((a,b) => b[1] - a[1]);
+    if (brandEntries.length > 0) {
+      const brandTags = brandEntries.map(([b,c]) =>
+        `<span style="display:inline-block;margin:2px 4px;padding:3px 10px;background:var(--accent)18;color:var(--accent);border:1px solid var(--accent)44;border-radius:12px;font-size:0.76rem">${b} <b>${c}</b></span>`
+      ).join("");
+      summaryDiv.innerHTML = `<span style="font-weight:600;color:var(--text)">전체 ${(d.total_all||d.total).toLocaleString()}개</span> · <span style="color:var(--muted)">브랜드 ${brandEntries.length}종</span><div style="margin-top:6px">${brandTags}</div>`;
+      summaryDiv.style.display = "block";
+    } else {
+      summaryDiv.style.display = "none";
+    }
     const startIdx = (page - 1) * PER;
     pageIndexMap = d.products.map((_, i) => startIdx + i);
     tb.innerHTML = d.products.map((p, i) => {
@@ -2512,6 +2553,12 @@ async function loadBigdataStats() {
     document.getElementById("bd-today").textContent = (d.today || 0).toLocaleString();
     document.getElementById("bd-week").textContent = (d.week || 0).toLocaleString();
     document.getElementById("bd-brands").textContent = (d.top_brands || []).length;
+
+    // 카페 업로드 통계
+    document.getElementById("bd-uploaded-total").textContent = (d.uploaded_total || 0).toLocaleString();
+    document.getElementById("bd-uploaded-today").textContent = (d.uploaded_today || 0).toLocaleString();
+    document.getElementById("bd-uploaded-week").textContent = (d.uploaded_week || 0).toLocaleString();
+    document.getElementById("bd-uploaded-brands").textContent = (d.uploaded_brands || 0).toLocaleString();
 
     // 사이트별 현황
     const breakdown = document.getElementById("bd-site-breakdown");

@@ -479,8 +479,35 @@ def dashboard():
 @app.route(f"{URL_PREFIX}/products")
 @login_required
 def get_products():
-    """수집된 상품 목록 JSON 반환 (브랜드 필터, 페이지네이션)"""
+    """수집된 상품 목록 JSON 반환 (브랜드 필터, 페이지네이션)
+    latest.json + 빅데이터 DB 미업로드 상품 병합
+    """
     products = load_latest_products()
+
+    # 빅데이터 DB에서 미업로드 상품 병합 (중복 제거)
+    include_db = request.args.get("include_db", "true").lower()
+    if include_db == "true":
+        from product_db import get_unuploaded_products
+        db_products = get_unuploaded_products()
+        # latest.json에 있는 품번 수집
+        existing_codes = set()
+        for p in products:
+            code = p.get("product_code", "")
+            if code:
+                existing_codes.add(code)
+        # DB 상품 중 latest.json에 없는 것만 추가
+        for dp in db_products:
+            if dp.get("product_code") and dp["product_code"] not in existing_codes:
+                existing_codes.add(dp["product_code"])
+                products.append(dp)
+
+    # 브랜드별 수량 집계 (필터 적용 전 전체 기준)
+    brand_counts = {}
+    for p in products:
+        b = (p.get("brand_ko") or p.get("brand") or "").strip()
+        if b:
+            brand_counts[b] = brand_counts.get(b, 0) + 1
+    total_all = len(products)
 
     # 브랜드 필터 (한국어/원문 모두 비교)
     brand_filter = request.args.get("brand", "").strip()
@@ -511,9 +538,11 @@ def get_products():
 
     return jsonify({
         "total": len(products),
+        "total_all": total_all,
         "page": page,
         "per_page": per_page,
-        "products": page_products
+        "products": page_products,
+        "brand_counts": brand_counts,
     })
 
 

@@ -245,7 +245,7 @@ def get_stats() -> dict:
     try:
         total = conn.execute("SELECT COUNT(*) c FROM products").fetchone()["c"]
 
-        # 사이트별 통계
+        # 사이트별 통계 (카테고리 + 브랜드)
         site_rows = conn.execute("""
             SELECT site_id, category_id, COUNT(*) c
             FROM products GROUP BY site_id, category_id
@@ -258,6 +258,20 @@ def get_stats() -> dict:
                 by_site[sid] = {"total": 0, "categories": {}}
             by_site[sid]["total"] += r["c"]
             by_site[sid]["categories"][r["category_id"]] = r["c"]
+
+        # 사이트+카테고리별 브랜드 통계
+        brand_rows = conn.execute("""
+            SELECT site_id, category_id, brand_ko, COUNT(*) c
+            FROM products WHERE brand_ko != ''
+            GROUP BY site_id, category_id, brand_ko
+            ORDER BY site_id, category_id, c DESC
+        """).fetchall()
+        by_site_brand = {}
+        for r in brand_rows:
+            key = f"{r['site_id']}|{r['category_id']}"
+            if key not in by_site_brand:
+                by_site_brand[key] = []
+            by_site_brand[key].append({"brand": r["brand_ko"], "count": r["c"]})
 
         # 최근 통계
         today = conn.execute(
@@ -273,12 +287,34 @@ def get_stats() -> dict:
             WHERE brand_ko != '' GROUP BY brand_ko ORDER BY c DESC LIMIT 10
         """).fetchall()
 
+        # 카페 업로드 통계
+        uploaded_total = conn.execute(
+            "SELECT COUNT(*) c FROM products WHERE cafe_status = '업로드완료'"
+        ).fetchone()["c"]
+        uploaded_today = conn.execute(
+            "SELECT COUNT(*) c FROM products WHERE cafe_status = '업로드완료' "
+            "AND date(cafe_uploaded_at) = date('now','localtime')"
+        ).fetchone()["c"]
+        uploaded_week = conn.execute(
+            "SELECT COUNT(*) c FROM products WHERE cafe_status = '업로드완료' "
+            "AND cafe_uploaded_at >= datetime('now','localtime','-7 days')"
+        ).fetchone()["c"]
+        uploaded_brands = conn.execute(
+            "SELECT COUNT(DISTINCT brand_ko) c FROM products "
+            "WHERE cafe_status = '업로드완료' AND brand_ko != ''"
+        ).fetchone()["c"]
+
         return {
             "total": total,
             "today": today,
             "week": week,
             "by_site": by_site,
+            "by_site_brand": by_site_brand,
             "top_brands": [{"brand": r["brand_ko"], "count": r["c"]} for r in brands],
+            "uploaded_total": uploaded_total,
+            "uploaded_today": uploaded_today,
+            "uploaded_week": uploaded_week,
+            "uploaded_brands": uploaded_brands,
         }
     finally:
         conn.close()
@@ -430,5 +466,44 @@ def get_total_count() -> int:
     conn = _conn()
     try:
         return conn.execute("SELECT COUNT(*) c FROM products").fetchone()["c"]
+    finally:
+        conn.close()
+
+
+def get_unuploaded_products() -> list:
+    """카페 업로드 안 된 상품 목록 반환 (빅데이터 DB에서)"""
+    conn = _conn()
+    try:
+        rows = conn.execute("""
+            SELECT * FROM products
+            WHERE cafe_status = '' OR cafe_status IS NULL
+            ORDER BY created_at DESC
+        """).fetchall()
+        products = []
+        for r in rows:
+            products.append({
+                "site_id": r["site_id"],
+                "category_id": r["category_id"],
+                "product_code": r["product_code"],
+                "name": r["name"],
+                "name_ko": r["name_ko"] or r["name"],
+                "brand": r["brand"],
+                "brand_ko": r["brand_ko"] or r["brand"],
+                "price_jpy": r["price_jpy"],
+                "original_price": r["original_price"],
+                "discount_rate": r["discount_rate"],
+                "link": r["link"],
+                "img_url": r["img_url"],
+                "description": r["description"],
+                "description_ko": r["description_ko"],
+                "sizes": json.loads(r["sizes"]) if r["sizes"] else [],
+                "detail_images": json.loads(r["detail_images"]) if r["detail_images"] else [],
+                "in_stock": bool(r["in_stock"]),
+                "cafe_status": "",
+                "scraped_at": r["scraped_at"],
+                "created_at": r["created_at"],
+                "from_db": True,
+            })
+        return products
     finally:
         conn.close()
