@@ -153,7 +153,7 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages=""):
 
 
 def _shuffle_by_brand(products: list) -> list:
-    """브랜드가 연속되지 않도록 섞기 — 라운드로빈 방식"""
+    """브랜드가 연속되지 않도록 섞기 — 라운드로빈 방식 (브랜드 내 수집 순서 유지)"""
     import random
     from collections import defaultdict
 
@@ -162,11 +162,8 @@ def _shuffle_by_brand(products: list) -> list:
         brand = (p.get("brand_ko") or p.get("brand") or "기타").strip()
         brand_buckets[brand].append(p)
 
-    # 각 브랜드 내부도 랜덤
-    for brand in brand_buckets:
-        random.shuffle(brand_buckets[brand])
-
-    # 브랜드 키 랜덤 순서
+    # 브랜드 내부는 수집 순서 그대로 유지 (shuffle 안 함)
+    # 브랜드 순서만 랜덤
     brand_keys = list(brand_buckets.keys())
     random.shuffle(brand_keys)
 
