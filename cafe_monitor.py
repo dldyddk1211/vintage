@@ -457,7 +457,7 @@ async def search_cafe_by_browser(page, keyword: str, nickname: str = "", days: i
         return None
 
 
-async def batch_check_cafe_duplicates(products: list, nickname: str, days: int = 30, log=None, save_callback=None):
+async def batch_check_cafe_duplicates(products: list, nickname: str, days: int = 30, log=None, save_callback=None, stop_check=None):
     """빅데이터 DB 선 체크 → 네이버 카페 브라우저 체크
 
     Args:
@@ -555,6 +555,12 @@ async def batch_check_cafe_duplicates(products: list, nickname: str, days: int =
 
         try:
             for prod in remaining:
+                # 중지 요청 확인
+                if stop_check and stop_check():
+                    if log:
+                        log(f"   ⏹ 중지 요청 — {checked}/{total}에서 중단")
+                    break
+
                 code = prod.get("product_code", "")
                 if not code:
                     checked += 1

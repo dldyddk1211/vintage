@@ -904,8 +904,13 @@ def manual_upload():
     return jsonify({"ok": True, "message": "업로드 시작됨"})
 
 
+_upload_check_stop = False
+
 def _run_upload_check():
     """백그라운드에서 카페 중복 체크 실행 (Playwright 브라우저 사용)"""
+    global _upload_check_stop
+    _upload_check_stop = False
+
     from config import CAFE_MY_NICKNAME
 
     products = load_latest_products()
@@ -919,6 +924,9 @@ def _run_upload_check():
 
     from xebio_search import save_products
 
+    def stop_check():
+        return _upload_check_stop
+
     try:
         checked, duplicates = asyncio.run(
             batch_check_cafe_duplicates(
@@ -927,16 +935,22 @@ def _run_upload_check():
                 days=30,
                 log=push_log,
                 save_callback=lambda: save_products(products),
+                stop_check=stop_check,
             )
         )
 
         # 최종 저장
         save_products(products)
 
-        push_log(f"✅ 체크 완료: {checked}개 확인, {duplicates}개 중복 발견")
+        if _upload_check_stop:
+            push_log(f"⏹ 체크 중지됨: {checked}개 확인, {duplicates}개 중복 발견")
+        else:
+            push_log(f"✅ 체크 완료: {checked}개 확인, {duplicates}개 중복 발견")
 
     except Exception as e:
         push_log(f"❌ 체크 오류: {e}")
+    finally:
+        _upload_check_stop = False
 
 
 @app.route(f"{URL_PREFIX}/ai/verify", methods=["POST"])
@@ -954,6 +968,16 @@ def upload_check():
     thread = threading.Thread(target=_run_upload_check, daemon=True)
     thread.start()
     return jsonify({"ok": True, "message": "카페 중복 체크 시작됨 — 로그를 확인하세요"})
+
+
+@app.route(f"{URL_PREFIX}/run/upload-check-stop", methods=["POST"])
+@login_required
+def upload_check_stop():
+    """업로드 체크 중지"""
+    global _upload_check_stop
+    _upload_check_stop = True
+    push_log("⏹ 업로드 체크 중지 요청됨")
+    return jsonify({"ok": True})
 
 
 @app.route(f"{URL_PREFIX}/run/auto", methods=["POST"])

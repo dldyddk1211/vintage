@@ -1026,6 +1026,9 @@
           <button class="btn b-blue" id="btn-upload-check" onclick="runUploadCheck()" style="padding:9px 18px;">
             &#x1f50d; 업로드 체크
           </button>
+          <button class="btn b-red" id="btn-upload-check-stop" onclick="stopUploadCheck()" style="padding:9px 18px;display:none;">
+            &#x23F9; 체크 중지
+          </button>
           <button class="btn b-green" id="btn-cafe-upload" onclick="uploadSelected()" style="padding:9px 18px;">
             &#x1f4e4; 선택 상품 업로드 (<span id="cafe-sel-cnt">0</span>개)
           </button>
@@ -1418,6 +1421,7 @@ async function runUploadCheck() {
   const btn = document.getElementById("btn-upload-check");
   btn.disabled = true;
   btn.innerHTML = "🔍 체크 중... <span class='spinner'></span>";
+  document.getElementById("btn-upload-check-stop").style.display = "inline-flex";
   _uploadCheckActive = true;
 
   try {
@@ -1495,11 +1499,19 @@ function _finishUploadCheck() {
     btn.disabled = false;
     btn.textContent = "🔍 업로드 체크";
   }
+  document.getElementById("btn-upload-check-stop").style.display = "none";
   const progressDiv = document.getElementById("upload-check-progress");
   if (progressDiv) {
     progressDiv.style.display = "none";
   }
   loadCafeProducts(cafePage);
+}
+
+async function stopUploadCheck() {
+  try {
+    await fetch(PREFIX + "/run/upload-check-stop", {method:"POST"});
+    addLog("⏹ 업로드 체크 중지 요청", "warn");
+  } catch(e) { console.error(e); }
 }
 
 async function uploadSelected() {
