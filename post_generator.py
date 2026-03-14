@@ -390,8 +390,22 @@ def make_title(product: dict) -> str:
     name = product.get("name_ko", "") or product.get("name", "")
     code = product.get("product_code", "")
     name = _clean_name(name, code)
+
+    # 상품명 일본어 번역 (최대 2회 시도)
     if _has_japanese(name):
         name = _gemini_translate_name(name)
+    if _has_japanese(name):
+        logger.warning(f"⚠️ 제목 1차 번역 후에도 일본어 잔존 — 2차 시도: {name}")
+        name = _gemini_translate_name(name)
+
+    # 브랜드명도 일본어면 번역
+    if _has_japanese(brand):
+        brand = _gemini_translate_name(brand)
+
+    # 최종 확인: 그래도 일본어가 남아있으면 카타카나 사전으로 치환
+    if _has_japanese(name):
+        logger.warning(f"⚠️ 제목 번역 최종 실패 — 카타카나 사전 치환: {name}")
+        name = _translate_katakana(name)
 
     # 핵심 키워드 조합 (빈 값 제외)
     keywords = [k for k in ["일본구매대행", brand, name, code] if k]
@@ -790,6 +804,14 @@ def generate_cafe_post(product: dict, price_info: dict) -> dict:
 
         # 네이버 폼 URL이 누락되었으면 강제 삽입
         content = _ensure_naver_form(content)
+
+        # 최종 제목 일본어 잔존 확인
+        if _has_japanese(title):
+            logger.warning(f"⚠️ [{code}] 최종 제목에 일본어 잔존 — 재번역 시도")
+            title = _gemini_translate_name(title)
+            if _has_japanese(title):
+                title = _translate_katakana(title)
+                logger.warning(f"⚠️ [{code}] 제목 최종: {title}")
 
         return {"title": title, "content": content, "tags": tags}
 

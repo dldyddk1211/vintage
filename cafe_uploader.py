@@ -480,7 +480,7 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
 
         verify_ok = True
 
-        # [검증 1] 제목 확인
+        # [검증 1] 제목 확인 (비어있거나 일본어 포함 시 차단)
         try:
             title_val = ""
             for sel in ["textarea.textarea_input", "textarea[placeholder*='제목']"]:
@@ -492,7 +492,33 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                 except Exception:
                     continue
             if title_val:
-                _log(f"   ✅ [검증] 제목: {title_val[:40]}...")
+                # 일본어 잔존 체크
+                import re as _re
+                has_jp = bool(_re.search(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]', title_val))
+                if has_jp:
+                    _log(f"   ❌ [검증] 제목에 일본어가 포함되어 있습니다! → {title_val[:50]}")
+                    _log(f"   🔄 [재시도] 제목 재번역 시도...")
+                    from post_generator import _gemini_translate_name, _has_japanese
+                    new_title = _gemini_translate_name(title_val)
+                    if not _has_japanese(new_title):
+                        # 제목 필드 다시 입력
+                        for sel in ["textarea.textarea_input", "textarea[placeholder*='제목']"]:
+                            try:
+                                el = frame_locator.locator(sel).first
+                                if await el.count() > 0:
+                                    await el.fill("")
+                                    await asyncio.sleep(0.3)
+                                    await el.fill(new_title)
+                                    title_val = new_title
+                                    _log(f"   ✅ [검증] 제목 재번역 성공: {new_title[:40]}...")
+                                    break
+                            except Exception:
+                                continue
+                    else:
+                        _log(f"   ❌ [검증] 제목 재번역 후에도 일본어 잔존 — 등록 중단!")
+                        verify_ok = False
+                else:
+                    _log(f"   ✅ [검증] 제목: {title_val[:40]}...")
             else:
                 _log(f"   ❌ [검증] 제목이 비어있습니다!")
                 verify_ok = False
@@ -547,6 +573,22 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                     _log(f"   ✅ [검증] 네이버 폼 링크 확인됨")
                 else:
                     _log(f"   ⚠️ [검증] 네이버 폼 링크가 본문에 없을 수 있음 (OG 미리보기로 삽입된 경우 정상)")
+
+                # [검증 2-1] 본문 일본어 잔존 체크
+                import re as _re
+                jp_chars = _re.findall(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]+', body_text)
+                if jp_chars:
+                    # 한자만 있는 경우는 한국어 한자일 수 있으므로 카타카나/히라가나 기준으로 판단
+                    kana_chars = _re.findall(r'[\u3040-\u309F\u30A0-\u30FF]+', body_text)
+                    if kana_chars:
+                        _log(f"   ❌ [검증] 본문에 일본어(카나) 잔존: {', '.join(kana_chars[:5])}...")
+                        _log(f"   ❌ [검증] 번역되지 않은 일본어가 포함된 게시글입니다 — 등록 중단!")
+                        verify_ok = False
+                    else:
+                        _log(f"   ⬚ [검증] 본문 한자 감지 (한국어 한자일 수 있음, 통과)")
+                else:
+                    _log(f"   ✅ [검증] 본문 일본어 없음 — 번역 OK")
+
             elif len(body_text) > 0:
                 _log(f"   ⚠️ [검증] 본문이 너무 짧습니다 ({len(body_text)}자)")
                 verify_ok = False
@@ -581,12 +623,30 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                 _log(f"   ⚠️ [검증] 이미지 0개 — 예상 {expected_img}개인데 삽입 안됨")
                 # 이미지 재시도
                 _log(f"   🔄 [재시도] 이미지 다시 업로드 시도...")
+                retry_success = 0
                 for retry_idx, retry_url in enumerate(detail_images[:3]):
                     _log(f"   📷 재시도 이미지 [{retry_idx+1}/{min(len(detail_images),3)}]")
                     await upload_image_from_url_iframe(page, frame_locator, retry_url, _log)
                     await asyncio.sleep(2)
+
+                # 재시도 후 이미지 수 재확인
+                img_count_after = 0
+                for sel in img_selectors:
+                    try:
+                        cnt = await frame_locator.locator(sel).count()
+                        if cnt > img_count_after:
+                            img_count_after = cnt
+                    except Exception:
+                        continue
+
+                if img_count_after > 0:
+                    _log(f"   ✅ [검증] 이미지 재시도 성공: {img_count_after}개 삽입됨")
+                else:
+                    _log(f"   ❌ [검증] 이미지 재시도 후에도 0개 — 이미지 없는 글은 등록 중단!")
+                    verify_ok = False
             else:
-                _log(f"   ⬚ [검증] 이미지: 없음 (원본 이미지 없음)")
+                _log(f"   ⚠️ [검증] 원본 상품에 이미지가 없습니다 — 등록 중단!")
+                verify_ok = False
         except Exception as e:
             _log(f"   ⚠️ [검증] 이미지 확인 실패: {e}")
 
