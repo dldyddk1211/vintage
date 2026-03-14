@@ -100,8 +100,11 @@ def logout():
     session.clear()
     return redirect(f"{URL_PREFIX}/login")
 
-# 진행상황 메시지 큐 (SSE 실시간 전송용)
-log_queue = queue.Queue()
+# 진행상황 브로드캐스트 (멀티 클라이언트 SSE 지원)
+_log_subscribers = []          # 각 클라이언트별 queue 리스트
+_log_subscribers_lock = threading.Lock()
+_log_history = []              # 최근 로그 100개 보관 (새 접속 시 전송)
+_LOG_HISTORY_MAX = 100
 
 # 현재 실행 상태
 status = {
@@ -117,11 +120,45 @@ status = {
 
 
 def push_log(msg: str):
-    """실시간 로그 큐에 메시지 추가"""
+    """실시간 로그를 모든 접속 클라이언트에게 브로드캐스트"""
     timestamp = datetime.now().strftime("%H:%M:%S")
     full_msg = f"[{timestamp}] {msg}"
-    log_queue.put(full_msg)
+
+    # 히스토리에 저장
+    _log_history.append(full_msg)
+    if len(_log_history) > _LOG_HISTORY_MAX:
+        _log_history.pop(0)
+
+    # 모든 구독자에게 전송
+    with _log_subscribers_lock:
+        dead = []
+        for q in _log_subscribers:
+            try:
+                q.put_nowait(full_msg)
+            except Exception:
+                dead.append(q)
+        for q in dead:
+            _log_subscribers.remove(q)
+
     logger.info(msg)
+
+
+def _subscribe_logs() -> queue.Queue:
+    """새 SSE 클라이언트 등록 — 개별 큐 반환"""
+    q = queue.Queue()
+    # 최근 히스토리 전송 (접속 즉시 이전 로그 확인 가능)
+    for msg in _log_history:
+        q.put_nowait(msg)
+    with _log_subscribers_lock:
+        _log_subscribers.append(q)
+    return q
+
+
+def _unsubscribe_logs(q: queue.Queue):
+    """SSE 클라이언트 해제"""
+    with _log_subscribers_lock:
+        if q in _log_subscribers:
+            _log_subscribers.remove(q)
 
 
 # =============================================
@@ -1543,15 +1580,20 @@ def reset_all():
 def log_stream():
     """
     Server-Sent Events로 실시간 로그 전송
-    브라우저에서 EventSource로 수신
+    멀티 클라이언트 지원 — 데스크탑/태블릿/모바일 모두 동시 수신
     """
+    client_queue = _subscribe_logs()
+
     def generate():
-        while True:
-            try:
-                msg = log_queue.get(timeout=30)
-                yield f"data: {json.dumps({'msg': msg})}\n\n"
-            except queue.Empty:
-                yield f"data: {json.dumps({'msg': '.'})}\n\n"  # heartbeat
+        try:
+            while True:
+                try:
+                    msg = client_queue.get(timeout=30)
+                    yield f"data: {json.dumps({'msg': msg})}\n\n"
+                except queue.Empty:
+                    yield f"data: {json.dumps({'msg': '.'})}\n\n"  # heartbeat
+        finally:
+            _unsubscribe_logs(client_queue)
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
