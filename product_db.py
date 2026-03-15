@@ -521,10 +521,15 @@ def get_products_by_status(status: str) -> list:
     """특정 cafe_status의 상품 목록 반환 (빅데이터 DB에서)"""
     conn = _conn()
     try:
-        rows = conn.execute("""
+        # cafe_uploaded_at 컬럼 존재 여부 확인
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(products)").fetchall()}
+        has_uploaded_at = "cafe_uploaded_at" in cols
+
+        order_clause = "ORDER BY cafe_uploaded_at DESC, created_at DESC" if has_uploaded_at else "ORDER BY created_at DESC"
+        rows = conn.execute(f"""
             SELECT * FROM products
             WHERE cafe_status = ?
-            ORDER BY cafe_uploaded_at DESC, created_at DESC
+            {order_clause}
         """, (status,)).fetchall()
         products = []
         for r in rows:
@@ -547,7 +552,7 @@ def get_products_by_status(status: str) -> list:
                 "detail_images": json.loads(r["detail_images"]) if r["detail_images"] else [],
                 "in_stock": bool(r["in_stock"]),
                 "cafe_status": r["cafe_status"] or "",
-                "cafe_uploaded_at": r["cafe_uploaded_at"] or "",
+                "cafe_uploaded_at": (r["cafe_uploaded_at"] or "") if has_uploaded_at else "",
                 "scraped_at": r["scraped_at"],
                 "created_at": r["created_at"],
                 "from_db": True,

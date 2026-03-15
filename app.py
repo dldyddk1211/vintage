@@ -22,7 +22,7 @@ from config import (
     LOGIN_USERS, SECRET_KEY, APP_ENV,
     OUTPUT_DIR, DB_DIR,
 )
-from data_manager import get_status as get_data_status, set_data_root, get_data_root, ensure_dirs, is_connected
+from data_manager import get_status as get_data_status, set_data_root, get_data_root, get_path, ensure_dirs, is_connected
 from xebio_search import scrape_nike_sale, load_latest_products, set_app_status, force_close_browser
 from cafe_uploader import upload_products, naver_manual_login, has_saved_cookies, delete_cookies, request_upload_stop, is_upload_stop_requested
 from exchange import get_jpy_to_krw_rate, get_cached_rate, calc_buying_price, set_margin_rate, get_margin_rate, set_price_config, get_price_config
@@ -579,6 +579,28 @@ def get_products():
                         products.append(dp)
             except Exception as e:
                 logger.warning(f"DB 상태 조회 실패: {e}")
+        # DB도 없고 latest에도 없으면 업로드 히스토리에서 완료 상품 복원
+        if status_filter == "완료" and len(products) == 0:
+            try:
+                hist_path = os.path.join(get_path("db"), "uploaded_history.json")
+                if os.path.exists(hist_path):
+                    import json as _json
+                    with open(hist_path, "r", encoding="utf-8") as _f:
+                        hist = _json.load(_f)
+                    for h in hist:
+                        if h.get("product_code"):
+                            products.append({
+                                "product_code": h["product_code"],
+                                "name": h.get("name", ""),
+                                "name_ko": h.get("name", ""),
+                                "brand": h.get("brand", ""),
+                                "brand_ko": h.get("brand", ""),
+                                "price_jpy": h.get("price_jpy", 0),
+                                "cafe_status": "완료",
+                                "cafe_uploaded_at": h.get("uploaded_at", ""),
+                            })
+            except Exception as e:
+                logger.warning(f"업로드 히스토리 조회 실패: {e}")
 
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 50, type=int)
