@@ -398,6 +398,20 @@ def get_brands() -> list:
         conn.close()
 
 
+def delete_by_ids(ids: list) -> int:
+    """ID 리스트로 상품 삭제"""
+    if not ids:
+        return 0
+    conn = _conn()
+    try:
+        placeholders = ",".join("?" for _ in ids)
+        cur = conn.execute(f"DELETE FROM products WHERE id IN ({placeholders})", ids)
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
 def export_all(query="", site_id="", brand="") -> list:
     """전체 상품 내보내기 (필터 적용 가능)"""
     conn = _conn()

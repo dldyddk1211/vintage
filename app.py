@@ -30,7 +30,7 @@ from post_generator import get_ai_config, set_ai_config, verify_ai_key
 from site_config import get_sites_for_ui
 from scrape_history import get_history as get_scrape_history
 from cafe_schedule import load_schedule, save_schedule, load_check_schedule, save_check_schedule
-from product_db import init_db as init_product_db, get_stats as bigdata_get_stats, search_products as bigdata_search, get_brands as bigdata_get_brands, delete_all as bigdata_delete_all, delete_by_site as bigdata_delete_site, get_total_count as bigdata_total, export_all as bigdata_export
+from product_db import init_db as init_product_db, get_stats as bigdata_get_stats, search_products as bigdata_search, get_brands as bigdata_get_brands, delete_all as bigdata_delete_all, delete_by_site as bigdata_delete_site, delete_by_ids as bigdata_delete_ids, get_total_count as bigdata_total, export_all as bigdata_export
 from cafe_monitor import start_monitor, stop_monitor, is_monitoring, batch_check_cafe_duplicates
 from telegram_bot import start_bot, stop_bot, is_bot_running
 
@@ -1021,6 +1021,18 @@ def api_bigdata_products():
         page=request.args.get("page", 1, type=int),
         per_page=request.args.get("per_page", 50, type=int),
     ))
+
+
+@app.route(f"{URL_PREFIX}/bigdata/delete-selected", methods=["POST"])
+@login_required
+def api_bigdata_delete_selected():
+    """선택된 상품 삭제 (ID 리스트)"""
+    data = request.json or {}
+    ids = data.get("ids", [])
+    if not ids:
+        return jsonify({"ok": False, "message": "삭제할 상품을 선택하세요"})
+    count = bigdata_delete_ids(ids)
+    return jsonify({"ok": True, "deleted": count, "message": f"{count}개 삭제 완료"})
 
 
 @app.route(f"{URL_PREFIX}/bigdata/brands", methods=["GET"])
