@@ -462,24 +462,28 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
             _log("   ❌ 제목 입력란을 찾지 못했습니다")
             return False
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
 
         # ── 4단계: 대표 이미지 업로드 (첫 번째 상세 이미지) ──
         if detail_images:
             _log(f"   📷 대표 이미지 업로드")
             await upload_image_from_url_iframe(page, frame_locator, detail_images[0], _log)
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
 
         # ── 5단계: 에디터 툴바 탐색 + 본문 입력 ──
         toolbar_locator = await _find_toolbar_locator(page, frame_locator, _log)
         await type_content_to_editor_iframe(page, frame_locator, content, _log, toolbar_locator=toolbar_locator)
+
+        # 본문 입력 완료 후 충분히 대기 (에디터 렌더링 + OG 로딩)
+        _log("   ⏳ 본문 안정화 대기 중...")
+        await asyncio.sleep(5)
 
         # ── 6단계: 나머지 상세 이미지 업로드 ──
         remaining_images = detail_images[1:] if len(detail_images) > 1 else []
         for img_idx, img_url in enumerate(remaining_images):
             _log(f"   📷 상세 이미지 업로드 [{img_idx+1}/{len(remaining_images)}]")
             await upload_image_from_url_iframe(page, frame_locator, img_url, _log)
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
 
         # ── 7단계: 태그 입력 ──
         tags = post.get("tags", [])
@@ -489,7 +493,7 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
         # ── 8단계: 등록 전 검증 ──────────────────────
         _log("━" * 40)
         _log("   🔍 등록 전 검증 시작...")
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
 
         verify_ok = True
 
@@ -1308,12 +1312,12 @@ async def type_content_to_editor_iframe(page, frame_locator, content: str, log=N
                 if not url_inserted and log:
                     log(f"   ❌ URL 삽입 모든 방법 실패: {stripped}")
             elif stripped:
-                await target_el.type(stripped, delay=30)
-                await asyncio.sleep(0.1)
+                await target_el.type(stripped, delay=50)
+                await asyncio.sleep(0.3)
 
             if i < len(lines) - 1:
                 await target_el.press("Enter")
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.2)
 
             line_num += 1
 
@@ -1321,7 +1325,7 @@ async def type_content_to_editor_iframe(page, frame_locator, content: str, log=N
         if log:
             log(f"   ✅ 본문 입력 완료 ({len(lines)}줄)")
 
-        await asyncio.sleep(2)  # 에디터 렌더링 안정화 대기
+        await asyncio.sleep(5)  # 에디터 렌더링 안정화 대기 (충분히)
 
         # ════════════════════════════════════════
         # 2단계: 헤딩 줄에 서식 적용 (폰트 19 + 볼드)

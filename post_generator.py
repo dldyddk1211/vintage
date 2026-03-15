@@ -880,67 +880,91 @@ def generate_cafe_post(product: dict, price_info: dict) -> dict:
     provider = _ai_config["provider"]
     logger.info(f"📝 [{code}] 게시글 생성 시작 — AI: {provider}")
 
-    # API 키 확인
-    if provider == "gemini" and not _ai_config["gemini_key"]:
-        logger.warning(f"⚠️ [{code}] GEMINI_API_KEY 미설정 — 기본 템플릿 사용")
-        return {"title": title, "content": _make_fallback_content(product, price_info), "tags": tags}
-    elif provider == "claude" and not _ai_config["claude_key"]:
-        logger.warning(f"⚠️ [{code}] ANTHROPIC_API_KEY 미설정 — 기본 템플릿 사용")
-        return {"title": title, "content": _make_fallback_content(product, price_info), "tags": tags}
-    elif provider == "openai" and not _ai_config.get("openai_key"):
-        logger.warning(f"⚠️ [{code}] OPENAI_API_KEY 미설정 — 기본 템플릿 사용")
-        return {"title": title, "content": _make_fallback_content(product, price_info), "tags": tags}
-    elif provider == "none":
+    if provider == "none":
         logger.info(f"📝 [{code}] AI=none — 기본 템플릿 사용")
         return {"title": title, "content": _make_fallback_content(product, price_info), "tags": tags}
 
     prompt = _build_prompt(product, price_info)
-    logger.info(f"📝 [{code}] {provider} API 호출 중...")
 
-    try:
-        if provider == "gemini":
-            content = _call_gemini(prompt)
-            logger.info(f"✅ [{code}] Gemini 게시글 생성 완료 ({len(content)}자)")
-        elif provider == "openai":
-            content = _call_openai(prompt)
-            logger.info(f"✅ [{code}] OpenAI 게시글 생성 완료 ({len(content)}자)")
-        else:
-            content = _call_claude(prompt)
-            logger.info(f"✅ [{code}] Claude 게시글 생성 완료 ({len(content)}자)")
+    # AI 호출 순서: Claude → Gemini → OpenAI (3번 시도)
+    ai_providers = [
+        ("claude", _ai_config.get("claude_key"), _call_claude),
+        ("gemini", _ai_config.get("gemini_key"), _call_gemini),
+        ("openai", _ai_config.get("openai_key"), _call_openai),
+    ]
+    # 설정된 provider를 1순위로 정렬
+    ai_providers.sort(key=lambda x: 0 if x[0] == provider else 1)
 
-        content = _clean_ai_response(content)
+    errors = []
+    content = None
 
-        # AI 응답에서 추천 태그 추출
-        ai_tags = _extract_ai_tags(content)
-        if ai_tags:
-            tags.extend(ai_tags)
-            logger.info(f"🏷️ [{code}] 추천 태그 {len(ai_tags)}개 추가: {ai_tags}")
-            # 본문에서 태그 줄 제거
-            content = _remove_tag_line(content)
+    for prov_name, prov_key, prov_call in ai_providers:
+        if not prov_key:
+            errors.append(f"{prov_name}: API 키 미설정")
+            continue
+        try:
+            logger.info(f"📝 [{code}] {prov_name} API 호출 중...")
+            content = prov_call(prompt)
+            logger.info(f"✅ [{code}] {prov_name} 게시글 생성 완료 ({len(content)}자)")
+            break  # 성공하면 중단
+        except Exception as e:
+            err_msg = f"{prov_name}: {type(e).__name__}: {e}"
+            errors.append(err_msg)
+            logger.warning(f"⚠️ [{code}] {err_msg} — 다음 AI 시도")
+            content = None
 
-        # 본문에 일본어가 남아있으면 재번역 시도
-        if _has_japanese(content):
-            logger.warning(f"⚠️ [{code}] 본문에 일본어 잔존 — 재번역 시도")
-            content = _retranslate_content(content)
-        else:
-            logger.info(f"✅ [{code}] 일본어 없음 — 번역 OK")
+    # 모든 AI 실패
+    if not content:
+        error_detail = "\n".join(f"  {i+1}. {err}" for i, err in enumerate(errors))
+        logger.error(f"❌ [{code}] 모든 AI 실패:\n{error_detail}\n→ 기본 템플릿 사용")
 
-        # 네이버 폼 URL이 누락되었으면 강제 삽입
-        content = _ensure_naver_form(content)
+        # 텔레그램 알림 — 상세 오류 정보
+        try:
+            from notifier import send_telegram
+            brand = product.get("brand_ko") or product.get("brand", "")
+            name = product.get("name_ko") or product.get("name", "")
+            tg_msg = (
+                f"🚨 <b>AI 글쓰기 실패</b>\n\n"
+                f"📦 상품: {brand} {name}\n"
+                f"🔢 품번: {code}\n\n"
+                f"❌ <b>시도 결과:</b>\n{error_detail}\n\n"
+                f"📝 기본 템플릿으로 대체됩니다."
+            )
+            send_telegram(tg_msg)
+        except Exception as tg_err:
+            logger.warning(f"텔레그램 알림 실패: {tg_err}")
 
-        # 최종 제목 일본어 잔존 확인
-        if _has_japanese(title):
-            logger.warning(f"⚠️ [{code}] 최종 제목에 일본어 잔존 — 재번역 시도")
-            title = _gemini_translate_name(title)
-            if _has_japanese(title):
-                title = _translate_katakana(title)
-                logger.warning(f"⚠️ [{code}] 제목 최종: {title}")
-
-        return {"title": title, "content": content, "tags": tags}
-
-    except Exception as e:
-        logger.error(f"❌ [{code}] {provider} API 오류: {e} — 기본 템플릿 사용")
         return {"title": title, "content": _make_fallback_content(product, price_info), "tags": tags}
+
+    content = _clean_ai_response(content)
+
+    # AI 응답에서 추천 태그 추출
+    ai_tags = _extract_ai_tags(content)
+    if ai_tags:
+        tags.extend(ai_tags)
+        logger.info(f"🏷️ [{code}] 추천 태그 {len(ai_tags)}개 추가: {ai_tags}")
+        # 본문에서 태그 줄 제거
+        content = _remove_tag_line(content)
+
+    # 본문에 일본어가 남아있으면 재번역 시도
+    if _has_japanese(content):
+        logger.warning(f"⚠️ [{code}] 본문에 일본어 잔존 — 재번역 시도")
+        content = _retranslate_content(content)
+    else:
+        logger.info(f"✅ [{code}] 일본어 없음 — 번역 OK")
+
+    # 네이버 폼 URL이 누락되었으면 강제 삽입
+    content = _ensure_naver_form(content)
+
+    # 최종 제목 일본어 잔존 확인
+    if _has_japanese(title):
+        logger.warning(f"⚠️ [{code}] 최종 제목에 일본어 잔존 — 재번역 시도")
+        title = _gemini_translate_name(title)
+        if _has_japanese(title):
+            title = _translate_katakana(title)
+            logger.warning(f"⚠️ [{code}] 제목 최종: {title}")
+
+    return {"title": title, "content": content, "tags": tags}
 
 
 # ── Fallback 템플릿 ────────────────────────
