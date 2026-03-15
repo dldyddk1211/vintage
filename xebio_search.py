@@ -852,6 +852,11 @@ async def scrape_detail_page(page, url: str) -> dict:
                     if key in specs and specs[key]:
                         detail["product_code"] = specs[key]
                         break
+        # 최종 fallback: 상품명에서 품번 패턴 추출 (예: HV8150-004, FN8454-403)
+        if not detail.get("product_code") and detail.get("name"):
+            m = re.search(r'[A-Z]{1,4}\d[\w]*-\d{2,4}', detail["name"])
+            if m:
+                detail["product_code"] = m.group(0)
     except Exception as e:
         logger.debug(f"스펙 수집 오류: {e}")
 
