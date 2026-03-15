@@ -1736,6 +1736,40 @@ async def upload_image_from_url_iframe(page, frame_locator, img_url: str, log=No
     with open(tmp_path, "wb") as f:
         f.write(res.content)
 
+    # ── 얼굴 감지 → 얼굴 아래만 크롭 ──────────────
+    try:
+        import cv2
+        import numpy as np
+        img_cv = cv2.imdecode(np.frombuffer(open(tmp_path, "rb").read(), np.uint8), cv2.IMREAD_COLOR)
+        if img_cv is not None:
+            gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+            if len(faces) > 0:
+                # 얼굴 영역 중 가장 아래쪽 하단 y 좌표 계산
+                face_bottom = max(y + h for (x, y, w, h) in faces)
+                # 얼굴 아래 약간 여유(20px)를 두고 크롭
+                crop_y = min(face_bottom + 20, img_cv.shape[0])
+                remaining_height = img_cv.shape[0] - crop_y
+                # 남은 영역이 원본의 30% 이상일 때만 크롭 (너무 작으면 스킵)
+                if remaining_height >= img_cv.shape[0] * 0.3:
+                    cropped = img_cv[crop_y:, :]
+                    cv2.imwrite(tmp_path, cropped, [cv2.IMWRITE_JPEG_QUALITY, 90])
+                    logger.info(f"👤 얼굴 감지 → 크롭 완료: 상단 {crop_y}px 제거 (남은 높이 {remaining_height}px)")
+                    if log:
+                        log(f"   👤 얼굴 감지 → 얼굴 제외하고 크롭")
+                else:
+                    # 크롭 후 남는 영역이 너무 작으면 이미지 스킵
+                    logger.warning(f"👤 얼굴 감지 — 크롭 후 남은 영역 부족, 이미지 스킵")
+                    if log:
+                        log(f"   ⚠️ 얼굴 이미지 — 크롭 불가, 스킵")
+                    os.remove(tmp_path)
+                    return
+    except ImportError:
+        logger.warning("OpenCV 미설치 — 얼굴 감지 건너뜀")
+    except Exception as e:
+        logger.warning(f"얼굴 감지 처리 오류 (원본 유지): {e}")
+
     # 이미지 리사이즈 (가로 최대 800px)
     try:
         from PIL import Image
@@ -2049,6 +2083,32 @@ async def upload_image_from_url(page, img_url: str):
         f.write(res.content)
 
     logger.info(f"이미지 저장: {tmp_path} ({len(res.content):,} bytes)")
+
+    # ── 얼굴 감지 → 얼굴 아래만 크롭 ──────────────
+    try:
+        import cv2
+        import numpy as np
+        img_cv = cv2.imdecode(np.frombuffer(open(tmp_path, "rb").read(), np.uint8), cv2.IMREAD_COLOR)
+        if img_cv is not None:
+            gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+            if len(faces) > 0:
+                face_bottom = max(y + h for (x, y, w, h) in faces)
+                crop_y = min(face_bottom + 20, img_cv.shape[0])
+                remaining_height = img_cv.shape[0] - crop_y
+                if remaining_height >= img_cv.shape[0] * 0.3:
+                    cropped = img_cv[crop_y:, :]
+                    cv2.imwrite(tmp_path, cropped, [cv2.IMWRITE_JPEG_QUALITY, 90])
+                    logger.info(f"👤 얼굴 감지 → 크롭 완료: 상단 {crop_y}px 제거")
+                else:
+                    logger.warning(f"👤 얼굴 감지 — 크롭 후 남은 영역 부족, 이미지 스킵")
+                    os.remove(tmp_path)
+                    return
+    except ImportError:
+        logger.warning("OpenCV 미설치 — 얼굴 감지 건너뜀")
+    except Exception as e:
+        logger.warning(f"얼굴 감지 처리 오류 (원본 유지): {e}")
 
     try:
         # ── 방법 1: 에디터 이미지 버튼 클릭 후 file_chooser 이용 ──
