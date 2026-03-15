@@ -1456,15 +1456,14 @@ def update_ai_settings():
 def test_ai():
     """AI 연결 테스트"""
     try:
-        from post_generator import _call_gemini, _call_claude, _ai_config
+        from post_generator import verify_ai_key, _ai_config
         provider = _ai_config["provider"]
-        if provider == "gemini":
-            result = _call_gemini("한 문장으로 '안녕하세요'라고 인사해주세요.")
-        elif provider == "claude":
-            result = _call_claude("한 문장으로 '안녕하세요'라고 인사해주세요.")
+        logger.info(f"🧪 AI 테스트 요청 — provider: {provider}")
+        result = verify_ai_key()
+        if result["ok"]:
+            return jsonify({"ok": True, "provider": result["provider"], "response": result["message"]})
         else:
-            return jsonify({"ok": False, "message": "AI 미사용 설정"})
-        return jsonify({"ok": True, "provider": provider, "response": result[:100]})
+            return jsonify({"ok": False, "message": f"[{result['provider']}] {result['message']}"})
     except Exception as e:
         return jsonify({"ok": False, "message": str(e)})
 
