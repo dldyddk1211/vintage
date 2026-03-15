@@ -402,7 +402,20 @@ async def scrape_nike_sale(status_callback=None,
         except Exception as e:
             logger.warning(f"빅데이터 DB 처리 실패: {e}")
 
-        save_products(products)
+        # 기존 latest.json에서 완료/중복 상품 보존 후 새 상품 병합
+        try:
+            old_products = load_latest_products()
+            preserved = [p for p in old_products if p.get("cafe_status") in ("완료", "중복")]
+            preserved_codes = {p.get("product_code") for p in preserved if p.get("product_code")}
+            # 새 상품 중 보존 품번과 겹치지 않는 것만 추가
+            new_only = [p for p in products if p.get("product_code") not in preserved_codes]
+            merged = preserved + new_only
+            if preserved:
+                log(f"   📌 기존 완료/중복 {len(preserved)}개 보존 + 신규 {len(new_only)}개 병합")
+            save_products(merged)
+        except Exception as e:
+            logger.warning(f"상품 병합 저장 실패, 신규만 저장: {e}")
+            save_products(products)
 
         # 수집 이력 기록
         try:

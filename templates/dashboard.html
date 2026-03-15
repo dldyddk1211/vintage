@@ -355,6 +355,7 @@
       <span class="env-dot {{ 'prod' if env == 'production' else 'test' }}"></span>
       {{ '운영 서버' if env == 'production' else '테스트 서버' }}
     </div>
+    <div style="font-size:0.65rem;color:var(--muted);opacity:0.6;">{{ version }}</div>
     <a href="{{ url_prefix }}/logout" class="logout-btn" style="text-decoration:none">
       &#x1f6aa; <span>&#xb85c;&#xadf8;&#xc544;&#xc6c3;</span>
     </a>

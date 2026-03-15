@@ -38,6 +38,7 @@ from telegram_bot import start_bot, stop_bot, is_bot_running
 # 앱 초기화
 # =============================================
 
+APP_VERSION = "빅데이터 상태필터"
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = SECRET_KEY
 app.config["TEMPLATES_AUTO_RELOAD"] = True   # 템플릿 변경 즉시 반영
@@ -515,6 +516,7 @@ def dashboard():
         schedule_time=f"{AUTO_SCHEDULE_HOUR:02d}:{AUTO_SCHEDULE_MINUTE:02d}",
         url_prefix=URL_PREFIX,
         env=APP_ENV,
+        version=APP_VERSION,
     )
 
 
