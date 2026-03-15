@@ -521,9 +521,11 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                 await page.keyboard.press("Control+End")
                 await asyncio.sleep(0.3)
                 # 빈 줄 추가하여 템플릿과 구분 (2줄 여백)
-                await page.keyboard.press("Enter")
-                await page.keyboard.press("Enter")
-                await page.keyboard.press("Enter")
+                # 스마트에디터에서 빈 문단이 확실히 생기도록 공백+Enter 반복
+                for _ in range(3):
+                    await page.keyboard.press("Enter")
+                    await page.keyboard.type(" ", delay=30)
+                    await asyncio.sleep(0.1)
                 await page.keyboard.press("Enter")
                 await asyncio.sleep(0.3)
                 _log("   ✅ 기존 템플릿 끝으로 커서 이동 완료")
