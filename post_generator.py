@@ -685,12 +685,20 @@ def verify_ai_key() -> dict:
     elif provider == "openai":
         key = _ai_config.get("openai_key", "")
         if not key:
-            return {"ok": False, "provider": "openai", "message": "OPENAI_API_KEY가 설정되지 않았습니다."}
+            return {"ok": False, "provider": "openai", "message": "OPENAI_API_KEY가 설정되지 않았습니다. 대시보드에서 키를 입력하고 저장 버튼을 눌러주세요."}
         try:
+            # openai 패키지 설치 확인
+            try:
+                from openai import OpenAI
+            except ImportError:
+                return {"ok": False, "provider": "openai", "message": "openai 패키지가 설치되지 않았습니다. 서버에서 'pip install openai'를 실행해주세요."}
+            logger.info(f"🧪 OpenAI 테스트 시작 — key: {key[:8]}...{key[-4:]}")
             result = _call_openai("테스트입니다. '확인'이라고만 답해주세요.")
             if result:
                 return {"ok": True, "provider": "openai", "message": f"OpenAI API 정상 작동 (응답: {result[:20]})"}
+            return {"ok": False, "provider": "openai", "message": "OpenAI API 응답이 비어있습니다."}
         except Exception as e:
+            logger.error(f"🧪 OpenAI 테스트 실패: {e}")
             return {"ok": False, "provider": "openai", "message": f"OpenAI API 오류: {e}"}
 
     return {"ok": False, "provider": provider, "message": f"알 수 없는 provider: {provider}"}

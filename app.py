@@ -1458,13 +1458,19 @@ def test_ai():
     try:
         from post_generator import verify_ai_key, _ai_config
         provider = _ai_config["provider"]
-        logger.info(f"🧪 AI 테스트 요청 — provider: {provider}")
+        has_key = bool(_ai_config.get("openai_key")) if provider == "openai" else \
+                  bool(_ai_config.get("gemini_key")) if provider == "gemini" else \
+                  bool(_ai_config.get("claude_key"))
+        logger.info(f"🧪 AI 테스트 — provider: {provider}, key_set: {has_key}")
         result = verify_ai_key()
+        logger.info(f"🧪 AI 테스트 결과 — ok: {result['ok']}, msg: {result['message']}")
         if result["ok"]:
             return jsonify({"ok": True, "provider": result["provider"], "response": result["message"]})
         else:
             return jsonify({"ok": False, "message": f"[{result['provider']}] {result['message']}"})
     except Exception as e:
+        import traceback
+        logger.error(f"🧪 AI 테스트 예외: {traceback.format_exc()}")
         return jsonify({"ok": False, "message": str(e)})
 
 
