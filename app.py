@@ -176,15 +176,18 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages="", brand_
     # 중단 요청 초기화
     status["stop_requested"] = False
 
+    push_log(f"🔧 run_scrape 시작: site={site_id}, cat={category_id}, brand={brand_code}, pages={pages}")
     status["scraping"] = True
     try:
         from site_config import get_site
         site_info = get_site(site_id)
         source_type = site_info.get("source_type", "sports") if site_info else "sports"
+        push_log(f"   📡 source_type={source_type}, site_info={'있음' if site_info else '없음'}")
 
         if source_type == "vintage":
             from secondst_crawler import scrape_2ndstreet, set_app_status as set_2nd_status
             set_2nd_status(status)
+            push_log("   🚀 2ndstreet 크롤러 시작...")
             products = asyncio.run(scrape_2ndstreet(
                 status_callback=push_log,
                 category=category_id,
@@ -192,6 +195,7 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages="", brand_
                 pages=pages,
             ))
         else:
+            push_log("   🚀 Xebio 크롤러 시작 (Playwright 브라우저 열기)...")
             products = asyncio.run(scrape_nike_sale(
                 status_callback=push_log,
                 site_id=site_id,
@@ -204,9 +208,13 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages="", brand_
         status["last_scrape"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         push_log(f"🎉 스크래핑 완료: {len(products)}개 상품 수집")
     except Exception as e:
+        import traceback
         push_log(f"❌ 스크래핑 오류: {e}")
+        push_log(f"   📋 상세: {traceback.format_exc()[-500:]}")
+        logger.error(f"스크래핑 오류 상세:\n{traceback.format_exc()}")
     finally:
         status["scraping"] = False
+        push_log("🔧 run_scrape 종료 (scraping=False)")
 
 
 def _shuffle_by_brand(products: list) -> list:
