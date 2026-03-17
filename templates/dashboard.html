@@ -139,6 +139,7 @@
     .b-green  { background:var(--green);   color:#fff; }
     .b-purple { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; }
     .b-yellow { background:var(--yellow);  color:#000; }
+    .b-orange { background:#ff9800;       color:#000; }
     .b-red    { background:var(--red);     color:#fff; }
     .b-gray   { background:#2a2d3a;        color:var(--text); }
     .btn-row { display:flex; gap:10px; flex-wrap:wrap; }
@@ -537,6 +538,7 @@
           <button class="btn b-green"  id="btn-upload" onclick="runUpload()">&#x1f4e4; 선택 상품 업로드</button>
           <button class="btn b-purple" id="btn-auto"   onclick="runAuto()">&#x26a1; 자동 실행</button>
           <button class="btn b-yellow" id="btn-pause"  onclick="togglePause()" style="display:none">&#x23f8;&#xfe0f; 일시정지</button>
+          <button class="btn b-orange" id="btn-unlock" onclick="unlockStatus()" style="display:none" title="상태가 stuck 상태일 때 잠금 해제">&#x1f513; 잠금해제</button>
           <button class="btn b-red"    id="btn-reset"  onclick="runReset()">&#x1f504; 리셋</button>
           <button class="btn b-gray"   id="btn-translate" onclick="runTranslate()">&#x1f310; 한국어 번역</button>
           <button class="btn b-gray"   onclick="downloadExcel()" id="btn-excel">&#x1f4e5; 엑셀 다운로드</button>
@@ -1650,12 +1652,15 @@ function stopTimer() {
 }
 
 async function runScrape() {
+  console.log("[runScrape] 함수 호출됨");
+  addLog("🔧 runScrape() 호출됨 — 스크래핑 요청 준비 중...", "info");
   const siteId = document.getElementById("sel-site").value;
   const catId  = document.getElementById("sel-category").value;
   if (!siteId || !catId) { alert("사이트와 카테고리를 선택하세요"); return; }
   const keyword = document.getElementById("scrape-keyword").value.trim();
   const pagesRaw = document.getElementById("scrape-pages").value.trim();
   const brandCode = document.getElementById("sel-brand").value;
+  addLog(`📋 파라미터: site=${siteId}, cat=${catId}, brand=${brandCode}, keyword=${keyword}, pages=${pagesRaw}`, "info");
   checkedIndices.clear();
   updateSelCount();
   startTimer(3000);
@@ -2301,6 +2306,13 @@ async function runReset() {
   setTimeout(() => loadProducts(1), 800);
 }
 
+async function unlockStatus() {
+  if (!confirm("상태 잠금을 해제합니다. (데이터 삭제 없이 stuck 상태만 리셋)")) return;
+  await post("/run/unlock", {});
+  document.getElementById("btn-unlock").style.display = "none";
+  setTimeout(refreshStatus, 500);
+}
+
 async function post(path, body) {
   try {
     const r = await fetch(PREFIX + path, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
@@ -2547,14 +2559,18 @@ async function refreshStatus() {
 
     const scEl = document.getElementById("s-scraping");
     const pauseBtn = document.getElementById("btn-pause");
+    const unlockBtn = document.getElementById("btn-unlock");
     if (d.scraping) {
       scEl.innerHTML = `<span class="c-yellow">\uC2E4\uD589 \uC911 <span class="spinner"></span>${d.paused?' (\uC77C\uC2DC\uC815\uC9C0)':''}</span>`;
       setBtn(false);
       pauseBtn.style.display = "inline-flex";
+      // 30초 이상 scraping 상태면 unlock 버튼 표시 (stuck 가능성)
+      if (unlockBtn) unlockBtn.style.display = "inline-flex";
     } else {
       scEl.innerHTML = '<span class="c-green">\uB300\uAE30 \uC911 \u2713</span>';
       setBtn(true);
       pauseBtn.style.display = "none";
+      if (unlockBtn) unlockBtn.style.display = "none";
       if (isPaused) isPaused = false;
       if (scrapeStartTime) stopTimer();
     }

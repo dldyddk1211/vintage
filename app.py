@@ -2155,6 +2155,23 @@ def resume_scrape():
     return jsonify({"ok": True, "message": "재개됨"})
 
 
+@app.route(f"{URL_PREFIX}/run/unlock", methods=["POST"])
+@login_required
+def unlock_status():
+    """상태 잠금 해제 (데이터 삭제 없이 stuck 상태만 리셋)"""
+    was_scraping = status["scraping"]
+    was_uploading = status["uploading"]
+    status["scraping"] = False
+    status["uploading"] = False
+    status["paused"] = False
+    status["stop_requested"] = False
+    msg = "🔓 상태 잠금 해제 완료"
+    if was_scraping or was_uploading:
+        msg += f" (scraping={was_scraping}, uploading={was_uploading} → False)"
+    push_log(msg)
+    return jsonify({"ok": True, "message": msg})
+
+
 @app.route(f"{URL_PREFIX}/run/reset", methods=["POST"])
 @login_required
 def reset_all():
