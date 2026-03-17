@@ -2230,8 +2230,10 @@ def log_stream():
         except GeneratorExit:
             # 클라이언트 연결 끊김 (F5/탭닫기/강제종료)
             logger.info("🔌 SSE 클라이언트 연결 끊김 감지")
-            if status.get("scraping"):
-                logger.info("⛔ 크롤링 진행 중 SSE 끊김 — 작업 중단 + 브라우저 정리")
+            # 다른 SSE 클라이언트가 남아있으면 크롤링 중단하지 않음
+            remaining = len(_log_subscribers) - 1  # 현재 끊기는 클라이언트 제외
+            if status.get("scraping") and remaining <= 0:
+                logger.info("⛔ 마지막 SSE 클라이언트 끊김 — 작업 중단 + 브라우저 정리")
                 status["stop_requested"] = True
                 status["paused"] = False
                 try:
@@ -2244,6 +2246,8 @@ def log_stream():
                 except Exception:
                     pass
                 status["scraping"] = False
+            elif status.get("scraping"):
+                logger.info(f"   ℹ️ SSE 클라이언트 끊김이지만 {remaining}개 클라이언트 남아있음 — 크롤링 계속")
         finally:
             _unsubscribe_logs(client_queue)
 
