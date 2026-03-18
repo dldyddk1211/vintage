@@ -1324,11 +1324,13 @@
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
             <span style="font-size:0.8rem;color:var(--muted);">대기시간(분)</span>
-            <input type="number" id="cafe-delay-min" placeholder="8" min="8" max="60" value="8"
-              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:55px;font-size:0.82rem;text-align:center;">
+            <input type="number" id="cafe-delay-min" placeholder="13" min="8" max="60" value="13"
+              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:55px;font-size:0.82rem;text-align:center;"
+              onchange="saveCafeDelay()">
             <span style="font-size:0.8rem;color:var(--muted);">~</span>
-            <input type="number" id="cafe-delay-max" placeholder="13" min="8" max="60" value="13"
-              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:55px;font-size:0.82rem;text-align:center;">
+            <input type="number" id="cafe-delay-max" placeholder="15" min="8" max="60" value="15"
+              style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:55px;font-size:0.82rem;text-align:center;"
+              onchange="saveCafeDelay()">
           </div>
         </div>
 
@@ -2162,6 +2164,23 @@ async function resetUpload() {
 
   addLog("🔄 업로드 리셋 완료 — 초기 화면으로 돌아갑니다", "info");
 }
+
+function saveCafeDelay() {
+  const min = document.getElementById("cafe-delay-min").value;
+  const max = document.getElementById("cafe-delay-max").value;
+  localStorage.setItem("cafe_delay_min", min);
+  localStorage.setItem("cafe_delay_max", max);
+}
+
+function loadCafeDelay() {
+  const min = localStorage.getItem("cafe_delay_min");
+  const max = localStorage.getItem("cafe_delay_max");
+  if (min) document.getElementById("cafe-delay-min").value = min;
+  if (max) document.getElementById("cafe-delay-max").value = max;
+}
+
+// 페이지 로드 시 저장된 대기시간 복원
+document.addEventListener("DOMContentLoaded", loadCafeDelay);
 
 function _showUploadProgress(cur, total, detail) {
   let div = document.getElementById("cafe-upload-progress");
