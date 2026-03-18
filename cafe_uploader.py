@@ -292,6 +292,7 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
         return 0
 
     success_count = 0
+    uploaded_codes_session = set()  # 이번 세션에서 업로드 완료된 품번 (즉시 중복 차단용)
     upload_list = products[:max_upload] if max_upload else products
 
     # ── 업로드 전 품번 리스트 검증 ──
@@ -377,6 +378,11 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
                 code = product.get("product_code", "")
                 uploaded = False
 
+                # ── 세션 내 중복 즉시 차단 ──
+                if code and code in uploaded_codes_session:
+                    log(f"   ⏩ [{i}/{len(upload_list)}] 스킵: {name_short} — 이번 세션에서 이미 업로드됨")
+                    continue
+
                 # ── 글 작성 직전 DB에서 상태 재확인 (중복 방지) ──
                 if code:
                     try:
@@ -429,6 +435,8 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
                         result = await upload_single_product(page, product, log)
                         if result:
                             success_count += 1
+                            if code:
+                                uploaded_codes_session.add(code)
                             post_url = result if isinstance(result, str) else ""
                             log(f"   ✅ 업로드 성공 ({success_count}개 완료)")
                             notify_upload_success(name_short, success_count, len(upload_list), post_url)
