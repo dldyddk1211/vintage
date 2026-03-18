@@ -528,56 +528,81 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
             pass
 
         # ── 게시판 선택 (드롭다운에서 게시판 선택) ──
+        # URL에 menuId가 포함되어 있으면 게시판이 이미 선택된 상태
         try:
-            board_btn = frame_locator.locator(
-                "button:has-text('게시판을 선택해 주세요')"
-            ).first
-            if await board_btn.count() > 0:
-                await board_btn.click()
-                await asyncio.sleep(1)
-
-                # 드롭다운 목록 영역 찾기
-                dropdown = frame_locator.locator(
-                    "ul[role='listbox'], .select_list, [class*='selectbox'] ul, "
-                    "[class*='menu_list'], [class*='board_list']"
-                ).first
-
-                # 스크롤하면서 메뉴 항목 찾기
-                found = False
-                for scroll_try in range(10):
-                    menu_item = frame_locator.locator(
-                        f"li:has-text('{CAFE_MENU_NAME}'), "
-                        f"a:has-text('{CAFE_MENU_NAME}'), "
-                        f"button:has-text('{CAFE_MENU_NAME}'), "
-                        f"span:has-text('{CAFE_MENU_NAME}')"
-                    ).first
-                    if await menu_item.count() > 0:
-                        try:
-                            await menu_item.scroll_into_view_if_needed()
-                            await asyncio.sleep(0.3)
-                            await menu_item.click()
-                            found = True
+            # 이미 선택된 게시판 이름 확인
+            already_selected = False
+            selected_board_selectors = [
+                f"button:has-text('{CAFE_MENU_NAME}')",
+                f"a.board_name:has-text('{CAFE_MENU_NAME}')",
+                f"[class*='board_name']:has-text('{CAFE_MENU_NAME}')",
+                f"[class*='BoardSelectButton']:has-text('{CAFE_MENU_NAME}')",
+            ]
+            for sel in selected_board_selectors:
+                try:
+                    el = frame_locator.locator(sel).first
+                    if await el.count() > 0:
+                        board_text = (await el.inner_text()).strip()
+                        if CAFE_MENU_NAME in board_text:
+                            _log(f"   ✅ 게시판 이미 선택됨: {board_text}")
+                            already_selected = True
                             break
-                        except Exception:
-                            pass
+                except Exception:
+                    continue
 
-                    # 드롭다운 스크롤 다운
-                    if await dropdown.count() > 0:
-                        await dropdown.evaluate("el => el.scrollTop += 150")
-                    else:
-                        # 드롭다운을 못 찾으면 키보드로 스크롤
-                        await board_btn.press("ArrowDown")
-                        await board_btn.press("ArrowDown")
-                        await board_btn.press("ArrowDown")
-                    await asyncio.sleep(0.3)
-
-                if found:
+            if not already_selected:
+                # "게시판을 선택해 주세요" 버튼 찾기
+                board_btn = frame_locator.locator(
+                    "button:has-text('게시판을 선택해 주세요'), "
+                    "button:has-text('게시판'), "
+                    "a.board_name, [class*='BoardSelectButton']"
+                ).first
+                if await board_btn.count() > 0:
+                    await board_btn.click()
                     await asyncio.sleep(1)
-                    _log(f"   ✅ 게시판 선택: {CAFE_MENU_NAME}")
+
+                    # 드롭다운 목록 영역 찾기
+                    dropdown = frame_locator.locator(
+                        "ul[role='listbox'], .select_list, [class*='selectbox'] ul, "
+                        "[class*='menu_list'], [class*='board_list']"
+                    ).first
+
+                    # 스크롤하면서 메뉴 항목 찾기
+                    found = False
+                    for scroll_try in range(10):
+                        menu_item = frame_locator.locator(
+                            f"li:has-text('{CAFE_MENU_NAME}'), "
+                            f"a:has-text('{CAFE_MENU_NAME}'), "
+                            f"button:has-text('{CAFE_MENU_NAME}'), "
+                            f"span:has-text('{CAFE_MENU_NAME}')"
+                        ).first
+                        if await menu_item.count() > 0:
+                            try:
+                                await menu_item.scroll_into_view_if_needed()
+                                await asyncio.sleep(0.3)
+                                await menu_item.click()
+                                found = True
+                                break
+                            except Exception:
+                                pass
+
+                        # 드롭다운 스크롤 다운
+                        if await dropdown.count() > 0:
+                            await dropdown.evaluate("el => el.scrollTop += 150")
+                        else:
+                            await board_btn.press("ArrowDown")
+                            await board_btn.press("ArrowDown")
+                            await board_btn.press("ArrowDown")
+                        await asyncio.sleep(0.3)
+
+                    if found:
+                        await asyncio.sleep(1)
+                        _log(f"   ✅ 게시판 선택: {CAFE_MENU_NAME}")
+                    else:
+                        _log(f"   ⚠️ '{CAFE_MENU_NAME}' 메뉴 항목을 찾지 못했습니다")
                 else:
-                    _log(f"   ⚠️ '{CAFE_MENU_NAME}' 메뉴 항목을 찾지 못했습니다")
-            else:
-                _log("   ⚠️ 게시판 선택 버튼을 찾지 못했습니다")
+                    # menuId로 접속했으므로 게시판이 URL에서 이미 지정됨
+                    _log(f"   ℹ️ 게시판 선택 버튼 없음 — menuId={CAFE_MENU_ID}로 이미 지정됨")
         except Exception as e:
             _log(f"   ⚠️ 게시판 선택 시도: {e}")
 
