@@ -444,7 +444,7 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
                                 from product_db import update_cafe_status
                                 code = product.get("product_code", "")
                                 if code:
-                                    update_cafe_status(code, "업로드완료", datetime.now().isoformat())
+                                    update_cafe_status(code, "완료", datetime.now().isoformat())
                             except Exception:
                                 pass
                             # 즉시 완료 콜백 (중복 업로드 방지)
