@@ -679,6 +679,9 @@ def verify_ai_key() -> dict:
             if result:
                 return {"ok": True, "provider": "claude", "message": f"Claude API 정상 작동 (응답: {result[:20]})"}
         except Exception as e:
+            err = str(e)
+            if "credit balance is too low" in err:
+                return {"ok": False, "provider": "claude", "message": "Claude API 크레딧 잔액 부족 — console.anthropic.com 에서 충전 필요"}
             return {"ok": False, "provider": "claude", "message": f"Claude API 오류: {e}"}
 
     elif provider == "openai":
@@ -773,7 +776,15 @@ def chat_with_ai(message: str, history: list = None) -> dict:
 
     except Exception as e:
         logger.error(f"채팅 AI 오류 [{provider}]: {e}")
-        return {"ok": False, "provider": provider, "reply": f"AI 오류: {e}"}
+        err_str = str(e)
+        # 사용자 친화적 에러 메시지
+        if "credit balance is too low" in err_str or "billing" in err_str.lower():
+            return {"ok": False, "provider": provider, "reply": f"⚠️ [{provider}] API 크레딧 잔액이 부족합니다. 해당 서비스의 결제 페이지에서 크레딧을 충전해주세요."}
+        if "invalid_api_key" in err_str or "Incorrect API key" in err_str:
+            return {"ok": False, "provider": provider, "reply": f"⚠️ [{provider}] API 키가 유효하지 않습니다. 설정에서 키를 확인해주세요."}
+        if "rate_limit" in err_str or "429" in err_str:
+            return {"ok": False, "provider": provider, "reply": f"⚠️ [{provider}] API 요청 한도 초과입니다. 잠시 후 다시 시도해주세요."}
+        return {"ok": False, "provider": provider, "reply": f"❌ [{provider}] AI 오류: {err_str}"}
 
 
 # ── AI 호출 ────────────────────────────────
