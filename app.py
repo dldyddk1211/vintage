@@ -312,22 +312,9 @@ def run_upload(max_upload=None, shuffle_brands=False, checked_codes=None, delay_
 
     # 업로드 대상 결정
     if checked_set:
-        # 체크된 상품이 있는 경우
-        if max_upload and len(checked_products) >= max_upload:
-            # 체크 수 >= 업로드 수량 → 체크된 것만 수량만큼
-            selected = checked_products[:max_upload]
-            push_log(f"📋 체크 상품 {len(checked_products)}개 중 {max_upload}개만 업로드")
-        elif max_upload and len(checked_products) < max_upload:
-            # 체크 수 < 업로드 수량 → 체크 우선 + 나머지 대기에서 랜덤
-            remaining = max_upload - len(checked_products)
-            _random.shuffle(waiting_products)
-            filler = waiting_products[:remaining]
-            selected = checked_products + filler
-            push_log(f"📋 체크 {len(checked_products)}개 우선 + 대기 {len(filler)}개 랜덤 = 총 {len(selected)}개 업로드")
-        else:
-            # 수량 지정 없음 → 체크된 것만
-            selected = checked_products
-            push_log(f"📋 체크된 상품 {len(selected)}개 업로드")
+        # 체크된 상품이 있는 경우 → 체크된 것만 업로드 (랜덤 추가 안 함)
+        selected = checked_products
+        push_log(f"📋 체크된 상품 {len(selected)}개 업로드")
     else:
         # 체크 없음
         if max_upload:
