@@ -306,24 +306,22 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
         if code:
             code_count[code] = code_count.get(code, 0) + 1
 
-    # 중복 품번 검출 및 제거
-    dup_codes = {c for c, n in code_count.items() if n > 1}
-    if dup_codes:
-        log(f"   🚨 중복 품번 발견: {', '.join(dup_codes)}")
-        seen_codes = set()
-        deduped = []
-        for p_item in upload_list:
-            code = p_item.get("product_code", "")
-            if code and code in seen_codes:
-                log(f"   ⚠️ 중복 제거: {code}")
-                continue
-            if code:
-                seen_codes.add(code)
-            deduped.append(p_item)
-        log(f"   📋 중복 제거 완료: {len(upload_list)}개 → {len(deduped)}개")
-        upload_list = deduped
+    # 중복 품번 검출 및 제거 (항상 실행)
+    seen_codes = set()
+    deduped = []
+    for p_item in upload_list:
+        code = p_item.get("product_code", "")
+        if code and code in seen_codes:
+            log(f"   ⚠️ 중복 제거: {code}")
+            continue
+        if code:
+            seen_codes.add(code)
+        deduped.append(p_item)
+    if len(deduped) < len(upload_list):
+        log(f"   🚨 중복 품번 제거: {len(upload_list)}개 → {len(deduped)}개")
     else:
         log(f"   ✅ 중복 품번 없음 — {len(upload_list)}개 업로드 진행")
+    upload_list = deduped
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(

@@ -247,7 +247,7 @@ def _shuffle_by_brand(products: list) -> list:
     return result
 
 
-def run_upload(max_upload=None, shuffle_brands=False, checked_codes=None, delay_min=8, delay_max=13):
+def run_upload(max_upload=None, shuffle_brands=False, checked_codes=None, delay_min=13, delay_max=15):
     """백그라운드 스레드에서 업로드 실행
 
     우선순위:

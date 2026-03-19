@@ -2240,11 +2240,15 @@ async function uploadSelected() {
   });
   const shuffle = document.getElementById("cafe-shuffle-brands").checked;
 
-  // 대기시간 검증
-  let delayMin = parseInt(document.getElementById("cafe-delay-min").value) || 8;
-  let delayMax = parseInt(document.getElementById("cafe-delay-max").value) || 13;
-  if (delayMin < 8) { delayMin = 8; document.getElementById("cafe-delay-min").value = 8; }
-  if (delayMax < delayMin) { delayMax = delayMin; document.getElementById("cafe-delay-max").value = delayMax; }
+  // 대기시간 검증 (localStorage 우선, 없으면 입력값, 없으면 기본 13~15)
+  let delayMin = parseInt(document.getElementById("cafe-delay-min").value) || parseInt(localStorage.getItem("cafe_delay_min")) || 13;
+  let delayMax = parseInt(document.getElementById("cafe-delay-max").value) || parseInt(localStorage.getItem("cafe_delay_max")) || 15;
+  if (delayMin < 8) { delayMin = 8; }
+  if (delayMax < delayMin) { delayMax = delayMin; }
+  // 입력필드 + localStorage 동기화
+  document.getElementById("cafe-delay-min").value = delayMin;
+  document.getElementById("cafe-delay-max").value = delayMax;
+  saveCafeDelay();
 
   const desc = checkedCodes.size > 0 ? `체크 ${checkedCodes.size}개 우선` : "랜덤 선택";
   addLog(`📤 업로드 시작 (${desc}, 총 ${uploadTotal}개, 대기 ${delayMin}~${delayMax}분)${shuffle ? " 브랜드 랜덤":""}`, "info");
