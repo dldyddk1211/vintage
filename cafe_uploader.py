@@ -396,9 +396,8 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
                 if code:
                     try:
                         from cafe_monitor import search_cafe_by_browser
-                        from config import CAFE_MY_NICKNAME
                         log(f"   🔍 [{i}/{len(upload_list)}] 카페 중복 확인 중: {code}")
-                        search_result = await search_cafe_by_browser(page, code, CAFE_MY_NICKNAME, days=30)
+                        search_result = await search_cafe_by_browser(page, code, "", days=30)
                         if search_result:
                             log(f"   ⏩ [{i}/{len(upload_list)}] 스킵: {name_short} — 카페에 이미 게시됨 (by {search_result.get('writer', '')}, {search_result.get('write_date', '')})")
                             try:

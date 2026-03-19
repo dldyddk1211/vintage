@@ -373,6 +373,16 @@ async def search_cafe_by_browser(page, keyword: str, nickname: str = "", days: i
             snippet = page_text[:500].replace("\n", " ").strip()
             log(f"      📄 페이지 텍스트(500자): {snippet}")
 
+        # 닉네임 없이 검색한 경우 — 검색 결과에 품번이 있으면 중복으로 판단
+        if not nickname:
+            if keyword in page_text:
+                return {
+                    "title": keyword,
+                    "writer": "",
+                    "write_date": datetime.now().strftime("%Y-%m-%d"),
+                }
+            return None
+
         # 닉네임이 페이지에 있는지 전체 텍스트 확인
         if nickname and nickname in page_text:
             # 닉네임 주변 텍스트에서 날짜 추출
