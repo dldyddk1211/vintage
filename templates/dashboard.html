@@ -1301,6 +1301,9 @@
           <button class="btn b-red" id="btn-upload-check-stop" onclick="stopUploadCheck()" style="padding:9px 18px;display:none;">
             &#x23F9; 체크 중지
           </button>
+          <button class="btn b-blue" id="btn-upload-preview" onclick="previewUpload()" style="padding:9px 18px;">
+            &#x1f50d; 업로드 미리보기
+          </button>
           <button class="btn b-green" id="btn-cafe-upload" onclick="uploadSelected()" style="padding:9px 18px;">
             &#x1f4e4; 선택 상품 업로드 (<span id="cafe-sel-cnt">0</span>개)
           </button>
@@ -2062,6 +2065,49 @@ async function stopUploadCheck() {
     await fetch(PREFIX + "/run/upload-check-stop", {method:"POST"});
     addLog("⏹ 업로드 체크 중지 요청", "warn");
   } catch(e) { console.error(e); }
+}
+
+async function previewUpload() {
+  if (checkedCodes.size === 0) {
+    addLog("⚠️ 미리보기할 상품을 선택해주세요", "warn");
+    return;
+  }
+  addLog("🔍 업로드 미리보기 생성 중...", "info");
+  try {
+    const res = await fetch(PREFIX + "/run/upload-preview", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ checked_codes: [...checkedCodes] })
+    }).then(r => r.json());
+    if (!res.ok || !res.items.length) {
+      addLog("⚠️ 미리보기 결과가 없습니다", "warn");
+      return;
+    }
+    let html = `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px;">`;
+    html += `<div style="font-weight:600;margin-bottom:10px;">📋 업로드 미리보기 (${res.items.length}개)</div>`;
+    html += `<table style="width:100%;font-size:0.8rem;border-collapse:collapse;">`;
+    html += `<tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:4px">#</th><th style="text-align:left;padding:4px">품번</th><th style="text-align:left;padding:4px">브랜드</th><th style="text-align:left;padding:4px">생성 제목</th><th style="padding:4px">일본어</th></tr>`;
+    res.items.forEach((item, i) => {
+      const jpFlag = item.has_japanese ? `<span style="color:#f44">⚠️</span>` : `<span style="color:#4f4">✅</span>`;
+      html += `<tr style="border-bottom:1px solid var(--border)22;"><td style="padding:4px">${i+1}</td><td style="padding:4px;font-family:monospace">${item.product_code}</td><td style="padding:4px">${item.brand}</td><td style="padding:4px">${item.title}</td><td style="padding:4px;text-align:center">${jpFlag}</td></tr>`;
+    });
+    html += `</table>`;
+    const jpCount = res.items.filter(i => i.has_japanese).length;
+    if (jpCount > 0) {
+      html += `<div style="margin-top:10px;color:#f44;font-size:0.82rem;">⚠️ ${jpCount}개 상품에 일본어가 남아있습니다. AI 번역으로 자동 처리됩니다.</div>`;
+    }
+    html += `</div>`;
+    let previewDiv = document.getElementById("cafe-upload-preview");
+    if (!previewDiv) {
+      previewDiv = document.createElement("div");
+      previewDiv.id = "cafe-upload-preview";
+      const btnRow = document.getElementById("btn-cafe-upload")?.parentElement;
+      if (btnRow) btnRow.after(previewDiv);
+    }
+    previewDiv.innerHTML = html;
+    addLog(`✅ 미리보기 완료 — ${res.items.length}개 (일본어 잔존: ${jpCount}개)`, "info");
+  } catch(e) {
+    addLog("❌ 미리보기 실패: " + e, "error");
+  }
 }
 
 let _cafeUploadActive = false;

@@ -1499,6 +1499,50 @@ def manual_upload():
     return jsonify({"ok": True, "message": "업로드 시작됨"})
 
 
+@app.route(f"{URL_PREFIX}/run/upload-preview", methods=["POST"])
+@login_required
+def upload_preview():
+    """업로드 전 미리보기 — 번역 결과 포함 리스트 반환"""
+    data = request.json or {}
+    checked_codes = data.get("checked_codes", [])
+    if not checked_codes:
+        return jsonify({"ok": False, "items": []})
+
+    from post_generator import make_title, _has_japanese
+
+    products = load_latest_products()
+    # DB 상품 병합
+    try:
+        from product_db import get_unuploaded_products
+        db_products = get_unuploaded_products()
+        existing_codes = {p.get("product_code", "") for p in products if p.get("product_code")}
+        for dp in db_products:
+            if dp.get("product_code") and dp["product_code"] not in existing_codes:
+                existing_codes.add(dp["product_code"])
+                products.append(dp)
+    except Exception:
+        pass
+
+    checked_set = set(checked_codes)
+    items = []
+    for p in products:
+        code = p.get("product_code", "")
+        if code not in checked_set:
+            continue
+        name = p.get("name_ko") or p.get("name", "")
+        brand = p.get("brand_ko") or p.get("brand", "")
+        title = make_title(p)
+        has_jp = _has_japanese(title)
+        items.append({
+            "product_code": code,
+            "brand": brand,
+            "name": name[:50],
+            "title": title[:60],
+            "has_japanese": has_jp,
+        })
+    return jsonify({"ok": True, "items": items})
+
+
 @app.route(f"{URL_PREFIX}/run/upload-stop", methods=["POST"])
 @login_required
 def upload_stop():
