@@ -2067,10 +2067,15 @@ def save_naver_account():
     data = _load_naver_accounts()
     if "accounts" not in data:
         data["accounts"] = {}
+    existing = data["accounts"].get(slot, {})
+    # 비밀번호가 비어있으면 기존 비밀번호 유지
+    if not password and existing.get("password"):
+        password = existing["password"]
     data["accounts"][slot] = {"naver_id": naver_id, "password": password}
     _save_naver_accounts(data)
-    push_log(f"💾 네이버 계정 {slot} 저장: {naver_id}")
-    return jsonify({"ok": True})
+    pw_msg = "비밀번호 저장됨" if password else "비밀번호 미설정"
+    push_log(f"💾 네이버 계정 {slot} 저장: {naver_id} ({pw_msg})")
+    return jsonify({"ok": True, "message": f"저장 완료 ({pw_msg})"})
 
 
 @app.route(f"{URL_PREFIX}/naver/accounts/delete", methods=["POST"])
