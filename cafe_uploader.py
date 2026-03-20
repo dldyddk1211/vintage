@@ -535,18 +535,21 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                 await page.goto(try_url, wait_until="domcontentloaded", timeout=30000)
                 await asyncio.sleep(3)
 
+                current_url = page.url
+                _log(f"   📍 리다이렉트 결과: {current_url}")
+
                 # 로그인 페이지로 리다이렉트 됐는지 확인
-                if "login" in page.url or "nidlogin" in page.url:
+                if "login" in current_url or "nidlogin" in current_url:
                     _log("   ❌ 쿠키 만료 — 재로그인 필요")
                     _set_fail_reason("쿠키 만료 — 재로그인 필요")
                     return False
 
-                # 에러 페이지 / 빈 페이지 체크
-                if "error" in page.url or "cafe.naver.com/f-e/cafes" not in page.url and "cafe.naver.com/ca-fe/cafes" not in page.url and "write" not in page.url:
-                    _log(f"   ⚠️ 리다이렉트됨: {page.url} — 다음 URL 시도")
+                # 글쓰기 페이지가 아닌 곳으로 리다이렉트된 경우 (카페 메인 등)
+                if "write" not in current_url and "ArticleWrite" not in current_url:
+                    _log(f"   ⚠️ 글쓰기 페이지가 아님 — 쿠키 만료 또는 URL 형식 변경")
                     continue
 
-                _log(f"   ✅ 현재 URL: {page.url}")
+                _log(f"   ✅ 현재 URL: {current_url}")
                 page_loaded = True
                 break
             except Exception as e:
@@ -554,8 +557,8 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                 continue
 
         if not page_loaded:
-            _log("   ❌ 글쓰기 페이지를 열 수 없습니다")
-            _set_fail_reason("글쓰기 페이지 열기 실패")
+            _log("   ❌ 글쓰기 페이지를 열 수 없습니다 — 쿠키 만료일 가능성이 높습니다. 재로그인 해주세요.")
+            _set_fail_reason("글쓰기 페이지 열기 실패 — 재로그인 필요")
             return False
 
         # ── 2단계: 에디터 렌더링 대기 ──
