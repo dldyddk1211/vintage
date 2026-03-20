@@ -536,18 +536,69 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
 
         _log(f"   ✅ 현재 URL: {page.url}")
 
-        # ── 2단계: iframe 내 에디터 렌더링 대기 ──
-        # 글쓰기 페이지는 iframe#cafe_main 안에 에디터가 로드됨
-        frame_locator = page.frame_locator("iframe[name='cafe_main']")
-        try:
-            await frame_locator.locator(
-                "textarea.textarea_input, textarea[placeholder*='제목']"
-            ).first.wait_for(timeout=40000)
-            _log("   ✅ 에디터 로딩 완료 (iframe#cafe_main)")
-        except PlaywrightTimeout:
-            _log("   ❌ 에디터 로딩 시간 초과 (40초)")
-            _set_fail_reason("에디터 로딩 시간 초과 (40초)")
-            return False
+        # ── 2단계: 에디터 렌더링 대기 ──
+        # 방법1: iframe 내부에서 찾기
+        # 방법2: iframe 없이 메인 페이지에서 직접 찾기 (네이버 UI 변경 대응)
+        frame_locator = None
+        editor_found = False
+
+        # iframe[name='cafe_main'] 존재 여부 확인
+        cafe_main_iframe = await page.query_selector("iframe[name='cafe_main']")
+        if cafe_main_iframe:
+            _log("   🔍 iframe[name='cafe_main'] 발견 — iframe 내부에서 에디터 검색")
+            frame_locator = page.frame_locator("iframe[name='cafe_main']")
+            try:
+                await frame_locator.locator(
+                    "textarea.textarea_input, textarea[placeholder*='제목'], .se-documentTitle .se-text-paragraph"
+                ).first.wait_for(timeout=40000)
+                _log("   ✅ 에디터 로딩 완료 (iframe#cafe_main)")
+                editor_found = True
+            except PlaywrightTimeout:
+                _log("   ⚠️ iframe 내부 에디터 못 찾음 — 메인 페이지에서 재시도")
+
+        if not editor_found:
+            # iframe 없거나 iframe 내부에서 못 찾은 경우 — 메인 페이지에서 직접 검색
+            _log("   🔍 메인 페이지에서 에디터 직접 검색 중...")
+            try:
+                await page.wait_for_selector(
+                    "textarea.textarea_input, textarea[placeholder*='제목'], "
+                    ".se-documentTitle .se-text-paragraph, "
+                    "[contenteditable='true']",
+                    timeout=40000
+                )
+                _log("   ✅ 에디터 로딩 완료 (메인 페이지)")
+                frame_locator = None  # 메인 페이지 직접 사용
+                editor_found = True
+            except PlaywrightTimeout:
+                # 디버그: 현재 페이지 구조 로깅
+                try:
+                    debug_info = await page.evaluate("""() => {
+                        const iframes = [...document.querySelectorAll('iframe')].map(f => ({
+                            name: f.name, id: f.id, src: (f.src || '').substring(0, 80)
+                        }));
+                        const frames = window.frames.length;
+                        const textareas = document.querySelectorAll('textarea').length;
+                        const editables = document.querySelectorAll('[contenteditable]').length;
+                        const seEls = document.querySelectorAll('[class*="se-"]').length;
+                        return JSON.stringify({iframes, frames, textareas, editables, seEls});
+                    }""")
+                    _log(f"   🔍 디버그 페이지 구조: {debug_info}")
+                except Exception as dbg_err:
+                    _log(f"   🔍 디버그 실패: {dbg_err}")
+                _log("   ❌ 에디터 로딩 시간 초과 (40초)")
+                _set_fail_reason("에디터 로딩 시간 초과 (40초)")
+                return False
+
+        # frame_locator가 None이면 page를 직접 사용하는 래퍼
+        class _PageAsFrameLocator:
+            """page를 frame_locator처럼 사용할 수 있게 하는 래퍼"""
+            def __init__(self, pg):
+                self._page = pg
+            def locator(self, selector):
+                return self._page.locator(selector)
+
+        if frame_locator is None:
+            frame_locator = _PageAsFrameLocator(page)
 
         # ── 에디터 본문 영역 높이 확장 ──
         try:
