@@ -542,11 +542,11 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
         try:
             await frame_locator.locator(
                 "textarea.textarea_input, textarea[placeholder*='제목']"
-            ).first.wait_for(timeout=30000)
+            ).first.wait_for(timeout=40000)
             _log("   ✅ 에디터 로딩 완료 (iframe#cafe_main)")
         except PlaywrightTimeout:
-            _log("   ❌ 에디터 로딩 시간 초과 (30초)")
-            _set_fail_reason("에디터 로딩 시간 초과 (30초)")
+            _log("   ❌ 에디터 로딩 시간 초과 (40초)")
+            _set_fail_reason("에디터 로딩 시간 초과 (40초)")
             return False
 
         # ── 에디터 본문 영역 높이 확장 ──
