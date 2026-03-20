@@ -267,6 +267,80 @@ async def verify_login(context) -> bool:
 # 메인 업로드 함수
 # =============================================
 
+async def _try_find_valid_cookies(log, primary_cookie_path: str = None):
+    """
+    저장된 계정 쿠키를 순차적으로 확인하여 유효한 쿠키를 찾는다.
+    활성 계정 → 계정1 → 계정2 → 계정3 순서로 시도.
+
+    Returns:
+        (cookies, cookie_path) 또는 (None, None)
+    """
+    import os
+
+    # 계정 정보 로드
+    accounts_db = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "db", "naver_accounts.json"
+    )
+    accounts_data = {}
+    if os.path.exists(accounts_db):
+        try:
+            with open(accounts_db, "r", encoding="utf-8") as f:
+                accounts_data = json.load(f)
+        except Exception:
+            pass
+
+    active_slot = accounts_data.get("active", 1)
+
+    # 시도 순서: 활성 슬롯 우선, 나머지 슬롯
+    slots_to_try = [active_slot]
+    for s in [1, 2, 3]:
+        if s not in slots_to_try:
+            slots_to_try.append(s)
+
+    for slot in slots_to_try:
+        cookie_file = "naver_cookies.json" if slot == 1 else f"naver_cookies_{slot}.json"
+        if not os.path.exists(cookie_file):
+            continue
+
+        cookies = load_cookies(cookie_file)
+        if not cookies:
+            continue
+
+        acc_info = accounts_data.get("accounts", {}).get(str(slot), {})
+        acc_id = acc_info.get("naver_id", f"슬롯{slot}")
+        log(f"   🔍 계정 {slot} ({acc_id}) 쿠키 유효성 검증 중...")
+
+        # 쿠키 유효성 검증
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+            context = await browser.new_context()
+            await context.add_cookies(cookies)
+            is_valid = await verify_login(context)
+            await browser.close()
+
+        if is_valid:
+            log(f"   ✅ 계정 {slot} ({acc_id}) 쿠키 유효!")
+            # 활성 계정이 아닌 경우, 활성 계정 전환
+            if slot != active_slot:
+                log(f"   🔄 활성 계정을 {slot}번으로 전환합니다")
+                accounts_data["active"] = slot
+                try:
+                    os.makedirs(os.path.dirname(accounts_db), exist_ok=True)
+                    with open(accounts_db, "w", encoding="utf-8") as f:
+                        json.dump(accounts_data, f, ensure_ascii=False, indent=2)
+                    # 기본 쿠키 파일에도 복사
+                    if slot != 1:
+                        import shutil
+                        shutil.copy2(cookie_file, "naver_cookies.json")
+                except Exception:
+                    pass
+            return cookies, cookie_file
+        else:
+            log(f"   ❌ 계정 {slot} ({acc_id}) 쿠키 만료됨")
+
+    return None, None
+
+
 async def upload_products(products: list, status_callback=None, max_upload=None, delay_min=8, delay_max=13, on_single_success=None, cookie_path: str = None):
     """
     상품 리스트를 네이버 카페에 업로드
@@ -288,8 +362,11 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
     # 쿠키 존재 확인
     cookies = load_cookies(cookie_path)
     if not cookies:
-        log("❌ 저장된 쿠키가 없습니다. 먼저 '네이버 로그인' 버튼을 눌러주세요")
-        return 0
+        log("⚠️ 지정된 쿠키가 없습니다. 다른 계정 쿠키를 확인합니다...")
+        cookies, cookie_path = await _try_find_valid_cookies(log, cookie_path)
+        if not cookies:
+            log("❌ 유효한 쿠키가 없습니다. '네이버 로그인' 버튼을 눌러주세요")
+            return 0
 
     success_count = 0
     uploaded_codes_session = set()  # 이번 세션에서 업로드 완료된 품번 (즉시 중복 차단용)
@@ -346,10 +423,32 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
         # 로그인 유효성 검증
         is_valid = await verify_login(context)
         if not is_valid:
-            log("❌ 쿠키가 만료되었습니다. '네이버 로그인' 버튼을 다시 눌러주세요")
-            delete_cookies()
+            log("⚠️ 현재 쿠키 만료됨 — 다른 계정 쿠키를 순차 확인합니다...")
             await browser.close()
-            return 0
+
+            # 다른 계정 쿠키 순차 시도
+            fallback_cookies, fallback_path = await _try_find_valid_cookies(log, cookie_path)
+            if not fallback_cookies:
+                log("❌ 모든 계정의 쿠키가 만료되었습니다. '네이버 로그인'을 다시 해주세요")
+                return 0
+
+            # 유효한 쿠키로 브라우저 재시작
+            cookies = fallback_cookies
+            cookie_path = fallback_path
+            browser = await p.chromium.launch(
+                headless=False, args=["--no-sandbox"]
+            )
+            context = await browser.new_context(
+                viewport={"width": 1280, "height": 900},
+                locale="ko-KR",
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                permissions=["clipboard-read", "clipboard-write"],
+            )
+            await context.add_cookies(cookies)
 
         log("✅ 로그인 확인 완료!")
 
