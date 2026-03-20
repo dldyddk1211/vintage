@@ -163,15 +163,14 @@ async def naver_manual_login(status_callback=None):
             await browser.close()
 
 
-async def naver_manual_login_with_cookie_path(cookie_path: str, status_callback=None):
-    """특정 쿠키 경로로 네이버 수동 로그인 (멀티 계정 지원)"""
+async def naver_manual_login_with_cookie_path(cookie_path: str, status_callback=None, naver_id: str = "", password: str = ""):
+    """특정 쿠키 경로로 네이버 로그인 (저장된 계정 있으면 자동 입력)"""
     def log(msg):
         logger.info(msg)
         if status_callback:
             status_callback(msg)
 
     log(f"🔐 네이버 로그인 브라우저를 엽니다... (쿠키: {cookie_path})")
-    log(f"   ⏱️ {NAVER_LOGIN_TIMEOUT}초 안에 로그인을 완료해주세요")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -191,7 +190,46 @@ async def naver_manual_login_with_cookie_path(cookie_path: str, status_callback=
                 timeout=20000
             )
             log("🌐 네이버 로그인 페이지가 열렸습니다")
-            log("   👉 브라우저에서 직접 로그인해주세요!")
+
+            # 저장된 아이디/비밀번호가 있으면 자동 입력
+            if naver_id and password:
+                log(f"   🔑 저장된 계정으로 자동 입력 중: {naver_id}")
+                await asyncio.sleep(1)
+                try:
+                    # 아이디 입력
+                    id_input = page.locator("#id")
+                    await id_input.click()
+                    await asyncio.sleep(0.3)
+                    await id_input.fill("")
+                    await asyncio.sleep(0.2)
+                    # clipboard 방식으로 입력 (네이버 봇 감지 우회)
+                    await page.evaluate(f"""() => {{
+                        const el = document.getElementById('id');
+                        if (el) {{ el.value = '{naver_id}'; el.dispatchEvent(new Event('input', {{bubbles:true}})); }}
+                    }}""")
+                    await asyncio.sleep(0.5)
+
+                    # 비밀번호 입력
+                    pw_input = page.locator("#pw")
+                    await pw_input.click()
+                    await asyncio.sleep(0.3)
+                    await page.evaluate(f"""() => {{
+                        const el = document.getElementById('pw');
+                        if (el) {{ el.value = '{password}'; el.dispatchEvent(new Event('input', {{bubbles:true}})); }}
+                    }}""")
+                    await asyncio.sleep(0.5)
+
+                    # 로그인 버튼 클릭
+                    login_btn = page.locator("#log\\.login, .btn_login, button[type='submit']").first
+                    await login_btn.click()
+                    log("   ✅ 자동 입력 완료 — 로그인 버튼 클릭됨")
+                    log("   ⏳ 캡차가 뜨면 직접 해결해주세요")
+                except Exception as e:
+                    log(f"   ⚠️ 자동 입력 실패: {e} — 직접 로그인해주세요")
+            else:
+                log("   👉 브라우저에서 직접 로그인해주세요!")
+
+            log(f"   ⏱️ {NAVER_LOGIN_TIMEOUT}초 안에 로그인을 완료해주세요")
 
             elapsed = 0
             while elapsed < NAVER_LOGIN_TIMEOUT:

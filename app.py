@@ -2117,15 +2117,22 @@ def set_active_naver_account():
 @app.route(f"{URL_PREFIX}/naver/login", methods=["POST"])
 @login_required
 def naver_login():
-    """네이버 수동 로그인 시작 (브라우저 열림)"""
+    """네이버 로그인 시작 (저장된 계정 자동 입력)"""
     d = request.json or {}
     slot = int(d.get("slot", 1))
     cookie_path = _get_cookie_path(slot)
 
+    # 저장된 계정 정보 가져오기
+    acc_data = _load_naver_accounts()
+    acc = acc_data.get("accounts", {}).get(str(slot), {})
+    naver_id = acc.get("naver_id", "")
+    password = acc.get("password", "")
+
     def run_login():
         from cafe_uploader import naver_manual_login_with_cookie_path
         result = asyncio.run(naver_manual_login_with_cookie_path(
-            cookie_path=cookie_path, status_callback=push_log
+            cookie_path=cookie_path, status_callback=push_log,
+            naver_id=naver_id, password=password,
         ))
         if result:
             push_log(f"✅ 네이버 계정 {slot} 로그인 & 쿠키 저장 완료!")
@@ -2245,10 +2252,17 @@ def blog_login():
     slot = int(d.get("slot", 1))
     cookie_path = _get_blog_cookie_path(slot)
 
+    # 저장된 계정 정보 가져오기 (카페 계정과 동일)
+    acc_data = _load_naver_accounts()
+    acc = acc_data.get("accounts", {}).get(str(slot), {})
+    naver_id = acc.get("naver_id", "")
+    password = acc.get("password", "")
+
     def run_login():
         from cafe_uploader import naver_manual_login_with_cookie_path
         result = asyncio.run(naver_manual_login_with_cookie_path(
-            cookie_path=cookie_path, status_callback=push_log
+            cookie_path=cookie_path, status_callback=push_log,
+            naver_id=naver_id, password=password,
         ))
         if result:
             push_log(f"✅ 블로그 계정 {slot} 로그인 & 쿠키 저장 완료!")
