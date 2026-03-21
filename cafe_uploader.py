@@ -561,79 +561,69 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
                         await page.goto(f"https://cafe.naver.com/f-e/cafes/{CAFE_ID}", wait_until="domcontentloaded", timeout=15000)
                         await asyncio.sleep(1)
 
-                for attempt in range(1, 3):  # 최대 2회 시도
-                    try:
-                        if attempt == 1:
-                            log(f"📤 [{i}/{len(upload_list)}] 업로드 중: {name_short}")
-                        else:
-                            # 재시도 전: 방금 올린 글이 실제로 등록됐는지 카페 검색으로 확인
-                            log(f"🔄 [{i}/{len(upload_list)}] 재시도 전 중복 확인 중: {name_short}")
-                            await asyncio.sleep(5)
+                log(f"📤 [{i}/{len(upload_list)}] 업로드 중: {name_short}")
+                try:
+                    result = await upload_single_product(page, product, log)
+                    if result:
+                        success_count += 1
+                        if code:
+                            uploaded_codes_session.add(code)
+                        post_url = result if isinstance(result, str) else ""
+                        log(f"   ✅ 업로드 성공 ({success_count}개 완료)")
+                        notify_upload_success(name_short, success_count, len(upload_list), post_url)
+                        try:
+                            from product_db import update_cafe_status
+                            code = product.get("product_code", "")
                             if code:
-                                try:
-                                    from cafe_monitor import search_cafe_by_browser
-                                    already = await search_cafe_by_browser(page, code, "", days=1)
-                                    if already:
-                                        log(f"   ✅ 이미 등록됨 확인 — 재시도 생략 (1차 시도에서 실제로 성공)")
-                                        success_count += 1
-                                        uploaded_codes_session.add(code)
-                                        notify_upload_success(name_short, success_count, len(upload_list), "")
-                                        try:
-                                            from product_db import update_cafe_status
-                                            update_cafe_status(code, "완료", datetime.now().isoformat())
-                                        except Exception:
-                                            pass
-                                        if on_single_success:
-                                            try:
-                                                on_single_success(product)
-                                            except Exception:
-                                                pass
-                                        uploaded = True
-                                        break
-                                    # 카페 홈으로 복귀
-                                    await page.goto(f"https://cafe.naver.com/f-e/cafes/{CAFE_ID}", wait_until="domcontentloaded", timeout=15000)
-                                    await asyncio.sleep(1)
-                                except Exception as chk_err:
-                                    log(f"   ⚠️ 중복 확인 실패: {chk_err} — 재시도 진행")
-                            log(f"🔄 [{i}/{len(upload_list)}] 재시도 중 (2/2): {name_short}")
-
-                        result = await upload_single_product(page, product, log)
-                        if result:
-                            success_count += 1
-                            if code:
-                                uploaded_codes_session.add(code)
-                            post_url = result if isinstance(result, str) else ""
-                            log(f"   ✅ 업로드 성공 ({success_count}개 완료)")
-                            notify_upload_success(name_short, success_count, len(upload_list), post_url)
+                                update_cafe_status(code, "완료", datetime.now().isoformat())
+                        except Exception:
+                            pass
+                        if on_single_success:
                             try:
-                                from product_db import update_cafe_status
-                                code = product.get("product_code", "")
-                                if code:
-                                    update_cafe_status(code, "완료", datetime.now().isoformat())
+                                on_single_success(product)
                             except Exception:
                                 pass
-                            # 즉시 완료 콜백 (중복 업로드 방지)
-                            if on_single_success:
-                                try:
-                                    on_single_success(product)
-                                except Exception:
-                                    pass
-                            uploaded = True
-                            break  # 성공 → 다음 상품으로
+                        uploaded = True
+                    else:
+                        # 실패했지만 실제로 등록됐을 수 있음 → 카페 검색으로 확인
+                        fail_reason = _last_upload_fail_reason or "알 수 없는 원인"
+                        log(f"   ⚠️ 업로드 실패 [{fail_reason}] — 실제 등록 여부 확인 중...")
+                        if code:
+                            await asyncio.sleep(3)
+                            try:
+                                from cafe_monitor import search_cafe_by_browser
+                                already = await search_cafe_by_browser(page, code, "", days=1)
+                                if already:
+                                    log(f"   ✅ 실제로는 등록됨 확인! (결과 확인만 실패)")
+                                    success_count += 1
+                                    uploaded_codes_session.add(code)
+                                    notify_upload_success(name_short, success_count, len(upload_list), "")
+                                    try:
+                                        from product_db import update_cafe_status
+                                        update_cafe_status(code, "완료", datetime.now().isoformat())
+                                    except Exception:
+                                        pass
+                                    if on_single_success:
+                                        try:
+                                            on_single_success(product)
+                                        except Exception:
+                                            pass
+                                    uploaded = True
+                                else:
+                                    log(f"   ⛔ 등록 안 됨 확인 — 다음 상품으로 건너뜁니다")
+                                    notify_upload_error(name_short, fail_reason)
+                                # 카페 홈으로 복귀
+                                await page.goto(f"https://cafe.naver.com/f-e/cafes/{CAFE_ID}", wait_until="domcontentloaded", timeout=15000)
+                                await asyncio.sleep(1)
+                            except Exception as chk_err:
+                                log(f"   ⛔ 등록 확인 실패: {chk_err} — 다음 상품으로 건너뜁니다")
+                                notify_upload_error(name_short, fail_reason)
                         else:
-                            # 실패 원인 상세 로그
-                            fail_reason = _last_upload_fail_reason or "알 수 없는 원인 (upload_single_product가 False 반환)"
-                            if attempt == 1:
-                                log(f"   ⚠️ 업로드 실패 [{fail_reason}] — 1회 재시도합니다")
-                            else:
-                                log(f"   ⛔ 2회 연속 실패 [{fail_reason}] — 다음 상품으로 건너뜁니다")
-                                notify_upload_error(name_short, f"2회 연속 실패: {fail_reason}")
-                    except Exception as e:
-                        if attempt == 1:
-                            log(f"   ⚠️ 오류 발생: {e} — 1회 재시도합니다")
-                        else:
-                            log(f"   ⛔ 2회 연속 오류: {e} — 다음 상품으로 건너뜁니다")
-                            notify_upload_error(name_short, str(e))
+                            log(f"   ⛔ 품번 없어 확인 불가 — 다음 상품으로 건너뜁니다")
+                            notify_upload_error(name_short, fail_reason)
+                except Exception as e:
+                    log(f"   ⛔ 오류 발생: {e} — 다음 상품으로 건너뜁니다")
+                    notify_upload_error(name_short, str(e))
 
                 # 게시글 간 랜덤 딜레이 (8~13분) — 네이버 봇 탐지 방지
                 if i < len(upload_list):
