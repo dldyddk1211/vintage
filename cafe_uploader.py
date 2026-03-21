@@ -499,6 +499,9 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
             await page.goto(cafe_home, wait_until="domcontentloaded", timeout=20000)
             await asyncio.sleep(2)
 
+            # 팝업/레이어 닫기
+            await close_naver_popups(page, _log=log)
+
             # 업로드 중지 플래그 초기화
             reset_upload_stop()
 
@@ -637,6 +640,60 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
 
 
 # =============================================
+# 팝업/레이어 닫기 (내소식 안내 등)
+# =============================================
+
+async def close_naver_popups(pg, _log=None):
+    """네이버 카페 팝업/레이어 닫기"""
+    try:
+        popup_selectors = [
+            "button.btn_close",
+            "[class*='close']",
+            "[class*='Close']",
+            "a.btn_close",
+            "[aria-label='닫기']",
+            ".layer_popup .btn_close",
+            ".popup_layer .btn_close",
+            "[class*='LayerPopup'] button",
+            "[class*='layer_notice'] button",
+            "[class*='modal'] button[class*='close']",
+        ]
+        for sel in popup_selectors:
+            try:
+                btns = pg.locator(sel)
+                count = await btns.count()
+                for idx in range(count):
+                    btn = btns.nth(idx)
+                    if await btn.is_visible():
+                        await btn.click()
+                        if _log:
+                            _log(f"   🔕 팝업 닫기: {sel}")
+                        await asyncio.sleep(0.5)
+            except Exception:
+                continue
+
+        # iframe 내부 팝업도 닫기
+        for frame in pg.frames:
+            if frame == pg.main_frame:
+                continue
+            try:
+                for sel in ["button.btn_close", "[class*='close']", "[aria-label='닫기']"]:
+                    btns = frame.locator(sel)
+                    count = await btns.count()
+                    for idx in range(count):
+                        btn = btns.nth(idx)
+                        if await btn.is_visible():
+                            await btn.click()
+                            if _log:
+                                _log(f"   🔕 iframe 팝업 닫기: {sel}")
+                            await asyncio.sleep(0.3)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+# =============================================
 # 단일 상품 업로드
 # =============================================
 
@@ -687,6 +744,8 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                     continue
 
                 _log(f"   ✅ 현재 URL: {current_url}")
+                # 팝업/레이어 닫기 (내소식 안내 등)
+                await close_naver_popups(page, _log=_log)
                 page_loaded = True
                 break
             except Exception as e:
