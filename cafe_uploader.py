@@ -566,8 +566,36 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
                         if attempt == 1:
                             log(f"📤 [{i}/{len(upload_list)}] 업로드 중: {name_short}")
                         else:
+                            # 재시도 전: 방금 올린 글이 실제로 등록됐는지 카페 검색으로 확인
+                            log(f"🔄 [{i}/{len(upload_list)}] 재시도 전 중복 확인 중: {name_short}")
+                            await asyncio.sleep(5)
+                            if code:
+                                try:
+                                    from cafe_monitor import search_cafe_by_browser
+                                    already = await search_cafe_by_browser(page, code, "", days=1)
+                                    if already:
+                                        log(f"   ✅ 이미 등록됨 확인 — 재시도 생략 (1차 시도에서 실제로 성공)")
+                                        success_count += 1
+                                        uploaded_codes_session.add(code)
+                                        notify_upload_success(name_short, success_count, len(upload_list), "")
+                                        try:
+                                            from product_db import update_cafe_status
+                                            update_cafe_status(code, "완료", datetime.now().isoformat())
+                                        except Exception:
+                                            pass
+                                        if on_single_success:
+                                            try:
+                                                on_single_success(product)
+                                            except Exception:
+                                                pass
+                                        uploaded = True
+                                        break
+                                    # 카페 홈으로 복귀
+                                    await page.goto(f"https://cafe.naver.com/f-e/cafes/{CAFE_ID}", wait_until="domcontentloaded", timeout=15000)
+                                    await asyncio.sleep(1)
+                                except Exception as chk_err:
+                                    log(f"   ⚠️ 중복 확인 실패: {chk_err} — 재시도 진행")
                             log(f"🔄 [{i}/{len(upload_list)}] 재시도 중 (2/2): {name_short}")
-                            await asyncio.sleep(5)  # 재시도 전 짧은 대기
 
                         result = await upload_single_product(page, product, log)
                         if result:
