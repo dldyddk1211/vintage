@@ -1337,20 +1337,24 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                         if "/articles/" in current_url and "write" not in current_url:
                             post_url = current_url
                             break
-                        # 에러 팝업/알림 확인
+                        # 에러 팝업/알림 확인 (내소식 등 무관한 팝업 무시)
                         try:
                             error_el = frame_locator.locator(
-                                "[class*='error'], [class*='alert'], .layer_alert, "
-                                ".popup_error, [role='alertdialog']"
+                                ".popup_error, [role='alertdialog'], .layer_alert"
                             ).first
                             if await error_el.count() > 0:
                                 err_text = (await error_el.inner_text()).strip()[:100]
-                                # 네이버 알림 관리 팝업 등 무관한 팝업은 무시
-                                _ignore_keywords = ["알림을 모두 삭제", "알림 설정", "알림을 확인"]
+                                _ignore_keywords = [
+                                    "알림을 모두 삭제", "알림 설정", "알림을 확인",
+                                    "내소식", "소식", "안내", "레이어",
+                                    "공지", "업데이트", "새로운 기능",
+                                ]
                                 if err_text and not any(kw in err_text for kw in _ignore_keywords):
                                     _log(f"   ❌ 등록 에러 감지: {err_text}")
                                     _set_fail_reason(f"등록 에러: {err_text}")
                                     return False
+                                else:
+                                    _log(f"   🔕 무관한 팝업 무시: {err_text[:50]}")
                         except Exception:
                             pass
 
