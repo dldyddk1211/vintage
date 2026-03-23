@@ -2444,20 +2444,11 @@ async def _fetch_url_playwright(url: str) -> dict:
                     const container = document.querySelector('div.se-main-container');
                     if (!container) return '';
                     const lines = [];
-                    // se-component를 순회하되, se-quotation/se-horizontalLine/se-image 제외
-                    const components = container.querySelectorAll('div.se-component');
-                    for (const comp of components) {
-                        // se-quotation, se-image, se-horizontalLine 등 제외
-                        if (comp.classList.contains('se-quotation')) continue;
-                        if (comp.classList.contains('se-image')) continue;
-                        if (comp.classList.contains('se-horizontalLine')) continue;
-                        // se-text, se-sectionTitle만 처리
-                        if (!comp.classList.contains('se-text') && !comp.classList.contains('se-sectionTitle')) continue;
-                        const paragraphs = comp.querySelectorAll('p.se-text-paragraph');
-                        for (const p of paragraphs) {
-                            const text = p.innerText.replace(/\\u200B/g, '').trim();
-                            if (text) lines.push(text);
-                        }
+                    // se-main-container 안의 모든 텍스트 paragraph 추출 (이미지/구분선 제외, 나머지 전부)
+                    const paragraphs = container.querySelectorAll('p.se-text-paragraph');
+                    for (const p of paragraphs) {
+                        const text = p.innerText.replace(/\\u200B/g, '').trim();
+                        if (text) lines.push(text);
                     }
                     return lines.join('\\n');
                 }""")
