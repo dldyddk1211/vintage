@@ -2498,13 +2498,34 @@ async def _fetch_url_playwright(url: str) -> dict:
             if info_text:
                 body = info_text + "\n" + body
 
-            # 이미지 추출 — shop-phinf.pstatic.net 패턴만 (스마트스토어 상품 이미지)
+            # 이미지 추출 — 상품 상세 본문 영역 내 shop-phinf 이미지만
             images = []
             seen = set()
 
-            # img 태그에서 src, data-src, data-lazy-src 모두 확인
-            all_imgs = await page.query_selector_all("img")
-            for img in all_imgs:
+            # 상세 본문 영역 셀렉터 (상품 설명 이미지가 있는 곳)
+            detail_selectors = [
+                "div._1Hj-MkenCi",          # 스마트스토어 상세
+                "div._3e8dOKsKKM",           # 상품 설명
+                "div[class*='detail']",
+                "div[class*='content']",
+            ]
+            detail_el = None
+            for sel in detail_selectors:
+                try:
+                    el = await page.query_selector(sel)
+                    if el:
+                        detail_el = el
+                        break
+                except Exception:
+                    continue
+
+            # 상세 영역 내 이미지만 추출
+            if detail_el:
+                detail_imgs = await detail_el.query_selector_all("img")
+            else:
+                detail_imgs = await page.query_selector_all("img")
+
+            for img in detail_imgs:
                 for attr in ["src", "data-src", "data-lazy-src", "data-original"]:
                     src = await img.get_attribute(attr) or ""
                     if src and "shop-phinf.pstatic.net" in src:
@@ -2516,35 +2537,6 @@ async def _fetch_url_playwright(url: str) -> dict:
                         break
                 if len(images) >= 30:
                     break
-
-            # JS로 페이지 내 모든 shop-phinf 이미지 URL 수집 (img 태그 누락 대응)
-            if len(images) < 5:
-                try:
-                    js_images = await page.evaluate("""() => {
-                        const urls = new Set();
-                        // img 태그
-                        document.querySelectorAll('img').forEach(img => {
-                            ['src','data-src','data-lazy-src','data-original'].forEach(attr => {
-                                const v = img.getAttribute(attr) || '';
-                                if (v.includes('shop-phinf.pstatic.net')) urls.add(v.startsWith('//') ? 'https:'+v : v);
-                            });
-                        });
-                        // background-image
-                        document.querySelectorAll('*').forEach(el => {
-                            const bg = getComputedStyle(el).backgroundImage || '';
-                            const m = bg.match(/url\\(["']?(.*?shop-phinf\\.pstatic\\.net.*?)["']?\\)/);
-                            if (m) urls.add(m[1].startsWith('//') ? 'https:'+m[1] : m[1]);
-                        });
-                        return [...urls];
-                    }""")
-                    for src in js_images:
-                        if src not in seen:
-                            seen.add(src)
-                            images.append(src)
-                        if len(images) >= 30:
-                            break
-                except Exception:
-                    pass
 
             body = body.strip()[:8000]
             return {"title": title.strip(), "body": body, "images": images}
