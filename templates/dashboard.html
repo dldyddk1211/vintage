@@ -1501,6 +1501,7 @@
             style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:6px;width:150px;font-size:0.82rem;">
           <button class="btn b-blue" onclick="fetchUrlContent()" style="padding:9px 18px;">&#x1f50d; 내용 가져오기</button>
           <button class="btn b-green" onclick="postUrlToBlog()" id="btn-url-blog-post" style="padding:9px 18px;display:none;">&#x1f4dd; 블로그 발행</button>
+          <button class="btn b-red" onclick="resetUrlContent()" style="padding:9px 18px;">&#x1f504; 리셋</button>
         </div>
         <!-- 미리보기 영역 -->
         <div id="blog-url-preview" style="display:none;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;">
@@ -4237,6 +4238,19 @@ async function fetchUrlContent() {
     document.getElementById("btn-url-blog-post").style.display = "inline-flex";
     addBlogLog(`✅ 추출 완료 — 제목: ${(data.title||"").substring(0,40)}... 이미지 ${(data.images||[]).length}개`, "info");
   } catch(e) { addBlogLog(`❌ 요청 실패: ${e.message}`, "error"); }
+}
+
+function resetUrlContent() {
+  blogUrlData = null;
+  document.getElementById("blog-url-input").value = "";
+  document.getElementById("blog-url-category").value = "";
+  document.getElementById("blog-url-title").value = "";
+  document.getElementById("blog-url-body").value = "";
+  document.getElementById("blog-url-images").innerHTML = "";
+  document.getElementById("blog-url-img-count").textContent = "0";
+  document.getElementById("blog-url-preview").style.display = "none";
+  document.getElementById("btn-url-blog-post").style.display = "none";
+  addBlogLog("🔄 리셋 완료", "info");
 }
 
 async function postUrlToBlog() {
