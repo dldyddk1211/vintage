@@ -2495,47 +2495,19 @@ async def _fetch_url_playwright(url: str) -> dict:
             if info_text:
                 body = info_text + "\n" + body
 
-            # 이미지 추출 (공지사항 영역 이미지 제외)
+            # 이미지 추출 — shop-phinf.pstatic.net 패턴만 (스마트스토어 상품 이미지)
             images = []
             seen = set()
-
-            # 상세 영역 내 이미지만 우선 추출
-            detail_img_selectors = [
-                "div._1Hj-MkenCi img",
-                "div[class*='detail'] img",
-                "div._3e8dOKsKKM img",
-                "div[class*='content'] img",
-            ]
-            detail_imgs = []
-            for sel in detail_img_selectors:
-                try:
-                    imgs = await page.query_selector_all(sel)
-                    if imgs:
-                        detail_imgs = imgs
-                        break
-                except Exception:
-                    continue
-
-            # 상세 영역에서 못 찾으면 전체에서 추출
-            if not detail_imgs:
-                detail_imgs = await page.query_selector_all("img")
-
-            for img in detail_imgs:
+            all_imgs = await page.query_selector_all("img")
+            for img in all_imgs:
                 src = await img.get_attribute("src") or await img.get_attribute("data-src") or ""
                 if not src or src in seen:
                     continue
                 if src.startswith("//"):
                     src = "https:" + src
-                # 작은 이미지, 아이콘 제외
-                if any(x in src.lower() for x in ["logo", "icon", "banner", "ad", "pixel", "1x1", "gif", "svg"]):
+                # shop-phinf.pstatic.net 이미지만 수집
+                if "shop-phinf.pstatic.net" not in src:
                     continue
-                # 스마트스토어 상품 이미지 필터 (최소 크기)
-                try:
-                    box = await img.bounding_box()
-                    if box and (box["width"] < 50 or box["height"] < 50):
-                        continue
-                except Exception:
-                    pass
                 seen.add(src)
                 images.append(src)
                 if len(images) >= 30:
