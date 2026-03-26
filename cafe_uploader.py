@@ -533,24 +533,31 @@ async def upload_products(products: list, status_callback=None, max_upload=None,
                         pass  # DB 조회 실패 시 그냥 진행
 
                 # ── 글 작성 직전 카페 검색으로 실시간 중복 확인 ──
+                # 이미 게시된 상품이면 업로드 없이 상태만 "완료"로 변경
                 if code:
                     try:
                         from cafe_monitor import search_cafe_by_browser
                         log(f"   🔍 [{i}/{len(upload_list)}] 카페 중복 확인 중: {code}")
                         search_result = await search_cafe_by_browser(page, code, "", days=30)
                         if search_result:
-                            log(f"   ⏩ [{i}/{len(upload_list)}] 스킵: {name_short} — 카페에 이미 게시됨 (by {search_result.get('writer', '')}, {search_result.get('write_date', '')})")
+                            log(f"   ✅ [{i}/{len(upload_list)}] 이미 게시됨 → 상태 '완료'로 변경: {name_short}")
+                            log(f"      (by {search_result.get('writer', '')}, {search_result.get('write_date', '')})")
+                            # DB 상태 업데이트
                             try:
                                 from product_db import update_cafe_status
-                                update_cafe_status(code, "중복", datetime.now().isoformat())
-                            except Exception:
-                                pass
+                                update_cafe_status(code, "완료", datetime.now().isoformat())
+                                log(f"      📝 DB 상태 → 완료")
+                            except Exception as db_err:
+                                log(f"      ⚠️ DB 업데이트 실패: {db_err}")
+                            # JSON 상태 업데이트
                             if on_single_success:
                                 try:
-                                    product["cafe_status"] = "중복"
+                                    product["cafe_status"] = "완료"
                                     on_single_success(product)
-                                except Exception:
-                                    pass
+                                    log(f"      📝 JSON 상태 → 완료")
+                                except Exception as json_err:
+                                    log(f"      ⚠️ JSON 업데이트 실패: {json_err}")
+                            uploaded_codes_session.add(code)
                             continue
                         log(f"   ✅ [{i}/{len(upload_list)}] 중복 없음 — 업로드 진행")
                         # 검색 후 글쓰기 페이지로 다시 이동해야 하므로 카페 홈으로 복귀
