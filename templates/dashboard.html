@@ -1331,7 +1331,7 @@
           <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.82rem;color:var(--muted);">
             <input type="checkbox" id="cafe-shuffle-brands"
               style="width:16px;height:16px;accent-color:var(--green);"
-              onchange="onShuffleToggle()">
+              onchange="onShuffleToggle()" autocomplete="off">
             &#x1F500; 브랜드 랜덤
           </label>
           <span id="cafe-random-info" style="font-size:0.78rem;color:var(--accent);display:none;"></span>
@@ -4288,8 +4288,12 @@ async function postUrlToBlog() {
   finally { if (btn) { btn.disabled = false; btn.innerHTML = "📝 블로그 발행"; } }
 }
 
-// 페이지 로드 시 블로그 계정 불러오기
-document.addEventListener("DOMContentLoaded", loadBlogAccounts);
+// 페이지 로드 시 블로그 계정 불러오기 + 브랜드 랜덤 체크 해제
+document.addEventListener("DOMContentLoaded", () => {
+  loadBlogAccounts();
+  const shuffleEl = document.getElementById("cafe-shuffle-brands");
+  if (shuffleEl) shuffleEl.checked = false;
+});
 
 // ── 페이지 이탈 방어 (크롤링/업로드 중 F5/닫기 방지) ──────
 let _taskActive = false;
