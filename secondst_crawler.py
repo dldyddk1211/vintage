@@ -233,6 +233,48 @@ async def scrape_2ndstreet(
             # 다음 페이지 전 대기
             await asyncio.sleep(1.5)
 
+        # ── 상세 페이지 스크래핑 ──
+        if products:
+            log(f"🔍 상세 페이지 스크래핑 시작 ({len(products)}개)...")
+            for idx, prod in enumerate(products):
+                if _check_stop():
+                    log("⛔ 중지 요청 — 상세 스크래핑 중단")
+                    break
+                link = prod.get("link", "")
+                if not link:
+                    continue
+                try:
+                    log(f"   📄 [{idx+1}/{len(products)}] 상세 로드: {prod.get('brand','')} {prod.get('name','')[:30]}")
+                    await page.goto(link, wait_until="domcontentloaded", timeout=20000)
+                    await asyncio.sleep(2)
+
+                    # 팝업 닫기
+                    for sel in ["button:has-text('以上の内容を確認しました')", "button:has-text('閉じる')", "button:has-text('すべての Cookie を受け入れる')"]:
+                        try:
+                            btn = page.locator(sel).first
+                            if await btn.count() > 0 and await btn.is_visible():
+                                await btn.click()
+                                await asyncio.sleep(0.5)
+                        except:
+                            pass
+
+                    detail = await _extract_detail_page(page)
+                    if detail.get("detail_images"):
+                        prod["detail_images"] = detail["detail_images"]
+                    if detail.get("description"):
+                        prod["description"] = detail["description"]
+                    if detail.get("condition_grade") and not prod.get("condition_grade"):
+                        prod["condition_grade"] = detail["condition_grade"]
+                    if detail.get("color") and not prod.get("color"):
+                        prod["color"] = detail["color"]
+                    if detail.get("size"):
+                        prod["size"] = detail["size"]
+                    log(f"      ✅ 이미지 {len(detail.get('detail_images',[]))}개, 설명 {len(detail.get('description',''))}자")
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    log(f"      ⚠️ 상세 스크래핑 실패: {e}")
+                    continue
+
     except Exception as e:
         log(f"❌ 크롤링 오류: {e}")
     finally:
@@ -343,6 +385,87 @@ async def _extract_product_from_card(el, page) -> dict:
         pass
 
     return product
+
+
+async def _extract_detail_page(page) -> dict:
+    """상세 페이지에서 추가 정보 추출"""
+    detail = {
+        "detail_images": [],
+        "description": "",
+        "condition_grade": "",
+        "color": "",
+        "size": "",
+    }
+
+    try:
+        # 상세 이미지 (큰 이미지)
+        imgs = await page.query_selector_all("img[src*='cdn2.2ndstreet.jp']")
+        seen = set()
+        for img in imgs:
+            src = await img.get_attribute("src") or ""
+            if not src or src in seen:
+                continue
+            # 썸네일(_tn) 제외, 큰 이미지만
+            if "_tn." in src:
+                src = src.replace("_tn.", ".")
+            if src in seen:
+                continue
+            seen.add(src)
+            detail["detail_images"].append(src)
+            if len(detail["detail_images"]) >= 20:
+                break
+
+        # 상품 설명 텍스트
+        desc_selectors = [
+            "[class*='goodsComment']",
+            "[class*='itemComment']",
+            "[class*='description']",
+            "[class*='detail_comment']",
+            "[class*='goodsDetail']",
+        ]
+        for sel in desc_selectors:
+            try:
+                el = page.locator(sel).first
+                if await el.count() > 0:
+                    text = (await el.inner_text()).strip()
+                    if text and len(text) > len(detail["description"]):
+                        detail["description"] = text
+            except:
+                continue
+
+        # 상품 스펙 테이블에서 정보 추출
+        spec_info = await page.evaluate("""() => {
+            const result = {grade: '', color: '', size: ''};
+            // th/td 테이블 또는 dt/dd 리스트
+            const rows = document.querySelectorAll('tr, dl');
+            for (const row of rows) {
+                const text = row.innerText || '';
+                if (text.includes('状態') || text.includes('コンディション')) {
+                    const m = text.match(/中古([A-Z])|新品|未使用|([A-Z])ランク/);
+                    if (m) result.grade = m[1] || m[2] || '新品';
+                }
+                if (text.includes('カラー') || text.includes('色')) {
+                    const parts = text.split(/[：:]|\\t|\\n/).filter(s => s.trim());
+                    if (parts.length >= 2) result.color = parts[parts.length-1].trim();
+                }
+                if (text.includes('サイズ')) {
+                    const parts = text.split(/[：:]|\\t|\\n/).filter(s => s.trim());
+                    if (parts.length >= 2) result.size = parts[parts.length-1].trim();
+                }
+            }
+            return result;
+        }""")
+        if spec_info.get("grade"):
+            detail["condition_grade"] = spec_info["grade"]
+        if spec_info.get("color"):
+            detail["color"] = spec_info["color"]
+        if spec_info.get("size"):
+            detail["size"] = spec_info["size"]
+
+    except Exception:
+        pass
+
+    return detail
 
 
 def _parse_pages(pages_str: str, max_pages: int = 5) -> list:
