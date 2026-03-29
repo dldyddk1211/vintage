@@ -128,7 +128,10 @@ async def scrape_2ndstreet(
                     "button:has-text('すべて許可する')",
                     "button:has-text('保存して閉じる')",
                     "button:has-text('以上の内容を確認しました')",
+                    "button:has-text('閉じる')",
                     "#onetrust-accept-btn-handler",
+                    "[class*='WorldShopping'] [class*='close']",
+                    "[class*='worldshopping'] button",
                 ]:
                     try:
                         btn = page.locator(cookie_sel).first
@@ -138,6 +141,15 @@ async def scrape_2ndstreet(
                             await asyncio.sleep(1)
                     except Exception:
                         continue
+
+                # 하단 WorldShopping 배너 / 쿠폰 팝업 강제 제거
+                try:
+                    await page.evaluate("""() => {
+                        document.querySelectorAll('[id*="worldshopping"], [class*="worldshopping"], [class*="WorldShopping"], [id*="ws-"]').forEach(el => el.remove());
+                        document.querySelectorAll('[class*="coupon"], [class*="Coupon"]').forEach(el => { if(el.style) el.style.display = 'none'; });
+                    }""")
+                except Exception:
+                    pass
 
             except PlaywrightTimeout:
                 log(f"   ⚠️ 페이지 {page_num} 타임아웃")
