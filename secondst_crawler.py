@@ -109,8 +109,9 @@ async def scrape_2ndstreet(
             url = f"https://www.2ndstreet.jp/search?category={category}"
             if brand_code:
                 url += f"&brand%5B%5D={brand_code}"
-                url += "&conditions%5B%5D=A&conditions%5B%5D=B&conditions%5B%5D=NS"
-                url += "&sortBy=recommend"
+            # 컨디션: 신품・미사용 / 중고A / 중고B 까지만
+            url += "&conditions%5B%5D=NS&conditions%5B%5D=A&conditions%5B%5D=B"
+            url += "&sortBy=recommend"
             if keyword:
                 url += f"&keyword={keyword}"
             url += f"&page={page_num}"
