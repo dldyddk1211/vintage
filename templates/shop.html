@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TheOne - Vintage Shop</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#0c0d11; --sidebar-bg:#111318; --card:#16181f; --card-hover:#1c1f28;
+      --border:#252830; --accent:#d4a54a; --accent2:#c08930;
+      --green:#2ecc71; --red:#e74c3c;
+      --text:#e8e8e8; --muted:#8a8fa0; --dim:#555a6e;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:'Noto Sans KR',sans-serif; }
+    a { text-decoration:none; color:inherit; }
+    img { -webkit-user-drag:none; user-select:none; -webkit-touch-callout:none; pointer-events:auto; }
+
+    /* ── Topbar ── */
+    .topbar {
+      position:fixed; top:0; left:0; right:0; z-index:100;
+      background:rgba(12,13,17,0.95); backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--border);
+      padding:0 24px; height:56px;
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .topbar-logo { font-size:1.3rem; font-weight:900; color:var(--accent); }
+    .topbar-logo span { color:var(--text); font-weight:300; margin-left:6px; font-size:0.9rem; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:0.85rem; }
+    .topbar-user { color:var(--muted); }
+    .topbar-btn {
+      padding:6px 16px; border-radius:6px; font-size:0.8rem;
+      border:1px solid var(--border); color:var(--muted); background:transparent;
+      cursor:pointer; transition:all .2s;
+    }
+    .topbar-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+    /* ── Layout ── */
+    .layout { display:flex; margin-top:56px; min-height:calc(100vh - 56px); }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width:260px; min-width:260px;
+      background:var(--sidebar-bg); border-right:1px solid var(--border);
+      padding:20px 0; overflow-y:auto; height:calc(100vh - 56px);
+      position:sticky; top:56px;
+      display:flex; flex-direction:column;
+    }
+    .sidebar-section { padding:0 16px; margin-bottom:20px; }
+    .sidebar-title {
+      font-size:0.72rem; font-weight:700; color:var(--muted);
+      text-transform:uppercase; letter-spacing:.06em;
+      margin-bottom:10px; padding-bottom:6px;
+      border-bottom:1px solid var(--border);
+    }
+    /* 키워드 검색 */
+    .search-box {
+      width:100%; padding:9px 12px;
+      background:var(--bg); border:1px solid var(--border);
+      border-radius:8px; color:var(--text); font-size:0.82rem;
+      outline:none; transition:border-color .2s;
+    }
+    .search-box:focus { border-color:var(--accent); }
+    .search-box::placeholder { color:var(--dim); }
+
+    /* 필터 리스트 */
+    .filter-list { list-style:none; }
+    .filter-item {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:7px 10px; border-radius:6px; cursor:pointer;
+      font-size:0.82rem; color:var(--muted); transition:all .15s;
+    }
+    .filter-item:hover { background:rgba(212,165,74,0.06); color:var(--text); }
+    .filter-item.active { background:rgba(212,165,74,0.12); color:var(--accent); font-weight:600; }
+    .filter-count {
+      font-size:0.7rem; background:var(--bg); padding:2px 8px;
+      border-radius:10px; color:var(--dim);
+    }
+    .filter-item.active .filter-count { color:var(--accent); background:rgba(212,165,74,0.15); }
+
+    /* 정렬 */
+    .sort-select {
+      width:100%; background:var(--bg); border:1px solid var(--border);
+      color:var(--text); padding:8px 12px; border-radius:8px;
+      font-size:0.82rem; outline:none; cursor:pointer;
+    }
+
+    /* 리셋 */
+    .reset-btn {
+      width:100%; padding:8px; border-radius:8px;
+      background:transparent; border:1px solid var(--border);
+      color:var(--muted); font-size:0.78rem; cursor:pointer;
+      transition:all .2s; margin-top:8px;
+    }
+    .reset-btn:hover { border-color:var(--red); color:var(--red); }
+
+    /* ── Content ── */
+    .content { flex:1; padding:24px; overflow-y:auto; }
+    .content-header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:20px;
+    }
+    .result-info { font-size:0.88rem; color:var(--muted); }
+    .result-info b { color:var(--text); }
+    .active-filters { display:flex; gap:6px; flex-wrap:wrap; }
+    .active-tag {
+      display:inline-flex; align-items:center; gap:4px;
+      padding:4px 12px; border-radius:14px; font-size:0.72rem;
+      background:rgba(212,165,74,0.12); color:var(--accent);
+      border:1px solid rgba(212,165,74,0.25);
+    }
+    .active-tag .remove {
+      cursor:pointer; font-size:0.8rem; opacity:0.6;
+      margin-left:2px;
+    }
+    .active-tag .remove:hover { opacity:1; }
+
+    /* ── Product Grid ── */
+    .product-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+      gap:16px;
+    }
+    .product-card {
+      background:var(--card); border:1px solid var(--border);
+      border-radius:10px; overflow:hidden;
+      transition:all .25s; cursor:pointer;
+    }
+    .product-card:hover {
+      border-color:rgba(212,165,74,0.4);
+      transform:translateY(-2px);
+      box-shadow:0 6px 20px rgba(0,0,0,0.3);
+    }
+    .product-img-wrap {
+      position:relative; width:100%; padding-top:100%;
+      overflow:hidden; background:#111318;
+    }
+    .product-img-wrap img {
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      object-fit:cover; transition:transform .3s;
+    }
+    .product-card:hover .product-img-wrap img { transform:scale(1.04); }
+    .product-grade {
+      position:absolute; top:8px; left:8px;
+      padding:2px 8px; border-radius:4px;
+      font-size:0.65rem; font-weight:700;
+      background:rgba(0,0,0,0.7); color:var(--accent);
+    }
+    .product-info { padding:12px 14px 16px; }
+    .product-brand { font-size:0.68rem; color:var(--accent); font-weight:600; margin-bottom:4px; }
+    .product-name {
+      font-size:0.78rem; color:var(--text); line-height:1.4;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+      overflow:hidden; min-height:2.2em; margin-bottom:8px;
+    }
+    .product-price { font-size:0.95rem; font-weight:700; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.78); z-index:200;
+      justify-content:center; align-items:center;
+    }
+    .modal-overlay.show { display:flex; }
+    .modal {
+      background:var(--card); border:1px solid var(--border);
+      border-radius:14px; max-width:880px; width:95%;
+      max-height:90vh; overflow-y:auto;
+      box-shadow:0 16px 48px rgba(0,0,0,0.5);
+    }
+    .modal-close {
+      position:absolute; top:14px; right:18px;
+      background:none; border:none; color:var(--muted);
+      font-size:1.4rem; cursor:pointer; z-index:10;
+    }
+    .modal-close:hover { color:var(--text); }
+    .modal-body { display:flex; gap:0; position:relative; }
+    .modal-images {
+      flex:0 0 50%; background:#111318; padding:16px;
+      display:flex; flex-direction:column; gap:8px;
+    }
+    .modal-img-zoom {
+      position:relative; overflow:hidden; border-radius:8px;
+      cursor:zoom-in;
+    }
+    .modal-main-img {
+      width:100%; border-radius:8px; aspect-ratio:1; object-fit:cover;
+      transition:transform .15s;
+    }
+    .modal-img-zoom.zoomed { cursor:zoom-out; }
+    .modal-img-zoom.zoomed .modal-main-img {
+      transform:scale(2.5); transform-origin:var(--zx, 50%) var(--zy, 50%);
+    }
+    .modal-thumbs { display:flex; gap:5px; flex-wrap:wrap; }
+    .modal-thumb {
+      width:52px; height:52px; border-radius:5px;
+      object-fit:cover; cursor:pointer; border:2px solid transparent;
+      opacity:0.5; transition:all .2s;
+    }
+    .modal-thumb:hover, .modal-thumb.active { opacity:1; border-color:var(--accent); }
+    .modal-detail { flex:1; padding:24px 20px; display:flex; flex-direction:column; gap:12px; }
+    .modal-brand { font-size:0.82rem; color:var(--accent); font-weight:600; }
+    .modal-name { font-size:1.05rem; font-weight:600; line-height:1.5; }
+    .modal-price { font-size:1.3rem; font-weight:800; }
+    .modal-meta { display:flex; flex-direction:column; gap:6px; }
+    .modal-meta-row { display:flex; gap:8px; font-size:0.82rem; }
+    .modal-meta-label { color:var(--muted); min-width:60px; }
+    .modal-meta-value { color:var(--text); }
+    .modal-detail-table table {
+      width:100%; border-collapse:collapse; font-size:0.82rem;
+    }
+    .modal-detail-table th {
+      text-align:left; padding:9px 14px; background:rgba(212,165,74,0.08);
+      color:var(--muted); font-weight:500; width:110px;
+      border-bottom:1px solid var(--border); white-space:nowrap;
+    }
+    .modal-detail-table td {
+      padding:9px 14px; color:var(--text);
+      border-bottom:1px solid var(--border);
+    }
+    .modal-desc {
+      font-size:0.82rem; color:var(--muted); line-height:1.6;
+      padding:10px 0;
+    }
+
+    .modal-link {
+      display:inline-block; margin-top:10px;
+      padding:10px 24px; border-radius:8px;
+      background:var(--accent); color:#000; font-weight:700;
+      font-size:0.86rem; text-align:center; transition:opacity .2s;
+    }
+    .modal-link:hover { opacity:0.85; }
+
+    /* ── Pagination ── */
+    .pagination {
+      display:flex; justify-content:center; gap:5px;
+      margin-top:28px; padding-top:20px; border-top:1px solid var(--border);
+    }
+    .page-btn {
+      padding:7px 13px; border-radius:6px;
+      background:var(--card); border:1px solid var(--border);
+      color:var(--muted); font-size:0.8rem; cursor:pointer; transition:all .2s;
+    }
+    .page-btn:hover { border-color:var(--accent); color:var(--text); }
+    .page-btn.active { background:var(--accent); color:#000; border-color:var(--accent); font-weight:700; }
+    .page-btn:disabled { opacity:0.3; cursor:default; }
+
+    .loading { text-align:center; padding:60px; color:var(--muted); font-size:0.9rem; }
+    .spinner {
+      width:28px; height:28px; border:3px solid var(--border);
+      border-top-color:var(--accent); border-radius:50%;
+      animation:spin .8s linear infinite; margin:0 auto 10px;
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* ── Mobile ── */
+    .sidebar-toggle {
+      display:none; position:fixed; bottom:20px; left:20px; z-index:150;
+      width:48px; height:48px; border-radius:50%;
+      background:var(--accent); border:none; color:#000;
+      font-size:1.2rem; cursor:pointer;
+      box-shadow:0 4px 16px rgba(0,0,0,0.4);
+    }
+    @media (max-width:768px) {
+      .sidebar { display:none; position:fixed; top:56px; left:0; z-index:110; height:calc(100vh - 56px); }
+      .sidebar.open { display:block; }
+      .sidebar-toggle { display:block; }
+      .product-grid { grid-template-columns:repeat(2, 1fr); gap:10px; }
+      .content { padding:16px; }
+      .modal-body { flex-direction:column; }
+      .modal-images { flex:none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">TheOne<span>Vintage</span></div>
+  <div class="topbar-right">
+    <span class="topbar-user">{{ username }}</span>
+    <a href="{{ url_prefix }}/logout" class="topbar-btn">로그아웃</a>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <!-- 검색 -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">검색</div>
+      <input type="text" class="search-box" id="keyword-input" placeholder="브랜드, 상품명 검색..."
+             onkeydown="if(event.key==='Enter')loadShop(1)">
+    </div>
+
+    <!-- 브랜드 -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">브랜드</div>
+      <ul class="filter-list" id="brand-list">
+        <li class="filter-item active" data-val="" onclick="selectFilter('brand',this)">
+          <span>전체</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- 컨디션 -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">컨디션</div>
+      <ul class="filter-list" id="condition-list">
+        <li class="filter-item active" data-val="" onclick="selectFilter('condition',this)"><span>전체</span></li>
+        <li class="filter-item" data-val="NS" onclick="selectFilter('condition',this)"><span>신품/미사용</span></li>
+        <li class="filter-item" data-val="S" onclick="selectFilter('condition',this)"><span>중고 S</span></li>
+        <li class="filter-item" data-val="A" onclick="selectFilter('condition',this)"><span>중고 A</span></li>
+        <li class="filter-item" data-val="B" onclick="selectFilter('condition',this)"><span>중고 B</span></li>
+        <li class="filter-item" data-val="C" onclick="selectFilter('condition',this)"><span>중고 C</span></li>
+        <li class="filter-item" data-val="D" onclick="selectFilter('condition',this)"><span>중고 D</span></li>
+      </ul>
+    </div>
+
+    <!-- 가방 종류 -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">종류</div>
+      <ul class="filter-list" id="bagtype-list">
+        <li class="filter-item active" data-val="" onclick="selectFilter('bag_type',this)"><span>전체</span></li>
+      </ul>
+    </div>
+
+    <!-- 정렬 -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">정렬</div>
+      <select class="sort-select" id="sort-select" onchange="loadShop(1)">
+        <option value="newest">최신 등록순</option>
+        <option value="price_asc">가격 낮은순</option>
+        <option value="price_desc">가격 높은순</option>
+      </select>
+      <button class="reset-btn" onclick="resetFilters()">필터 초기화</button>
+    </div>
+
+    {% if is_admin %}
+    <!-- 관리자 설정 -->
+    <div class="sidebar-section" style="margin-top:auto; padding-top:16px; border-top:1px solid var(--border);">
+      <a href="{{ url_prefix }}/#ai-settings" target="_blank"
+         style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:6px;font-size:0.82rem;color:var(--muted);transition:all .15s;text-decoration:none;"
+         onmouseover="this.style.background='rgba(212,165,74,0.06)';this.style.color='var(--accent)'"
+         onmouseout="this.style.background='';this.style.color='var(--muted)'">
+        <span style="font-size:1rem;">&#x2699;&#xfe0f;</span>
+        <span>관리자 설정</span>
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <div class="content-header">
+      <div class="result-info" id="result-info">상품을 불러오는 중...</div>
+      <div class="active-filters" id="active-filters"></div>
+    </div>
+    <div class="product-grid" id="product-grid">
+      <div class="loading"><div class="spinner"></div>상품을 불러오는 중...</div>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+</div>
+
+<!-- Mobile sidebar toggle -->
+<button class="sidebar-toggle" id="sidebar-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+
+<!-- Product Detail Modal -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <div class="modal-body">
+      <div class="modal-images">
+        <div class="modal-img-zoom" id="modal-img-zoom" onclick="toggleZoom(event)" onmousemove="moveZoom(event)" onmouseleave="resetZoom()">
+          <img class="modal-main-img" id="modal-main-img" src="" alt="">
+        </div>
+        <div class="modal-thumbs" id="modal-thumbs"></div>
+      </div>
+      <div class="modal-detail">
+        <div class="modal-brand" id="modal-brand"></div>
+        <div class="modal-name" id="modal-name"></div>
+        <div class="modal-price" id="modal-price"></div>
+        <div class="modal-detail-table" id="modal-detail-table"></div>
+        <div class="modal-desc" id="modal-desc"></div>
+        {% if is_admin %}<a class="modal-link" id="modal-link" href="#" target="_blank">상품 상세보기</a>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PREFIX = "{{ url_prefix }}";
+let filters = { site: "", brand: "", condition: "", bag_type: "", keyword: "" };
+let currentPage = 1;
+let allProducts = [];
+
+function selectFilter(type, el) {
+  filters[type] = el.dataset.val;
+  el.parentElement.querySelectorAll(".filter-item").forEach(i => i.classList.remove("active"));
+  el.classList.add("active");
+  loadShop(1);
+  // 모바일: 사이드바 닫기
+  document.getElementById("sidebar").classList.remove("open");
+}
+
+function resetFilters() {
+  filters = { site: "", brand: "", condition: "", bag_type: "", keyword: "" };
+  document.getElementById("keyword-input").value = "";
+  document.getElementById("sort-select").value = "newest";
+  document.querySelectorAll(".filter-list").forEach(list => {
+    list.querySelectorAll(".filter-item").forEach((item, i) => {
+      item.classList.toggle("active", i === 0);
+    });
+  });
+  loadShop(1);
+}
+
+async function loadShop(page = 1) {
+  currentPage = page;
+  filters.keyword = document.getElementById("keyword-input").value.trim();
+  const sort = document.getElementById("sort-select").value;
+  const grid = document.getElementById("product-grid");
+  grid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  try {
+    const params = new URLSearchParams({ page, per_page: 24, sort });
+    if (filters.site) params.set("site", filters.site);
+    if (filters.brand) params.set("brand", filters.brand);
+    if (filters.condition) params.set("condition", filters.condition);
+    if (filters.bag_type) params.set("bag_type", filters.bag_type);
+    if (filters.keyword) params.set("keyword", filters.keyword);
+
+    const res = await fetch(PREFIX + "/shop/api/products?" + params);
+    const d = await res.json();
+    allProducts = d.products || [];
+
+    // 사이드바 목록 갱신
+    renderBrandList(d.brands || []);
+    renderBagTypeList(d.bag_types || []);
+
+    // 결과 정보
+    document.getElementById("result-info").innerHTML =
+      `총 <b>${d.total.toLocaleString()}</b>개 상품`;
+
+    // 활성 필터 태그
+    renderActiveTags();
+
+    // 상품 카드
+    if (!allProducts.length) {
+      grid.innerHTML = '<div class="loading">검색 결과가 없습니다</div>';
+      document.getElementById("pagination").innerHTML = "";
+      return;
+    }
+
+    grid.innerHTML = allProducts.map((p, i) => `
+      <div class="product-card" onclick="openModal(${i})">
+        <div class="product-img-wrap">
+          <img src="${p.img_url || ''}" alt="" loading="lazy"
+               onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22><rect fill=%22%23181a22%22 width=%221%22 height=%221%22/></svg>'">
+          ${p.condition_grade ? `<span class="product-grade">${p.condition_grade}</span>` : ""}
+        </div>
+        <div class="product-info">
+          <div class="product-brand">${p.brand}</div>
+          <div class="product-name">${p.name}</div>
+          <div class="product-price">${p.price_b2c ? p.price_b2c.toLocaleString() + '원' : '&yen;' + p.price_jpy.toLocaleString()}</div>
+          ${p.price_b2b ? `<div style="font-size:0.7rem;color:#4f8ef7;">B2B ${p.price_b2b.toLocaleString()}원</div>` : ''}
+          <div style="font-size:0.68rem;color:var(--dim);">&yen;${p.price_jpy.toLocaleString()}</div>
+        </div>
+      </div>
+    `).join("");
+
+    renderPagination(d.page, d.total_pages);
+  } catch(e) {
+    grid.innerHTML = `<div class="loading">오류: ${e}</div>`;
+  }
+}
+
+function renderSiteList(sites) {
+  const el = document.getElementById("site-list");
+  let html = `<li class="filter-item ${!filters.site?'active':''}" data-val="" onclick="selectFilter('site',this)"><span>전체</span></li>`;
+  sites.forEach(s => {
+    html += `<li class="filter-item ${filters.site===s.id?'active':''}" data-val="${s.id}" onclick="selectFilter('site',this)">
+      <span>${s.name}</span><span class="filter-count">${s.count}</span>
+    </li>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderBrandList(brands) {
+  const el = document.getElementById("brand-list");
+  let html = `<li class="filter-item ${!filters.brand?'active':''}" data-val="" onclick="selectFilter('brand',this)"><span>전체</span></li>`;
+  brands.forEach(b => {
+    html += `<li class="filter-item ${filters.brand===b.name?'active':''}" data-val="${b.name}" onclick="selectFilter('brand',this)">
+      <span>${b.name}</span><span class="filter-count">${b.count}</span>
+    </li>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderBagTypeList(types) {
+  const el = document.getElementById("bagtype-list");
+  let html = `<li class="filter-item ${!filters.bag_type?'active':''}" data-val="" onclick="selectFilter('bag_type',this)"><span>전체</span></li>`;
+  types.forEach(t => {
+    html += `<li class="filter-item ${filters.bag_type===t.name?'active':''}" data-val="${t.name}" onclick="selectFilter('bag_type',this)">
+      <span>${t.name}</span><span class="filter-count">${t.count}</span>
+    </li>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderActiveTags() {
+  const el = document.getElementById("active-filters");
+  const labels = { site: "사이트", brand: "브랜드", condition: "컨디션", bag_type: "종류", keyword: "검색" };
+  const condNames = { NS: "신품/미사용", A: "중고 A", B: "중고 B" };
+  let html = "";
+  for (const [k, v] of Object.entries(filters)) {
+    if (!v) continue;
+    const display = k === "condition" ? (condNames[v] || v) : v;
+    html += `<span class="active-tag">${labels[k]}: ${display} <span class="remove" onclick="clearFilter('${k}')">&times;</span></span>`;
+  }
+  el.innerHTML = html;
+}
+
+function clearFilter(type) {
+  filters[type] = "";
+  if (type === "keyword") document.getElementById("keyword-input").value = "";
+  // 사이드바 UI 리셋
+  const listId = { site: "site-list", brand: "brand-list", condition: "condition-list", bag_type: "bagtype-list" }[type];
+  if (listId) {
+    const list = document.getElementById(listId);
+    list.querySelectorAll(".filter-item").forEach((item, i) => item.classList.toggle("active", i === 0));
+  }
+  loadShop(1);
+}
+
+function renderPagination(cur, total) {
+  if (total <= 1) { document.getElementById("pagination").innerHTML = ""; return; }
+  let html = `<button class="page-btn" onclick="loadShop(${cur-1})" ${cur<=1?'disabled':''}>‹</button>`;
+  let s = Math.max(1, cur - 3), e = Math.min(total, cur + 3);
+  if (s > 1) html += `<button class="page-btn" onclick="loadShop(1)">1</button>`;
+  if (s > 2) html += `<span style="color:var(--muted);padding:7px 3px">…</span>`;
+  for (let i = s; i <= e; i++)
+    html += `<button class="page-btn ${i===cur?'active':''}" onclick="loadShop(${i})">${i}</button>`;
+  if (e < total-1) html += `<span style="color:var(--muted);padding:7px 3px">…</span>`;
+  if (e < total) html += `<button class="page-btn" onclick="loadShop(${total})">${total}</button>`;
+  html += `<button class="page-btn" onclick="loadShop(${cur+1})" ${cur>=total?'disabled':''}>›</button>`;
+  document.getElementById("pagination").innerHTML = html;
+}
+
+function openModal(idx) {
+  const p = allProducts[idx];
+  if (!p) return;
+  document.getElementById("modal-brand").textContent = p.brand;
+  document.getElementById("modal-name").textContent = p.name;
+  document.getElementById("modal-price").innerHTML = p.price_b2c
+    ? `<div style="font-size:1.3rem;font-weight:800;color:var(--green)">B2C ${p.price_b2c.toLocaleString()}원</div>
+       <div style="font-size:1rem;color:#4f8ef7;margin-top:4px">B2B ${p.price_b2b.toLocaleString()}원</div>
+       <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">&yen;${p.price_jpy.toLocaleString()}</div>`
+    : `&yen;${p.price_jpy.toLocaleString()}`;
+  const mainImg = (p.detail_images && p.detail_images.length) ? p.detail_images[0].replace("_mn.jpg",".jpg") : p.img_url;
+  document.getElementById("modal-main-img").src = mainImg;
+  const thumbsEl = document.getElementById("modal-thumbs");
+  thumbsEl.innerHTML = (p.detail_images || []).map((img, i) =>
+    `<img class="modal-thumb ${i===0?'active':''}" src="${img}" onclick="setMainImg(this,'${img.replace('_mn.jpg','.jpg')}')">`
+  ).join("");
+  // 상품명에서 컬러/소재 파싱 (형식: 종류/소재/컬러/패턴/형번)
+  const nameParts = (p.name_ja || p.name || "").split("/");
+  const bagType = nameParts[0] || "";
+  const materialFromName = nameParts[1] && nameParts[1] !== "--" ? nameParts[1] : "";
+  const colorFromName = nameParts[2] || "";
+  const modelFromName = nameParts.length >= 5 ? nameParts[nameParts.length - 1] : "";
+
+  // 사이즈 파싱 (マチ 7 高さ 20 幅 22 → 폭 7 / 높이 20 / 너비 22)
+  let sizeText = (p.size_info || "").trim();
+  if (sizeText) {
+    sizeText = sizeText
+      .replace(/マチ/g, "폭").replace(/高さ/g, "높이").replace(/幅/g, "너비")
+      .replace(/持ち手/g, "손잡이").replace(/その他サイズ/g, "기타")
+      .replace(/\s*\/\s*$/g, "").trim();
+  }
+
+  // 소재
+  const materialDict = {"レザー":"가죽","ナイロン":"나일론","キャンバス":"캔버스","デニム":"데님","スエード":"스웨이드","サテン":"새틴","コットン":"코튼","ウール":"울","ファー":"퍼"};
+  let material = p.material || materialFromName || "";
+  for (const [ja, ko] of Object.entries(materialDict)) {
+    material = material.replace(ja, ko);
+  }
+
+  // 컬러
+  const colorDict = {"ブラック":"블랙","ホワイト":"화이트","レッド":"레드","ブルー":"블루","グリーン":"그린","ピンク":"핑크","ベージュ":"베이지","ブラウン":"브라운","グレー":"그레이","ネイビー":"네이비","オレンジ":"오렌지","イエロー":"옐로","パープル":"퍼플","ゴールド":"골드","シルバー":"실버","カーキ":"카키","ボルドー":"보르도","クリーム":"크림"};
+  let colorVal = colorFromName;
+  for (const [ja, ko] of Object.entries(colorDict)) {
+    colorVal = colorVal.replace(ja, ko);
+  }
+
+  // 등급 라벨
+  const gradeLabels = {"NS": "신품/미사용", "S": "중고S (최상)", "A": "중고A (양호)", "B": "중고B (사용감 있음)", "C": "중고C (사용감 많음)", "D": "중고D (난있음)"};
+  const gradeText = gradeLabels[p.condition_grade] || p.condition_grade || "";
+
+  // 상품명에서 형번 추출 (영문+숫자 조합, 4자 이상)
+  const nameJa = p.name_ja || p.name || "";
+  const modelMatch = nameJa.match(/\b([A-Z]{1,3}\d{3,}[A-Z]*\d*|[A-Z]*\d+[A-Z]+\d+)\b/i)
+    || nameJa.match(/\/([A-Z0-9]{4,})\//);
+  const modelNum = modelMatch ? modelMatch[1] : "";
+
+  // 상세 테이블 생성
+  let rows = [];
+  if (modelNum) rows.push(["형번", modelNum]);
+  if (gradeText) rows.push(["상태", gradeText]);
+  if (colorVal) rows.push(["컬러", colorVal]);
+  if (material) rows.push(["소재", material]);
+  if (sizeText) rows.push(["사이즈(cm)", sizeText]);
+
+  let tableHtml = "";
+  if (rows.length > 0) {
+    tableHtml = "<table>" + rows.map(([label, val]) =>
+      `<tr><th>${label}</th><td>${val}</td></tr>`
+    ).join("") + "</table>";
+  }
+  document.getElementById("modal-detail-table").innerHTML = tableHtml;
+
+  // 상세 설명
+  document.getElementById("modal-desc").textContent = p.description || "";
+
+  const modalLink = document.getElementById("modal-link");
+  if (modalLink) modalLink.href = p.link || "#";
+  document.getElementById("modal").classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+
+function setMainImg(el, url) {
+  document.getElementById("modal-main-img").src = url;
+  document.querySelectorAll(".modal-thumb").forEach(t => t.classList.remove("active"));
+  el.classList.add("active");
+}
+
+function toggleZoom(e) {
+  const wrap = document.getElementById("modal-img-zoom");
+  wrap.classList.toggle("zoomed");
+  if (wrap.classList.contains("zoomed")) moveZoom(e);
+}
+
+function moveZoom(e) {
+  const wrap = document.getElementById("modal-img-zoom");
+  if (!wrap.classList.contains("zoomed")) return;
+  const rect = wrap.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(1);
+  const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(1);
+  wrap.style.setProperty("--zx", x + "%");
+  wrap.style.setProperty("--zy", y + "%");
+}
+
+function resetZoom() {
+  document.getElementById("modal-img-zoom").classList.remove("zoomed");
+}
+
+function closeModal() {
+  document.getElementById("modal").classList.remove("show");
+  document.getElementById("modal-img-zoom").classList.remove("zoomed");
+  document.body.style.overflow = "";
+}
+
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+// 이미지 보호 (우클릭, 드래그 방지)
+document.addEventListener("contextmenu", e => {
+  if (e.target.tagName === "IMG") e.preventDefault();
+});
+document.addEventListener("dragstart", e => {
+  if (e.target.tagName === "IMG") e.preventDefault();
+});
+
+loadShop(1);
+</script>
+</body>
+</html>

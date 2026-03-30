@@ -367,6 +367,10 @@
         <span class="nav-icon">&#x1f4ca;</span>
         <span>&#xb300;&#xc2dc;&#xbcf4;&#xb4dc;</span>
       </div>
+      <div class="nav-item" data-page="members" onclick="showPage('members')">
+        <span class="nav-icon">&#x1f465;</span>
+        <span>회원관리</span>
+      </div>
       <div class="nav-item" data-page="products" onclick="showPage('products')">
         <span class="nav-icon">&#x1f4e6;</span>
         <span>&#xc0c1;&#xd488; &#xbaa9;&#xb85d;</span>
@@ -400,6 +404,11 @@
       <span class="cat-label">Vintage</span>
     </div>
     <div class="nav-sub collapsed" id="sub-vintage">
+      <div class="nav-item" onclick="window.open('{{ url_prefix }}/shop','_blank')" style="cursor:pointer;">
+        <span class="nav-icon">&#x1f6cd;</span>
+        <span>대행사이트</span>
+        <span style="font-size:0.6rem;color:var(--accent);margin-left:auto;">&#x2197;</span>
+      </div>
       <div class="nav-item" data-page="vintage" onclick="showPage('vintage')">
         <span class="nav-icon">&#x1f50d;</span>
         <span>수집</span>
@@ -617,6 +626,38 @@
     </div>
 
 
+    <!-- ═══ 회원관리 ═══ -->
+    <div class="page-section" id="page-members">
+      <div class="panel">
+        <div class="panel-title">
+          <span>&#x1f465; 회원 목록</span>
+          <button onclick="loadMembers()" class="btn b-gray" style="padding:4px 10px;font-size:0.75rem">&#x1f504; 새로고침</button>
+        </div>
+        <div style="margin-bottom:12px;display:flex;gap:10px;align-items:center;">
+          <input type="text" id="member-search" placeholder="아이디, 이름, 연락처 검색..." onkeyup="loadMembers()"
+                 style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:0.82rem;flex:1;max-width:300px;">
+          <span id="member-count" style="font-size:0.8rem;color:var(--muted);">총 0명</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="tbl" style="width:100%;font-size:0.8rem;">
+            <thead>
+              <tr>
+                <th style="width:40px">#</th>
+                <th>아이디</th>
+                <th>이름</th>
+                <th>연락처</th>
+                <th>가입일</th>
+                <th style="width:80px">관리</th>
+              </tr>
+            </thead>
+            <tbody id="member-tbody">
+              <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ 3. 상품 목록 ═══ -->
     <div class="page-section" id="page-products">
       <div class="panel">
@@ -682,11 +723,15 @@
             <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">사이트</label>
             <select id="vt-site" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:0.82rem;">
               <option value="2ndstreet">세컨드스트리트</option>
+              <option value="kindal">킨달 (KINDAL)</option>
+              <option value="brandoff">브랜드오프 (BRAND OFF)</option>
+              <option value="komehyo">코메효 (KOMEHYO)</option>
             </select>
           </div>
           <div>
             <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">카테고리</label>
             <select id="vt-category" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:0.82rem;">
+              <option value="">전체 (자동분류)</option>
               <option value="951002">가방</option>
               <option value="951001">의류</option>
               <option value="951003">신발</option>
@@ -699,7 +744,7 @@
             <select id="vt-brand" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:0.82rem;min-width:160px;">
               <option value="">전체</option>
               <option value="001235" selected>PRADA</option>
-              <option value="001064">LOUIS VUITTON</option>
+              <option value="000931">LOUIS VUITTON</option>
               <option value="001169">GUCCI</option>
               <option value="001225">CHANEL</option>
               <option value="001339">HERMES</option>
@@ -740,6 +785,7 @@
       <div class="panel">
         <div class="panel-title">
           <span>&#x1f4e6; 수집된 상품 (<span id="vt-count">0</span>개)</span>
+          <button onclick="vtTranslate()" class="btn b-blue" style="padding:4px 10px;font-size:0.75rem">&#x1f30f; 한국어 번역</button>
           <button onclick="vtLoadProducts()" class="btn b-gray" style="padding:4px 10px;font-size:0.75rem">&#x1f504; 새로고침</button>
         </div>
         <div style="overflow-x:auto;">
@@ -776,7 +822,7 @@
     <!-- ═══ 4. 가격 설정 ═══ -->
     <div class="page-section" id="page-price">
       <div class="panel">
-        <div class="panel-title">&#x1f4b0; 구매대행 가격 설정</div>
+        <div class="panel-title">&#x1f4b0; 네이버 카페 스포츠 가격 설정</div>
         <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
 
           <!-- 변수 설정 -->
@@ -833,6 +879,81 @@
               <button class="btn b-gray" onclick="calcExample()" style="padding:5px 10px;font-size:0.78rem">계산</button>
             </div>
             <div id="calc-result" style="font-size:0.78rem;line-height:1.9;color:var(--muted)">계산 버튼을 눌러보세요</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 빈티지 사이트 가격 설정 -->
+      <div class="panel" style="margin-top:16px;">
+        <div class="panel-title">&#x1f3ba; 빈티지 사이트 가격 설정</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+
+          <!-- 변수 설정 -->
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:16px;min-width:240px">
+            <div style="font-size:0.78rem;color:var(--muted);margin-bottom:12px">&#x1f527; 가격 변수 설정</div>
+            <div style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px 10px;font-size:0.82rem">
+              <span style="color:var(--muted)">일본 수수료율</span>
+              <input type="number" id="vt-fee-input" min="0" max="30" step="0.1" value="3"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                oninput="calcVtExample()">
+              <span style="color:var(--muted)">%</span>
+
+              <span style="color:var(--muted)">환율 추가 마진</span>
+              <input type="number" id="vt-markup-input" min="0" max="20" step="0.1" value="2"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                oninput="calcVtExample()">
+              <span style="color:var(--muted)">%</span>
+
+              <span style="color:var(--muted)">B2C 마진율</span>
+              <input type="number" id="vt-b2c-input" min="0" max="200" step="0.1" value="15"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                oninput="calcVtExample()">
+              <span style="color:var(--muted)">%</span>
+
+              <span style="color:var(--muted)">B2B 마진율</span>
+              <input type="number" id="vt-b2b-input" min="0" max="200" step="0.1" value="8"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                oninput="calcVtExample()">
+              <span style="color:var(--muted)">%</span>
+
+              <span style="color:var(--muted)">일본 국내 택배비</span>
+              <input type="number" id="vt-jp-ship-input" min="0" max="10000" step="100" value="800"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                oninput="calcVtExample()">
+              <span style="color:var(--muted)">円</span>
+
+              <span style="color:var(--muted)">국제배송비</span>
+              <input type="number" id="vt-shipping-input" min="0" max="100000" step="100" value="15000"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
+                oninput="calcVtExample()">
+              <span style="color:var(--muted)">원</span>
+            </div>
+            <button class="btn b-blue" onclick="applyVtPriceSettings()" style="margin-top:14px;width:100%;padding:8px">&#x2705; 설정 적용</button>
+          </div>
+
+          <!-- 원가 계산 구조 -->
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:16px;font-size:0.78rem;color:var(--muted);line-height:2">
+            <div style="color:var(--text);font-weight:600;margin-bottom:6px">&#x1f4cb; 가격 계산 공식</div>
+            <div>(일본 상품가 + 일본택배비 <span id="vt-jpship-formula" style="color:var(--yellow)">¥800</span>)</div>
+            <div>&#xd7; (1 + 일본수수료율) <span id="vt-fee-formula" style="color:var(--yellow)">1.03</span></div>
+            <div>&#xd7; 실시간 환율 (원/엔)</div>
+            <div>&#xd7; (1 + 환율추가) <span id="vt-markup-formula" style="color:var(--yellow)">1.02</span></div>
+            <div>&#xd7; (1 + B2C마진) <span id="vt-b2c-formula" style="color:var(--yellow)">1.15</span> / B2B <span id="vt-b2b-formula" style="color:var(--yellow)">1.08</span></div>
+            <div>+ 국제배송비 <span id="vt-shipping-formula" style="color:var(--yellow)">15,000원</span></div>
+            <div style="border-top:1px solid var(--border);margin:4px 0;padding-top:4px;color:var(--green);font-weight:600">= 최종 판매가 (백원 올림)</div>
+          </div>
+
+          <!-- 예시 계산기 -->
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:16px;min-width:220px">
+            <div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px">&#x1f9ee; 예시 계산</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+              <span style="font-size:0.78rem;color:var(--muted)">&#xa5;</span>
+              <input type="number" id="vt-calc-jpy" value="50000" min="1"
+                style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;width:90px;font-size:0.9rem"
+                oninput="calcVtExample()">
+              <button class="btn b-gray" onclick="calcVtExample()" style="padding:5px 10px;font-size:0.78rem">계산</button>
+            </div>
+            <div id="vt-calc-result" style="font-size:0.78rem;line-height:1.9;color:var(--muted)">계산 버튼을 눌러보세요</div>
           </div>
         </div>
       </div>
@@ -1730,6 +1851,7 @@ function toggleCategory(cat) {
 // ── 페이지 네비게이션 ──────────────────────
 const pageTitles = {
   dashboard:  "Sport \u203A \uD83D\uDCCA \uB300\uC2DC\uBCF4\uB4DC",
+  members:    "Sport \u203A \uD83D\uDC65 \uD68C\uC6D0\uAD00\uB9AC",
   products:   "Sport \u203A \uD83D\uDCE6 \uC0C1\uD488 \uBAA9\uB85D",
   price:      "Sport \u203A \uD83D\uDCB0 \uAC00\uACA9 \uC124\uC815",
   logs:       "Sport \u203A \uD83D\uDCCB \uC2E4\uC2DC\uAC04 \uB85C\uADF8",
@@ -1763,6 +1885,7 @@ function showPage(page, pushHash) {
 
   // 페이지 전환 시 데이터 로드
   if (page === "products") { loadProducts(curPage); loadBrands(); }
+  if (page === "members") { loadMembers(); }
   if (page === "dictionary") loadDict();
   if (page === "data-path") loadDataPath();
   if (page === "ai-settings") { loadAiSettings(); loadNaverAccounts(); loadTelegramSettings(); }
@@ -1944,7 +2067,7 @@ async function loadCafeProducts(page = 1) {
   try {
     if (isRandom && statusFilter === "대기" && brand === "ALL" && !search) {
       // 브랜드 랜덤 모드: 전체 대기 상품에서 브랜드별 골고루 10개 랜덤 선택
-      const allUrl = `${PREFIX}/products?page=1&per_page=9999&brand=ALL&search=&status=대기`;
+      const allUrl = `${PREFIX}/products?page=1&per_page=9999&brand=ALL&search=&status=대기&source_type=sports`;
       const allData = await fetch(allUrl).then(r => r.json());
       const allProducts = allData.products || [];
       const tb = document.getElementById("cafe-tbody");
@@ -2021,7 +2144,7 @@ async function loadCafeProducts(page = 1) {
 
     // 일반 모드: 페이지네이션 + 필터
     if (randomInfo) randomInfo.style.display = "none";
-    const url = `${PREFIX}/products?page=${page}&per_page=${PER}&brand=${encodeURIComponent(brand)}&search=${encodeURIComponent(search)}&status=${encodeURIComponent(statusFilter)}`;
+    const url = `${PREFIX}/products?page=${page}&per_page=${PER}&brand=${encodeURIComponent(brand)}&search=${encodeURIComponent(search)}&status=${encodeURIComponent(statusFilter)}&source_type=sports`;
     const d = await fetch(url).then(r => r.json());
     const tb = document.getElementById("cafe-tbody");
     const cafeSummary = document.getElementById("cafe-product-summary");
@@ -2764,7 +2887,7 @@ async function loadProducts(page = 1) {
   const brand = document.getElementById("brand-select")?.value || "ALL";
   const search = document.getElementById("search-input")?.value || "";
   try {
-    const url = `${PREFIX}/products?page=${page}&per_page=${PER}&brand=${encodeURIComponent(brand)}&search=${encodeURIComponent(search)}`;
+    const url = `${PREFIX}/products?page=${page}&per_page=${PER}&brand=${encodeURIComponent(brand)}&search=${encodeURIComponent(search)}&source_type=sports`;
     const d = await fetch(url).then(r => r.json());
     const tb = document.getElementById("tbody");
     if (!d.products || d.products.length === 0) {
@@ -3334,6 +3457,99 @@ function calcExample() {
     </div>`;
 }
 
+// ── 빈티지 가격 설정 ──────────────────────────
+function updateVtFormulaLabels() {
+  const fee    = +document.getElementById("vt-fee-input").value    || 3;
+  const markup = +document.getElementById("vt-markup-input").value || 2;
+  const b2c    = +document.getElementById("vt-b2c-input").value    || 15;
+  const b2b    = +document.getElementById("vt-b2b-input").value    || 8;
+  const jpShip = +document.getElementById("vt-jp-ship-input").value || 800;
+  const ship   = +document.getElementById("vt-shipping-input").value || 15000;
+  document.getElementById("vt-fee-formula").textContent     = (1 + fee/100).toFixed(2);
+  document.getElementById("vt-markup-formula").textContent  = (1 + markup/100).toFixed(2);
+  document.getElementById("vt-b2c-formula").textContent     = (1 + b2c/100).toFixed(2);
+  document.getElementById("vt-b2b-formula").textContent     = (1 + b2b/100).toFixed(2);
+  document.getElementById("vt-jpship-formula").textContent  = "¥" + jpShip.toLocaleString();
+  document.getElementById("vt-shipping-formula").textContent = ship.toLocaleString() + "원";
+}
+
+async function loadVtPriceSettings() {
+  try {
+    const r = await fetch(PREFIX + "/settings/vintage-price");
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById("vt-fee-input").value       = d.jp_fee_pct;
+      document.getElementById("vt-markup-input").value   = d.buy_markup_pct;
+      document.getElementById("vt-b2c-input").value      = d.margin_b2c_pct || 15;
+      document.getElementById("vt-b2b-input").value      = d.margin_b2b_pct || 8;
+      document.getElementById("vt-jp-ship-input").value  = d.jp_domestic_shipping || 800;
+      document.getElementById("vt-shipping-input").value = d.intl_shipping_krw;
+      updateVtFormulaLabels();
+      calcVtExample();
+    }
+  } catch(e) {}
+}
+
+async function applyVtPriceSettings() {
+  const jp_fee   = +document.getElementById("vt-fee-input").value;
+  const markup   = +document.getElementById("vt-markup-input").value;
+  const b2c      = +document.getElementById("vt-b2c-input").value;
+  const b2b      = +document.getElementById("vt-b2b-input").value;
+  const jpShip   = +document.getElementById("vt-jp-ship-input").value;
+  const shipping = +document.getElementById("vt-shipping-input").value;
+  try {
+    const r = await fetch(PREFIX + "/settings/vintage-price", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ jp_fee_pct: jp_fee, buy_markup_pct: markup, margin_b2c_pct: b2c, margin_b2b_pct: b2b, jp_domestic_shipping: jpShip, intl_shipping_krw: shipping })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      addLog("🎺 " + d.message, "ok");
+      updateVtFormulaLabels();
+      calcVtExample();
+    } else {
+      addLog("❌ 빈티지 가격 설정 실패", "err");
+    }
+  } catch(e) { addLog("❌ 빈티지 가격 설정 실패", "err"); }
+}
+
+function calcVtExample() {
+  const jpy  = +document.getElementById("vt-calc-jpy").value;
+  if (!jpy || jpy <= 0) return;
+  const fee    = (+document.getElementById("vt-fee-input").value    || 3)   / 100;
+  const markup = (+document.getElementById("vt-markup-input").value || 2)   / 100;
+  const b2c    = (+document.getElementById("vt-b2c-input").value    || 15)  / 100;
+  const b2b    = (+document.getElementById("vt-b2b-input").value    || 8)   / 100;
+  const jpShip = +document.getElementById("vt-jp-ship-input").value || 800;
+  const ship   = +document.getElementById("vt-shipping-input").value || 15000;
+
+  const rateText = document.getElementById("rate").textContent || "9.23원";
+  const rate = parseFloat(rateText) || 9.23;
+
+  const jpyTotal = (jpy + jpShip) * (1 + fee);
+  const base     = jpyTotal * rate * (1 + markup);
+  const finalB2C = Math.ceil((base * (1 + b2c) + ship) / 100) * 100;
+  const finalB2B = Math.ceil((base * (1 + b2b) + ship) / 100) * 100;
+
+  updateVtFormulaLabels();
+  const fmt = n => n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,",");
+  document.getElementById("vt-calc-result").innerHTML = `
+    <div>일본가: <b style="color:var(--text)">¥${jpy.toLocaleString()}</b></div>
+    <div>+ 일본택배: <b>¥${jpShip.toLocaleString()}</b> = ¥${(jpy+jpShip).toLocaleString()}</div>
+    <div>× (1+수수료 ${(fee*100).toFixed(1)}%): ¥${fmt(jpyTotal)}</div>
+    <div>× 환율 ${rate.toFixed(2)}: ${fmt(jpyTotal*rate)}원</div>
+    <div>× (1+환율추가 ${(markup*100).toFixed(1)}%): ${fmt(base)}원</div>
+    <div style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px">
+      <b style="color:var(--green);font-size:1rem">B2C: ${finalB2C.toLocaleString()}원</b>
+      <span style="color:var(--muted);font-size:0.72rem;margin-left:6px">(마진 ${(b2c*100).toFixed(1)}%)</span>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px">
+      <b style="color:#4f8ef7;font-size:1rem">B2B: ${finalB2B.toLocaleString()}원</b>
+      <span style="color:var(--muted);font-size:0.72rem;margin-left:6px">(마진 ${(b2b*100).toFixed(1)}%)</span>
+    </div>`;
+}
+
 // ── 사이트/카테고리 로드 ───────────────────────
 let _sitesData = [];
 
@@ -3417,6 +3633,48 @@ async function loadScrapeHistory() {
       </tr>`;
     }).join("");
   } catch(e) { console.error("이력 로드 실패", e); }
+}
+
+// ── 회원관리 ─────────────────────────────────
+async function loadMembers() {
+  const search = (document.getElementById("member-search")?.value || "").trim();
+  try {
+    const params = new URLSearchParams();
+    if (search) params.set("q", search);
+    const res = await fetch(PREFIX + "/members?" + params.toString());
+    const d = await res.json();
+    const tbody = document.getElementById("member-tbody");
+    document.getElementById("member-count").textContent = `총 ${d.total || 0}명`;
+
+    if (!d.members || !d.members.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px;">등록된 회원이 없습니다</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.members.map((m, i) => `
+      <tr>
+        <td style="color:var(--muted)">${i + 1}</td>
+        <td style="font-weight:600">${m.username}</td>
+        <td>${m.name || '-'}</td>
+        <td>${m.phone || '-'}</td>
+        <td style="color:var(--muted);font-size:0.75rem">${m.created_at || ''}</td>
+        <td>
+          <button onclick="deleteMember('${m.username}')" class="btn b-red" style="padding:3px 8px;font-size:0.7rem;">삭제</button>
+        </td>
+      </tr>
+    `).join("");
+  } catch(e) {
+    console.error("회원 로드 실패:", e);
+  }
+}
+
+async function deleteMember(username) {
+  if (!confirm(`'${username}' 회원을 삭제하시겠습니까?`)) return;
+  try {
+    const res = await fetch(PREFIX + "/members/" + encodeURIComponent(username), {method: "DELETE"});
+    const d = await res.json();
+    if (d.ok) loadMembers();
+    else alert(d.message || "삭제 실패");
+  } catch(e) { alert("삭제 실패: " + e); }
 }
 
 // ── 빅데이터 관리 ─────────────────────────────
@@ -3656,6 +3914,23 @@ async function vtStopScrape() {
     if (vtLogSource) { vtLogSource.close(); vtLogSource = null; }
     document.getElementById("vt-log").innerHTML += '<div style="color:var(--yellow)">중지 요청됨</div>';
   } catch(e) {}
+}
+
+async function vtTranslate() {
+  const logEl = document.getElementById("vt-log");
+  logEl.innerHTML += '<div style="color:var(--accent)">🌐 빈티지 상품 한국어 번역 중...</div>';
+  try {
+    const res = await fetch(PREFIX + "/vintage/translate", {method: "POST"});
+    const d = await res.json();
+    if (d.ok) {
+      logEl.innerHTML += `<div style="color:var(--green)">✅ ${d.message}</div>`;
+      vtLoadProducts();
+    } else {
+      logEl.innerHTML += `<div style="color:var(--red)">❌ ${d.message}</div>`;
+    }
+  } catch(e) {
+    logEl.innerHTML += `<div style="color:var(--red)">❌ 번역 실패: ${e}</div>`;
+  }
 }
 
 async function vtLoadProducts(page = 1) {
@@ -4128,6 +4403,7 @@ refreshStatus();
 loadProducts(1);
 loadBrands();
 loadPriceSettings();
+loadVtPriceSettings();
 loadSites();
 loadScrapeHistory();
 loadCheckSchedule();

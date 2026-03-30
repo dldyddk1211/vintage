@@ -82,6 +82,47 @@ SITES = {
         },
         "brands": {},
     },
+    "kindal": {
+        "name": "킨달 (KINDAL)",
+        "domain": "https://www.kindal.jp",
+        "base_url": "https://www.kindal.jp",
+        "source_type": "vintage",
+        "categories": {
+            "bag": {"name": "가방", "name_ja": "バッグ", "params": {"category": "bag"}},
+            "clothing": {"name": "의류", "name_ja": "衣類", "params": {"category": "clothing"}},
+            "shoes": {"name": "신발", "name_ja": "シューズ", "params": {"category": "shoes"}},
+            "watch": {"name": "시계", "name_ja": "時計", "params": {"category": "watch"}},
+            "accessory": {"name": "악세서리", "name_ja": "アクセサリー", "params": {"category": "accessory"}},
+        },
+        "brands": {},
+    },
+    "brandoff": {
+        "name": "브랜드오프 (BRAND OFF)",
+        "domain": "https://www.brandoff.co.jp",
+        "base_url": "https://www.brandoff.co.jp",
+        "source_type": "vintage",
+        "categories": {
+            "bag": {"name": "가방", "name_ja": "バッグ", "params": {"category": "bag"}},
+            "clothing": {"name": "의류", "name_ja": "衣類", "params": {"category": "clothing"}},
+            "shoes": {"name": "신발", "name_ja": "シューズ", "params": {"category": "shoes"}},
+            "watch": {"name": "시계", "name_ja": "時計", "params": {"category": "watch"}},
+            "accessory": {"name": "악세서리", "name_ja": "アクセサリー", "params": {"category": "accessory"}},
+        },
+        "brands": {},
+    },
+    "komehyo": {
+        "name": "코메효 (KOMEHYO)",
+        "domain": "https://komehyo.jp",
+        "base_url": "https://komehyo.jp",
+        "source_type": "vintage",
+        "categories": {
+            "bag": {"name": "가방", "name_ja": "バッグ", "params": {"category": "bag"}},
+            "clothing": {"name": "의류", "name_ja": "衣類", "params": {"category": "clothing"}},
+            "watch": {"name": "시계", "name_ja": "時計", "params": {"category": "watch"}},
+            "accessory": {"name": "악세서리", "name_ja": "アクセサリー", "params": {"category": "accessory"}},
+        },
+        "brands": {},
+    },
 }
 
 

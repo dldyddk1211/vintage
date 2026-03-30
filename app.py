@@ -7,6 +7,7 @@ Flask 웹 대시보드 서버
 import asyncio
 import json
 import logging
+import math
 import os
 import threading
 from datetime import datetime
@@ -26,6 +27,7 @@ from data_manager import get_status as get_data_status, set_data_root, get_data_
 from xebio_search import scrape_nike_sale, load_latest_products, set_app_status, force_close_browser
 from cafe_uploader import upload_products, naver_manual_login, has_saved_cookies, delete_cookies, request_upload_stop, is_upload_stop_requested
 from exchange import get_jpy_to_krw_rate, get_cached_rate, calc_buying_price, set_margin_rate, get_margin_rate, set_price_config, get_price_config
+from user_db import init_db as init_user_db, get_user as get_customer, create_user, check_password as check_customer_pw, username_exists
 from post_generator import get_ai_config, set_ai_config, verify_ai_key
 from site_config import get_sites_for_ui
 from scrape_history import get_history as get_scrape_history
@@ -61,7 +63,7 @@ def add_no_cache(response):
 # =============================================
 
 def login_required(f):
-    """로그인 필수 데코레이터"""
+    """로그인 필수 데코레이터 (모든 인증된 사용자)"""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("logged_in"):
@@ -70,29 +72,249 @@ def login_required(f):
     return decorated
 
 
+def admin_required(f):
+    """관리자 전용 데코레이터"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(f"{URL_PREFIX}/login")
+        # 기존 세션(role 없음)은 admin으로 간주
+        if session.get("role", "admin") != "admin":
+            return redirect(f"{URL_PREFIX}/shop")
+        return f(*args, **kwargs)
+    return decorated
+
+
 @app.route(f"{URL_PREFIX}/login", methods=["GET", "POST"])
 def login():
     """로그인 페이지"""
     if session.get("logged_in"):
-        return redirect(f"{URL_PREFIX}/")
+        if session.get("role", "admin") == "admin":
+            return redirect(f"{URL_PREFIX}/")
+        return redirect(f"{URL_PREFIX}/shop")
 
     error = None
     username = ""
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        # 1) 관리자 확인
         if username in LOGIN_USERS and LOGIN_USERS[username] == password:
             session["logged_in"] = True
             session["username"] = username
-            logger.info(f"로그인 성공: {username}")
+            session["role"] = "admin"
+            logger.info(f"관리자 로그인: {username}")
             return redirect(f"{URL_PREFIX}/")
-        else:
-            error = "아이디 또는 비밀번호가 올바르지 않습니다"
-            logger.warning(f"로그인 실패: {username}")
+        # 2) 고객 확인
+        customer = get_customer(username)
+        if customer and check_customer_pw(customer, password):
+            session["logged_in"] = True
+            session["username"] = username
+            session["role"] = "customer"
+            logger.info(f"고객 로그인: {username}")
+            return redirect(f"{URL_PREFIX}/shop")
+        error = "아이디 또는 비밀번호가 올바르지 않습니다"
+        logger.warning(f"로그인 실패: {username}")
 
     return render_template("login.html",
                            error=error, username=username,
                            url_prefix=URL_PREFIX, env=APP_ENV)
+
+
+@app.route(f"{URL_PREFIX}/signup", methods=["GET", "POST"])
+def signup():
+    """회원가입 페이지"""
+    if session.get("logged_in"):
+        if session.get("role", "admin") == "admin":
+            return redirect(f"{URL_PREFIX}/")
+        return redirect(f"{URL_PREFIX}/shop")
+
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        name = request.form.get("name", "").strip()
+        phone = request.form.get("phone", "").strip()
+        if not username or not password:
+            error = "아이디와 비밀번호는 필수입니다"
+        elif len(password) < 4:
+            error = "비밀번호는 4자 이상이어야 합니다"
+        elif username in LOGIN_USERS:
+            error = "사용할 수 없는 아이디입니다"
+        elif username_exists(username):
+            error = "이미 존재하는 아이디입니다"
+        else:
+            if create_user(username, password, name, phone):
+                session["logged_in"] = True
+                session["username"] = username
+                session["role"] = "customer"
+                return redirect(f"{URL_PREFIX}/shop")
+            else:
+                error = "회원가입 실패. 다시 시도해주세요."
+
+    return render_template("signup.html", error=error,
+                           url_prefix=URL_PREFIX, env=APP_ENV)
+
+
+@app.route(f"{URL_PREFIX}/shop")
+@login_required
+def shop():
+    """고객용 빈티지 상품 카탈로그"""
+    return render_template("shop.html",
+                           url_prefix=URL_PREFIX, env=APP_ENV,
+                           username=session.get("username"),
+                           is_admin=session.get("role", "admin") == "admin")
+
+
+def _calc_vintage_price(jpy: int, margin_type="b2c") -> int:
+    """빈티지 상품 한국 판매가 계산 (b2c 또는 b2b)"""
+    if not jpy or jpy <= 0:
+        return 0
+    cfg = _vintage_price_config
+    fee = cfg["jp_fee_pct"] / 100
+    markup = cfg["buy_markup_pct"] / 100
+    margin = cfg.get(f"margin_{margin_type}_pct", 15.0) / 100
+    jp_ship = cfg.get("jp_domestic_shipping", 800)
+    intl_ship = cfg["intl_shipping_krw"]
+    rate = get_cached_rate() or 9.23
+    jpy_total = (jpy + jp_ship) * (1 + fee)
+    raw = jpy_total * rate * (1 + markup) * (1 + margin) + intl_ship
+    return int(math.ceil(raw / 100) * 100)
+
+
+@app.route(f"{URL_PREFIX}/shop/api/products")
+@login_required
+def shop_api_products():
+    """고객용 빈티지 상품 API"""
+    brand = request.args.get("brand", "").strip()
+    condition = request.args.get("condition", "").strip()
+    bag_type = request.args.get("bag_type", "").strip()
+    keyword = request.args.get("keyword", "").strip()
+    site = request.args.get("site", "").strip()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 24, type=int)
+    sort = request.args.get("sort", "newest")
+
+    from product_db import _conn
+    conn = _conn()
+    try:
+        base_where = "source_type='vintage' AND brand NOT LIKE '%OFF%'"
+        base_params = []
+        if site:
+            base_where += " AND site_id = ?"
+            base_params.append(site)
+
+        # 사이트 목록
+        site_rows = conn.execute(
+            f"SELECT site_id, COUNT(*) c FROM products WHERE {base_where} GROUP BY site_id ORDER BY c DESC", base_params
+        ).fetchall()
+        site_names = {"2ndstreet": "세컨드스트리트", "kindal": "킨달", "brandoff": "브랜드오프", "komehyo": "코메효"}
+        sites = [{"id": r["site_id"], "name": site_names.get(r["site_id"], r["site_id"]), "count": r["c"]} for r in site_rows]
+
+        # 브랜드 목록
+        brand_rows = conn.execute(
+            f"SELECT brand, COUNT(*) c FROM products WHERE {base_where} GROUP BY brand ORDER BY c DESC", base_params
+        ).fetchall()
+        brands = [{"name": r["brand"], "count": r["c"]} for r in brand_rows]
+
+        # 가방 종류 목록 (상품명 첫 번째 / 앞부분)
+        bag_type_map = {
+            "ショルダーバッグ": "숄더백", "トートバッグ": "토트백", "リュック": "백팩",
+            "ハンドバッグ": "핸드백", "ポーチ": "파우치", "ボストンバッグ": "보스턴백",
+            "クラッチバッグ": "클러치", "ウエストバッグ": "웨이스트백",
+            "ショルダー": "숄더", "バッグ": "가방",
+        }
+        bag_rows = conn.execute(f"SELECT name FROM products WHERE {base_where}", base_params).fetchall()
+        bag_counts = {}
+        for r in bag_rows:
+            n = r["name"] or ""
+            for ja, ko in bag_type_map.items():
+                if ja in n:
+                    bag_counts[ko] = bag_counts.get(ko, 0) + 1
+                    break
+        bag_types = [{"name": k, "count": v} for k, v in sorted(bag_counts.items(), key=lambda x: -x[1])]
+
+        # 상품 조회
+        sql = f"SELECT * FROM products WHERE {base_where}"
+        params = list(base_params)
+        if brand:
+            sql += " AND brand = ?"
+            params.append(brand)
+        if condition:
+            sql += " AND condition_grade = ?"
+            params.append(condition)
+        if bag_type:
+            # 한국어 → 일본어 역변환
+            ja_key = ""
+            for ja, ko in bag_type_map.items():
+                if ko == bag_type:
+                    ja_key = ja
+                    break
+            if ja_key:
+                sql += " AND name LIKE ?"
+                params.append(f"%{ja_key}%")
+        if keyword:
+            sql += " AND (name LIKE ? OR brand LIKE ?)"
+            params.extend([f"%{keyword}%", f"%{keyword}%"])
+
+        if sort == "price_asc":
+            sql += " ORDER BY price_jpy ASC"
+        elif sort == "price_desc":
+            sql += " ORDER BY price_jpy DESC"
+        else:
+            sql += " ORDER BY created_at DESC"
+
+        # 총 개수
+        count_sql = sql.replace("SELECT *", "SELECT COUNT(*) c", 1)
+        total = conn.execute(count_sql, params).fetchone()["c"]
+
+        sql += " LIMIT ? OFFSET ?"
+        params.extend([per_page, (page - 1) * per_page])
+        rows = conn.execute(sql, params).fetchall()
+
+        products = []
+        for r in rows:
+            # 상세 이미지에서 상품 이미지만 필터링
+            detail_imgs = []
+            try:
+                import json as _json
+                imgs = _json.loads(r["detail_images"]) if r["detail_images"] else []
+                detail_imgs = [img for img in imgs if "/goods/" in img and "_mn.jpg" in img]
+            except Exception:
+                pass
+
+            products.append({
+                "id": r["id"],
+                "site_id": r["site_id"],
+                "name": r["name_ko"] if r["name_ko"] and r["name_ko"] != r["name"] else r["name"],
+                "name_ja": r["name"],
+                "brand": r["brand"],
+                "price_jpy": r["price_jpy"],
+                "price_b2c": _calc_vintage_price(r["price_jpy"], "b2c"),
+                "price_b2b": _calc_vintage_price(r["price_jpy"], "b2b"),
+                "img_url": r["img_url"],
+                "link": r["link"],
+                "condition_grade": r["condition_grade"] if "condition_grade" in r.keys() else "",
+                "product_code": r["product_code"] or "",
+                "size_info": r["color"] if "color" in r.keys() else "",
+                "material": r["material"] if "material" in r.keys() else "",
+                "description": r["description"] if r["description"] and r["description"] != "商品のお問い合わせ" else "",
+                "detail_images": detail_imgs[:8],
+            })
+
+        return jsonify({
+            "products": products,
+            "sites": sites,
+            "brands": brands,
+            "bag_types": bag_types,
+            "conditions": ["NS", "S", "A", "B", "C", "D"],
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page,
+        })
+    finally:
+        conn.close()
 
 
 @app.route(f"{URL_PREFIX}/logout")
@@ -100,6 +322,76 @@ def logout():
     """로그아웃"""
     session.clear()
     return redirect(f"{URL_PREFIX}/login")
+
+
+# ── 회원관리 API ─────────────────────────────
+@app.route(f"{URL_PREFIX}/members")
+@admin_required
+def get_members():
+    """회원 목록 조회"""
+    from user_db import _conn
+    q = request.args.get("q", "").strip()
+    conn = _conn()
+    try:
+        if q:
+            rows = conn.execute(
+                "SELECT * FROM users WHERE username LIKE ? OR name LIKE ? OR phone LIKE ? ORDER BY created_at DESC",
+                (f"%{q}%", f"%{q}%", f"%{q}%")
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM users ORDER BY created_at DESC").fetchall()
+        members = [{"username": r["username"], "name": r["name"], "phone": r["phone"],
+                     "role": r["role"], "created_at": r["created_at"]} for r in rows]
+        return jsonify({"members": members, "total": len(members)})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/members/<path:username>", methods=["DELETE"])
+@admin_required
+def delete_member(username):
+    """회원 삭제"""
+    from user_db import _conn
+    conn = _conn()
+    try:
+        result = conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        conn.commit()
+        if result.rowcount > 0:
+            logger.info(f"회원 삭제: {username}")
+            return jsonify({"ok": True, "message": f"{username} 삭제 완료"})
+        return jsonify({"ok": False, "message": "해당 회원을 찾을 수 없습니다"})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/vintage/translate", methods=["POST"])
+@admin_required
+def translate_vintage_products():
+    """빈티지 상품 이름 일괄 한국어 번역"""
+    from product_db import _conn
+    from translator import translate_vintage_name
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, name, name_ko FROM products WHERE source_type='vintage' AND brand NOT LIKE '%OFF%'"
+        ).fetchall()
+        updated = 0
+        for r in rows:
+            name_ja = r["name"] or ""
+            old_ko = r["name_ko"] or ""
+            # 이미 번역된 것과 원본이 다르면 건너뜀 (수동 수정된 경우)
+            new_ko = translate_vintage_name(name_ja)
+            if new_ko != old_ko:
+                conn.execute("UPDATE products SET name_ko = ? WHERE id = ?", (new_ko, r["id"]))
+                updated += 1
+        conn.commit()
+        push_log(f"🌐 빈티지 상품 번역 완료: {updated}/{len(rows)}개 업데이트")
+        return jsonify({"ok": True, "message": f"{updated}개 상품 번역 완료", "total": len(rows)})
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)})
+    finally:
+        conn.close()
+
 
 # 진행상황 브로드캐스트 (멀티 클라이언트 SSE 지원)
 _log_subscribers = []          # 각 클라이언트별 queue 리스트
@@ -265,11 +557,15 @@ def run_upload(max_upload=None, shuffle_brands=False, checked_codes=None, delay_
         return
 
     products = load_latest_products()
+    # latest.json 상품은 모두 sports
+    for p in products:
+        if "source_type" not in p:
+            p["source_type"] = "sports"
 
-    # 빅데이터 DB 미업로드 상품 병합 (카페 탭에서 보이는 것과 동일)
+    # 빅데이터 DB 미업로드 상품 병합 (스포츠만)
     try:
         from product_db import get_unuploaded_products
-        db_products = get_unuploaded_products()
+        db_products = get_unuploaded_products(source_type="sports")
         existing_codes = {p.get("product_code", "") for p in products if p.get("product_code")}
         for dp in db_products:
             if dp.get("product_code") and dp["product_code"] not in existing_codes:
@@ -277,6 +573,9 @@ def run_upload(max_upload=None, shuffle_brands=False, checked_codes=None, delay_
                 products.append(dp)
     except Exception as e:
         logger.warning(f"DB 상품 병합 실패: {e}")
+
+    # 빈티지 상품 제외
+    products = [p for p in products if (p.get("source_type") or "sports") == "sports"]
 
     if not products:
         _upload_lock.release()
@@ -483,11 +782,14 @@ def run_scheduled_upload(slot_id: str, brand: str, quantity: int):
         return
 
     products = load_latest_products()
+    for p in products:
+        if "source_type" not in p:
+            p["source_type"] = "sports"
 
-    # 빅데이터 DB 미업로드 상품 병합
+    # 빅데이터 DB 미업로드 상품 병합 (스포츠만)
     try:
         from product_db import get_unuploaded_products
-        db_products = get_unuploaded_products()
+        db_products = get_unuploaded_products(source_type="sports")
         existing_codes = {p.get("product_code", "") for p in products if p.get("product_code")}
         for dp in db_products:
             if dp.get("product_code") and dp["product_code"] not in existing_codes:
@@ -495,6 +797,9 @@ def run_scheduled_upload(slot_id: str, brand: str, quantity: int):
                 products.append(dp)
     except Exception as e:
         logger.warning(f"DB 상품 병합 실패: {e}")
+
+    # 빈티지 상품 제외
+    products = [p for p in products if (p.get("source_type") or "sports") == "sports"]
 
     if not products:
         _upload_lock.release()
@@ -743,7 +1048,7 @@ except Exception as e:
 # =============================================
 
 @app.route(f"{URL_PREFIX}/")
-@login_required
+@admin_required
 def dashboard():
     """메인 대시보드 페이지"""
     products = load_latest_products()
@@ -761,18 +1066,23 @@ def dashboard():
 
 
 @app.route(f"{URL_PREFIX}/products")
-@login_required
+@admin_required
 def get_products():
     """수집된 상품 목록 JSON 반환 (브랜드 필터, 페이지네이션)
     latest.json + 빅데이터 DB 미업로드 상품 병합
     """
     products = load_latest_products()
+    # latest.json 상품은 모두 sports로 간주
+    for p in products:
+        if "source_type" not in p:
+            p["source_type"] = "sports"
 
     # 빅데이터 DB에서 미업로드 상품 병합 (중복 제거)
     include_db = request.args.get("include_db", "true").lower()
+    source_type_filter = request.args.get("source_type", "").strip()
     if include_db == "true":
         from product_db import get_unuploaded_products
-        db_products = get_unuploaded_products()
+        db_products = get_unuploaded_products(source_type=source_type_filter)
         # latest.json에 있는 품번 수집
         existing_codes = set()
         for p in products:
@@ -785,7 +1095,11 @@ def get_products():
                 existing_codes.add(dp["product_code"])
                 products.append(dp)
 
-    # 브랜드별 수량 집계 (필터 적용 전 전체 기준)
+    # source_type 필터 (sports / vintage)
+    if source_type_filter:
+        products = [p for p in products if (p.get("source_type") or "sports") == source_type_filter]
+
+    # 브랜드별 수량 집계 (source_type 필터 적용 후)
     brand_counts = {}
     for p in products:
         b = (p.get("brand_ko") or p.get("brand") or "").strip()
@@ -865,7 +1179,7 @@ def get_products():
 
 
 @app.route(f"{URL_PREFIX}/products/download")
-@login_required
+@admin_required
 def download_csv_products():
     """수집된 상품 CSV 다운로드"""
     import io
@@ -913,7 +1227,7 @@ def download_csv_products():
 
 
 @app.route(f"{URL_PREFIX}/products/brands")
-@login_required
+@admin_required
 def get_brands():
     """수집된 상품의 브랜드 목록 반환 (한국어 번역 우선, DB 미업로드 상품 포함)"""
     products = load_latest_products()
@@ -949,7 +1263,7 @@ def get_brands():
 
 
 @app.route(f"{URL_PREFIX}/products/update", methods=["POST"])
-@login_required
+@admin_required
 def update_products():
     """상품 선택 상태 업데이트 (체크박스)"""
     data = request.json or {}
@@ -972,7 +1286,7 @@ def update_products():
 
 
 @app.route(f"{URL_PREFIX}/products/delete", methods=["POST"])
-@login_required
+@admin_required
 def delete_products():
     """상품 삭제 (인덱스 기준, 복수 가능)"""
     data = request.json or {}
@@ -994,7 +1308,7 @@ def delete_products():
 
 
 @app.route(f"{URL_PREFIX}/products/check-duplicate", methods=["POST"])
-@login_required
+@admin_required
 def check_duplicate():
     """업로드 전 중복 체크 (품번 + 가격 기준)"""
     data = request.json or {}
@@ -1034,7 +1348,7 @@ def check_duplicate():
 
 
 @app.route(f"{URL_PREFIX}/products/status", methods=["POST"])
-@login_required
+@admin_required
 def update_product_status():
     """개별 상품의 cafe_status 변경 (대기/완료/중복)"""
     data = request.json or {}
@@ -1074,7 +1388,7 @@ def update_product_status():
 
 
 @app.route(f"{URL_PREFIX}/products/bulk-status", methods=["POST"])
-@login_required
+@admin_required
 def bulk_update_product_status():
     """체크된 상품의 cafe_status 일괄 변경"""
     data = request.json or {}
@@ -1112,7 +1426,7 @@ def bulk_update_product_status():
 
 
 @app.route(f"{URL_PREFIX}/status")
-@login_required
+@admin_required
 def get_status():
     """현재 실행 상태 반환"""
     products = load_latest_products()
@@ -1128,7 +1442,7 @@ def get_status():
 # ── 수동 실행 API ──────────────────────────
 
 @app.route(f"{URL_PREFIX}/run/scrape", methods=["POST"])
-@login_required
+@admin_required
 def manual_scrape():
     """수동 스크래핑 실행"""
     data = request.json or {}
@@ -1162,14 +1476,14 @@ def manual_scrape():
 # ── 사이트/카테고리 API ────────────────────────
 
 @app.route(f"{URL_PREFIX}/sites", methods=["GET"])
-@login_required
+@admin_required
 def api_sites():
     """사이트/카테고리 트리 반환"""
     return jsonify(get_sites_for_ui())
 
 
 @app.route(f"{URL_PREFIX}/scrape-history", methods=["GET"])
-@login_required
+@admin_required
 def api_scrape_history():
     """수집 이력 반환"""
     limit = request.args.get("limit", 50, type=int)
@@ -1179,14 +1493,14 @@ def api_scrape_history():
 # ── 빅데이터 관리 API ──────────────────────────
 
 @app.route(f"{URL_PREFIX}/bigdata/stats", methods=["GET"])
-@login_required
+@admin_required
 def api_bigdata_stats():
     """빅데이터 통계"""
     return jsonify(bigdata_get_stats())
 
 
 @app.route(f"{URL_PREFIX}/bigdata/products", methods=["GET"])
-@login_required
+@admin_required
 def api_bigdata_products():
     """빅데이터 상품 검색"""
     return jsonify(bigdata_search(
@@ -1201,7 +1515,7 @@ def api_bigdata_products():
 
 
 @app.route(f"{URL_PREFIX}/bigdata/delete-selected", methods=["POST"])
-@login_required
+@admin_required
 def api_bigdata_delete_selected():
     """선택된 상품 삭제 (ID 리스트)"""
     data = request.json or {}
@@ -1213,14 +1527,14 @@ def api_bigdata_delete_selected():
 
 
 @app.route(f"{URL_PREFIX}/bigdata/brands", methods=["GET"])
-@login_required
+@admin_required
 def api_bigdata_brands():
     """빅데이터 브랜드 목록"""
     return jsonify(bigdata_get_brands())
 
 
 @app.route(f"{URL_PREFIX}/bigdata/delete", methods=["POST"])
-@login_required
+@admin_required
 def api_bigdata_delete():
     """빅데이터 삭제"""
     data = request.json or {}
@@ -1238,7 +1552,7 @@ def api_bigdata_delete():
 
 
 @app.route(f"{URL_PREFIX}/bigdata/download")
-@login_required
+@admin_required
 def api_bigdata_download():
     """빅데이터 CSV 다운로드"""
     import io
@@ -1280,7 +1594,7 @@ def api_bigdata_download():
 
 
 @app.route(f"{URL_PREFIX}/bigdata/merge", methods=["POST"])
-@login_required
+@admin_required
 def api_bigdata_merge():
     """CSV 파일 업로드 + 병합 (created_at 기준 최신 데이터 우선)"""
     import csv as csv_mod
@@ -1320,7 +1634,7 @@ def api_bigdata_merge():
 # ── 카페 모니터 & 텔레그램 봇 API ─────────────
 
 @app.route(f"{URL_PREFIX}/monitor/status", methods=["GET"])
-@login_required
+@admin_required
 def api_monitor_status():
     """모니터/봇 상태"""
     return jsonify({
@@ -1330,7 +1644,7 @@ def api_monitor_status():
 
 
 @app.route(f"{URL_PREFIX}/monitor/start", methods=["POST"])
-@login_required
+@admin_required
 def api_monitor_start():
     """카페 모니터 + 텔레그램 봇 시작"""
     data = request.json or {}
@@ -1347,7 +1661,7 @@ def api_monitor_start():
 
 
 @app.route(f"{URL_PREFIX}/monitor/stop", methods=["POST"])
-@login_required
+@admin_required
 def api_monitor_stop():
     """카페 모니터 + 텔레그램 봇 종료"""
     stop_monitor()
@@ -1358,7 +1672,7 @@ def api_monitor_stop():
 # ── 카페 업로드 스케줄 API ────────────────────
 
 @app.route(f"{URL_PREFIX}/cafe-schedule", methods=["GET"])
-@login_required
+@admin_required
 def api_get_schedule():
     """스케줄 설정 조회"""
     slots = load_schedule()
@@ -1375,7 +1689,7 @@ def api_get_schedule():
 
 
 @app.route(f"{URL_PREFIX}/cafe-schedule", methods=["POST"])
-@login_required
+@admin_required
 def api_save_schedule():
     """스케줄 설정 저장 + 잡 재등록"""
     data = request.json or {}
@@ -1392,7 +1706,7 @@ def api_save_schedule():
 # ── 업로드 체크 자동 확인 스케줄 API ──────────────
 
 @app.route(f"{URL_PREFIX}/check-schedule", methods=["GET"])
-@login_required
+@admin_required
 def api_get_check_schedule():
     """업로드 체크 스케줄 설정 조회"""
     sched = load_check_schedule()
@@ -1406,7 +1720,7 @@ def api_get_check_schedule():
 
 
 @app.route(f"{URL_PREFIX}/check-schedule", methods=["POST"])
-@login_required
+@admin_required
 def api_save_check_schedule():
     """업로드 체크 스케줄 설정 저장 + 잡 재등록"""
     data = request.json or {}
@@ -1424,7 +1738,7 @@ def api_save_check_schedule():
 # ── 자동 작업 스케줄 API (수집/체크/콤보) ──────────
 
 @app.route(f"{URL_PREFIX}/task-schedule", methods=["GET"])
-@login_required
+@admin_required
 def api_get_task_schedule():
     """자동 작업 스케줄 설정 조회"""
     slots = load_task_schedule()
@@ -1440,7 +1754,7 @@ def api_get_task_schedule():
 
 
 @app.route(f"{URL_PREFIX}/task-schedule", methods=["POST"])
-@login_required
+@admin_required
 def api_save_task_schedule():
     """자동 작업 스케줄 설정 저장 + 잡 재등록"""
     data = request.json or {}
@@ -1455,7 +1769,7 @@ def api_save_task_schedule():
 
 
 @app.route(f"{URL_PREFIX}/upload-status-summary", methods=["GET"])
-@login_required
+@admin_required
 def api_upload_status_summary():
     """업로드 상태 요약 — 대기/완료/중복/전체 수량 + 예상 시간"""
     products = load_latest_products()
@@ -1482,7 +1796,7 @@ def api_upload_status_summary():
 
 
 @app.route(f"{URL_PREFIX}/run/upload", methods=["POST"])
-@login_required
+@admin_required
 def manual_upload():
     """수동 업로드 실행"""
     data = request.json or {}
@@ -1501,7 +1815,7 @@ def manual_upload():
 
 
 @app.route(f"{URL_PREFIX}/run/test", methods=["POST"])
-@login_required
+@admin_required
 def run_test():
     """테스트 버튼 핸들러"""
     push_log("🧪 테스트 버튼 클릭됨 — 정상 작동 확인")
@@ -1509,7 +1823,7 @@ def run_test():
 
 
 @app.route(f"{URL_PREFIX}/run/upload-preview", methods=["POST"])
-@login_required
+@admin_required
 def upload_preview():
     """업로드 전 미리보기 — 번역 결과 포함 리스트 반환"""
     data = request.json or {}
@@ -1598,7 +1912,7 @@ def run_blog_upload(checked_codes=None):
 
 
 @app.route(f"{URL_PREFIX}/run/blog-upload", methods=["POST"])
-@login_required
+@admin_required
 def manual_blog_upload():
     data = request.json or {}
     checked_codes = data.get("checked_codes")
@@ -1612,7 +1926,7 @@ def manual_blog_upload():
 
 
 @app.route(f"{URL_PREFIX}/run/blog-upload-stop", methods=["POST"])
-@login_required
+@admin_required
 def blog_upload_stop():
     from blog_uploader import request_blog_upload_stop
     request_blog_upload_stop()
@@ -1621,7 +1935,7 @@ def blog_upload_stop():
 
 
 @app.route(f"{URL_PREFIX}/run/upload-stop", methods=["POST"])
-@login_required
+@admin_required
 def upload_stop():
     """업로드 중지 요청"""
     request_upload_stop()
@@ -1630,7 +1944,7 @@ def upload_stop():
 
 
 @app.route(f"{URL_PREFIX}/run/upload-reset", methods=["POST"])
-@login_required
+@admin_required
 def upload_reset():
     """업로드 중지 + 상태 초기화"""
     request_upload_stop()
@@ -1695,7 +2009,7 @@ def _run_upload_check(brand_filter=""):
 
 
 @app.route(f"{URL_PREFIX}/ai/verify", methods=["POST"])
-@login_required
+@admin_required
 def ai_verify():
     """AI API 키 정상 작동 여부 확인"""
     result = verify_ai_key()
@@ -1703,7 +2017,7 @@ def ai_verify():
 
 
 @app.route(f"{URL_PREFIX}/run/upload-check", methods=["POST"])
-@login_required
+@admin_required
 def upload_check():
     """대기 상품을 카페에서 검색하여 중복 여부 체크 (백그라운드)"""
     data = request.json or {}
@@ -1717,7 +2031,7 @@ def upload_check():
 
 
 @app.route(f"{URL_PREFIX}/run/upload-check-stop", methods=["POST"])
-@login_required
+@admin_required
 def upload_check_stop():
     """업로드 체크 중지"""
     global _upload_check_stop
@@ -1727,7 +2041,7 @@ def upload_check_stop():
 
 
 @app.route(f"{URL_PREFIX}/run/auto", methods=["POST"])
-@login_required
+@admin_required
 def manual_auto():
     """수동으로 자동 파이프라인(스크래핑+업로드) 실행"""
     thread = threading.Thread(target=run_auto_pipeline, daemon=True)
@@ -1736,7 +2050,7 @@ def manual_auto():
 
 
 @app.route(f"{URL_PREFIX}/products/translate", methods=["POST"])
-@login_required
+@admin_required
 def translate_products():
     """기존 수집 데이터 일괄 번역"""
     try:
@@ -1779,7 +2093,7 @@ def translate_products():
 
 
 @app.route(f"{URL_PREFIX}/settings/dict", methods=["GET"])
-@login_required
+@admin_required
 def get_dict():
     """커스텀 단어장 조회"""
     from translator import CUSTOM_DICT
@@ -1787,7 +2101,7 @@ def get_dict():
 
 
 @app.route(f"{URL_PREFIX}/settings/dict", methods=["POST"])
-@login_required
+@admin_required
 def update_dict():
     """커스텀 단어장 단어 추가/수정"""
     from translator import CUSTOM_DICT
@@ -1802,7 +2116,7 @@ def update_dict():
 
 
 @app.route(f"{URL_PREFIX}/settings/dict/<path:ja>", methods=["DELETE"])
-@login_required
+@admin_required
 def delete_dict(ja):
     """커스텀 단어장 단어 삭제"""
     from translator import CUSTOM_DICT
@@ -1815,7 +2129,7 @@ def delete_dict(ja):
 
 
 @app.route(f"{URL_PREFIX}/settings/margin", methods=["POST"])
-@login_required
+@admin_required
 def update_margin():
     """마진율 변경 (하위 호환)"""
     data = request.json or {}
@@ -1829,14 +2143,14 @@ def update_margin():
 
 
 @app.route(f"{URL_PREFIX}/settings/price", methods=["GET"])
-@login_required
+@admin_required
 def get_price_settings():
     """현재 가격 설정 조회"""
     return jsonify({"ok": True, **get_price_config()})
 
 
 @app.route(f"{URL_PREFIX}/settings/price", methods=["POST"])
-@login_required
+@admin_required
 def update_price_settings():
     """가격 계산 변수 일괄 변경"""
     data = request.json or {}
@@ -1860,17 +2174,81 @@ def update_price_settings():
     return jsonify({"ok": True, **cfg, "message": msg})
 
 
+# ── 빈티지 가격 설정 ─────────────────────
+_vintage_price_config = {
+    "jp_fee_pct": 3.0,
+    "buy_markup_pct": 2.0,
+    "margin_b2c_pct": 15.0,
+    "margin_b2b_pct": 8.0,
+    "jp_domestic_shipping": 800,
+    "intl_shipping_krw": 15000,
+}
+
+# 파일에서 로드
+def _load_vintage_price():
+    import json as _json
+    path = os.path.join(get_path("db"), "vintage_price.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                _vintage_price_config.update(_json.load(f))
+        except Exception:
+            pass
+
+def _save_vintage_price():
+    import json as _json
+    path = os.path.join(get_path("db"), "vintage_price.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        _json.dump(_vintage_price_config, f)
+
+_load_vintage_price()
+
+
+@app.route(f"{URL_PREFIX}/settings/vintage-price", methods=["GET"])
+@admin_required
+def get_vintage_price():
+    return jsonify({"ok": True, **_vintage_price_config})
+
+
+@app.route(f"{URL_PREFIX}/settings/vintage-price", methods=["POST"])
+@admin_required
+def update_vintage_price():
+    data = request.json or {}
+    if data.get("jp_fee_pct") is not None:
+        _vintage_price_config["jp_fee_pct"] = float(data["jp_fee_pct"])
+    if data.get("buy_markup_pct") is not None:
+        _vintage_price_config["buy_markup_pct"] = float(data["buy_markup_pct"])
+    if data.get("margin_b2c_pct") is not None:
+        _vintage_price_config["margin_b2c_pct"] = float(data["margin_b2c_pct"])
+    if data.get("margin_b2b_pct") is not None:
+        _vintage_price_config["margin_b2b_pct"] = float(data["margin_b2b_pct"])
+    if data.get("jp_domestic_shipping") is not None:
+        _vintage_price_config["jp_domestic_shipping"] = int(data["jp_domestic_shipping"])
+    if data.get("intl_shipping_krw") is not None:
+        _vintage_price_config["intl_shipping_krw"] = int(data["intl_shipping_krw"])
+    _save_vintage_price()
+    msg = (f"빈티지 가격설정: 수수료={_vintage_price_config['jp_fee_pct']}% "
+           f"환율추가={_vintage_price_config['buy_markup_pct']}% "
+           f"B2C={_vintage_price_config['margin_b2c_pct']}% "
+           f"B2B={_vintage_price_config['margin_b2b_pct']}% "
+           f"일본택배=¥{_vintage_price_config.get('jp_domestic_shipping',800):,} "
+           f"국제배송={_vintage_price_config['intl_shipping_krw']:,}원")
+    push_log("🎺 " + msg)
+    return jsonify({"ok": True, **_vintage_price_config, "message": msg})
+
+
 # ── 데이터 경로 설정 ─────────────────────
 
 @app.route(f"{URL_PREFIX}/settings/data-path", methods=["GET"])
-@login_required
+@admin_required
 def get_data_path():
     """데이터 저장 경로 상태 조회"""
     return jsonify({"ok": True, **get_data_status()})
 
 
 @app.route(f"{URL_PREFIX}/settings/data-path", methods=["POST"])
-@login_required
+@admin_required
 def update_data_path():
     """데이터 저장 경로 변경"""
     data = request.json or {}
@@ -1887,7 +2265,7 @@ def update_data_path():
 
 
 @app.route(f"{URL_PREFIX}/settings/data-path/reset", methods=["POST"])
-@login_required
+@admin_required
 def reset_data_path():
     """데이터 저장 경로 초기화 (OS 기본값)"""
     from data_manager import _default_path
@@ -1902,14 +2280,14 @@ def reset_data_path():
 # ── AI 설정 ─────────────────────────────
 
 @app.route(f"{URL_PREFIX}/settings/ai", methods=["GET"])
-@login_required
+@admin_required
 def get_ai_settings():
     """AI 설정 조회"""
     return jsonify(get_ai_config())
 
 
 @app.route(f"{URL_PREFIX}/settings/ai", methods=["POST"])
-@login_required
+@admin_required
 def update_ai_settings():
     """AI 설정 변경 (provider, gemini_key, claude_key, openai_key)"""
     data = request.json or {}
@@ -1924,7 +2302,7 @@ def update_ai_settings():
 
 
 @app.route(f"{URL_PREFIX}/settings/ai/test", methods=["POST"])
-@login_required
+@admin_required
 def test_ai():
     """AI 연결 테스트"""
     try:
@@ -1949,7 +2327,7 @@ def test_ai():
 # ── AI 채팅 위젯 API ───────────────────────
 
 @app.route(f"{URL_PREFIX}/chat", methods=["POST"])
-@login_required
+@admin_required
 def api_chat():
     """AI 채팅 위젯 — 선택된 AI 모델과 대화"""
     data = request.json or {}
@@ -1965,7 +2343,7 @@ def api_chat():
 # ── 텔레그램 알림 설정 ────────────────────
 
 @app.route(f"{URL_PREFIX}/settings/telegram", methods=["GET"])
-@login_required
+@admin_required
 def get_telegram_settings():
     """텔레그램 설정 조회"""
     from notifier import get_telegram_config
@@ -1973,7 +2351,7 @@ def get_telegram_settings():
 
 
 @app.route(f"{URL_PREFIX}/settings/telegram", methods=["POST"])
-@login_required
+@admin_required
 def update_telegram_settings():
     """텔레그램 설정 변경"""
     from notifier import set_telegram_config, get_telegram_config
@@ -1987,7 +2365,7 @@ def update_telegram_settings():
 
 
 @app.route(f"{URL_PREFIX}/settings/telegram/test", methods=["POST"])
-@login_required
+@admin_required
 def test_telegram():
     """텔레그램 연결 테스트"""
     from notifier import send_telegram, is_configured
@@ -2002,7 +2380,7 @@ def test_telegram():
 # ── 네이버 로그인 (쿠키 저장) ────────────
 
 @app.route(f"{URL_PREFIX}/naver/status")
-@login_required
+@admin_required
 def naver_status():
     """네이버 로그인 상태 확인"""
     return jsonify({"logged_in": has_saved_cookies()})
@@ -2039,7 +2417,7 @@ def _get_cookie_path(slot: int) -> str:
 
 
 @app.route(f"{URL_PREFIX}/naver/accounts", methods=["GET"])
-@login_required
+@admin_required
 def get_naver_accounts():
     """네이버 계정 목록 조회 (비밀번호 마스킹)"""
     data = _load_naver_accounts()
@@ -2055,7 +2433,7 @@ def get_naver_accounts():
 
 
 @app.route(f"{URL_PREFIX}/naver/accounts", methods=["POST"])
-@login_required
+@admin_required
 def save_naver_account():
     """네이버 계정 저장"""
     d = request.json or {}
@@ -2080,7 +2458,7 @@ def save_naver_account():
 
 
 @app.route(f"{URL_PREFIX}/naver/accounts/delete", methods=["POST"])
-@login_required
+@admin_required
 def delete_naver_account():
     """네이버 계정 삭제"""
     d = request.json or {}
@@ -2098,7 +2476,7 @@ def delete_naver_account():
 
 
 @app.route(f"{URL_PREFIX}/naver/accounts/active", methods=["POST"])
-@login_required
+@admin_required
 def set_active_naver_account():
     """활성 계정 변경"""
     d = request.json or {}
@@ -2116,7 +2494,7 @@ def set_active_naver_account():
 
 
 @app.route(f"{URL_PREFIX}/naver/login", methods=["POST"])
-@login_required
+@admin_required
 def naver_login():
     """네이버 로그인 시작 (저장된 계정 자동 입력)"""
     d = request.json or {}
@@ -2151,7 +2529,7 @@ def naver_login():
 
 
 @app.route(f"{URL_PREFIX}/naver/logout", methods=["POST"])
-@login_required
+@admin_required
 def naver_logout():
     """네이버 쿠키 삭제"""
     delete_cookies()
@@ -2184,7 +2562,7 @@ def _get_blog_cookie_path(slot: int) -> str:
 
 
 @app.route(f"{URL_PREFIX}/blog/accounts", methods=["GET"])
-@login_required
+@admin_required
 def get_blog_accounts():
     data = _load_blog_accounts()
     result = {"active": data.get("active", 1), "accounts": {}}
@@ -2200,7 +2578,7 @@ def get_blog_accounts():
 
 
 @app.route(f"{URL_PREFIX}/blog/accounts", methods=["POST"])
-@login_required
+@admin_required
 def save_blog_account():
     d = request.json or {}
     slot = str(d.get("slot", 1))
@@ -2219,7 +2597,7 @@ def save_blog_account():
 
 
 @app.route(f"{URL_PREFIX}/blog/accounts/delete", methods=["POST"])
-@login_required
+@admin_required
 def delete_blog_account():
     d = request.json or {}
     slot = str(d.get("slot", 1))
@@ -2235,7 +2613,7 @@ def delete_blog_account():
 
 
 @app.route(f"{URL_PREFIX}/blog/accounts/active", methods=["POST"])
-@login_required
+@admin_required
 def set_active_blog_account():
     d = request.json or {}
     slot = int(d.get("slot", 1))
@@ -2247,7 +2625,7 @@ def set_active_blog_account():
 
 
 @app.route(f"{URL_PREFIX}/blog/login", methods=["POST"])
-@login_required
+@admin_required
 def blog_login():
     d = request.json or {}
     slot = int(d.get("slot", 1))
@@ -2276,7 +2654,7 @@ def blog_login():
 
 
 @app.route(f"{URL_PREFIX}/blog/fetch-url", methods=["POST"])
-@login_required
+@admin_required
 def blog_fetch_url():
     """URL에서 제목, 본문, 이미지 추출 (JS 렌더링 사이트는 Playwright 사용)"""
     d = request.json or {}
@@ -2513,7 +2891,7 @@ async def _fetch_url_playwright(url: str) -> dict:
 
 
 @app.route(f"{URL_PREFIX}/blog/post-url-content", methods=["POST"])
-@login_required
+@admin_required
 def blog_post_url_content():
     """URL에서 추출한 콘텐츠를 블로그에 발행"""
     d = request.json or {}
@@ -2569,7 +2947,7 @@ def stop_all():
 
 
 @app.route(f"{URL_PREFIX}/run/pause", methods=["POST"])
-@login_required
+@admin_required
 def pause_scrape():
     """일시정지: 현재 상품 완료 후 멈춤"""
     if not status["scraping"]:
@@ -2580,7 +2958,7 @@ def pause_scrape():
 
 
 @app.route(f"{URL_PREFIX}/run/resume", methods=["POST"])
-@login_required
+@admin_required
 def resume_scrape():
     """일시정지 해제"""
     status["paused"] = False
@@ -2589,7 +2967,7 @@ def resume_scrape():
 
 
 @app.route(f"{URL_PREFIX}/run/unlock", methods=["POST"])
-@login_required
+@admin_required
 def unlock_status():
     """상태 잠금 해제 (데이터 삭제 없이 stuck 상태만 리셋)"""
     was_scraping = status["scraping"]
@@ -2606,7 +2984,7 @@ def unlock_status():
 
 
 @app.route(f"{URL_PREFIX}/run/reset", methods=["POST"])
-@login_required
+@admin_required
 def reset_all():
     """리셋: 수집 중단 + 브라우저 강제 종료 + 데이터 삭제 + 상태 초기화"""
     import glob, shutil
@@ -2661,7 +3039,7 @@ def reset_all():
 # ── 실시간 로그 스트리밍 (SSE) ─────────────
 
 @app.route(f"{URL_PREFIX}/logs/stream")
-@login_required
+@admin_required
 def log_stream():
     """
     Server-Sent Events로 실시간 로그 전송
@@ -2723,6 +3101,12 @@ if __name__ == "__main__":
         init_product_db()
     except Exception as e:
         print(f"⚠️ 빅데이터 DB 초기화 실패: {e}")
+
+    # 회원 DB 초기화
+    try:
+        init_user_db()
+    except Exception as e:
+        print(f"⚠️ 회원 DB 초기화 실패: {e}")
 
     # use_reloader=False일 때 스케줄러 시작 (reloader 사용 시에는 위에서 이미 시작됨)
     _start_scheduler_once()

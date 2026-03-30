@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TheOne - 로그인</title>
+  <title>TheOne - 회원가입</title>
   <style>
     :root {
       --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a;
@@ -17,30 +17,20 @@
       font-family:'Noto Sans KR',sans-serif;
       min-height:100vh; display:flex; align-items:center; justify-content:center;
     }
-
-    .login-container {
-      width:100%; max-width:420px; padding:20px;
-    }
-
-    .login-card {
+    .signup-container { width:100%; max-width:420px; padding:20px; }
+    .signup-card {
       background:var(--card); border:1px solid var(--border);
       border-radius:16px; padding:40px 36px; text-align:center;
       box-shadow:0 8px 32px rgba(0,0,0,0.4);
     }
-
-    .login-logo {
+    .signup-logo {
       font-size:1.6rem; font-weight:800;
       background:linear-gradient(135deg, var(--accent), var(--accent2));
       -webkit-background-clip:text; -webkit-text-fill-color:transparent;
       margin-bottom:6px;
     }
-    .login-sub {
-      font-size:0.82rem; color:var(--muted); margin-bottom:32px;
-    }
-
-    .form-group {
-      margin-bottom:18px; text-align:left;
-    }
+    .signup-sub { font-size:0.82rem; color:var(--muted); margin-bottom:32px; }
+    .form-group { margin-bottom:18px; text-align:left; }
     .form-group label {
       display:block; font-size:0.78rem; color:var(--muted);
       margin-bottom:6px; letter-spacing:.03em;
@@ -49,15 +39,13 @@
       width:100%; padding:12px 14px;
       background:#0f1117; border:1px solid var(--border);
       border-radius:8px; color:var(--text);
-      font-size:0.92rem; outline:none;
-      transition:border-color .2s;
+      font-size:0.92rem; outline:none; transition:border-color .2s;
     }
     .form-group input:focus {
       border-color:var(--accent);
       box-shadow:0 0 0 3px rgba(79,142,247,0.15);
     }
-
-    .login-btn {
+    .signup-btn {
       width:100%; padding:13px;
       background:linear-gradient(135deg, var(--accent), var(--accent2));
       border:none; border-radius:8px;
@@ -65,9 +53,8 @@
       cursor:pointer; transition:opacity .15s, transform .1s;
       margin-top:8px;
     }
-    .login-btn:hover { opacity:.9; }
-    .login-btn:active { transform:scale(.98); }
-
+    .signup-btn:hover { opacity:.9; }
+    .signup-btn:active { transform:scale(.98); }
     .error-msg {
       background:rgba(231,76,60,0.12); border:1px solid rgba(231,76,60,0.3);
       border-radius:8px; padding:10px 14px;
@@ -75,52 +62,47 @@
       margin-bottom:18px; display:none;
     }
     .error-msg.show { display:block; }
-
-    .env-badge {
-      display:inline-flex; align-items:center; gap:6px;
-      margin-top:24px; padding:5px 14px;
-      background:#1e2433; border:1px solid var(--border);
-      border-radius:20px; font-size:0.72rem; color:var(--muted);
+    .link-row {
+      margin-top:20px; font-size:0.82rem;
     }
-    .env-dot {
-      width:6px; height:6px; border-radius:50%;
+    .link-row a {
+      color:var(--accent); text-decoration:none;
     }
-    .env-dot.prod { background:var(--green); }
-    .env-dot.test { background:var(--yellow); }
+    .link-row a:hover { text-decoration:underline; }
   </style>
 </head>
 <body>
-  <div class="login-container">
-    <div class="login-card">
-      <div class="login-logo">TheOne</div>
-      <div class="login-sub">JP 소싱 대시보드</div>
+  <div class="signup-container">
+    <div class="signup-card">
+      <div class="signup-logo">TheOne</div>
+      <div class="signup-sub">회원가입</div>
 
       <div class="error-msg {% if error %}show{% endif %}" id="errorMsg">
         {{ error or '' }}
       </div>
 
-      <form method="POST" action="{{ url_prefix }}/login">
+      <form method="POST" action="{{ url_prefix }}/signup">
         <div class="form-group">
-          <label>아이디</label>
-          <input type="text" name="username" placeholder="아이디를 입력하세요"
-                 value="{{ username or '' }}" autofocus required>
+          <label>아이디 <span style="color:var(--red)">*</span></label>
+          <input type="text" name="username" placeholder="아이디를 입력하세요" autofocus required>
         </div>
         <div class="form-group">
-          <label>비밀번호</label>
-          <input type="password" name="password" placeholder="비밀번호를 입력하세요" required>
+          <label>비밀번호 <span style="color:var(--red)">*</span></label>
+          <input type="password" name="password" placeholder="4자 이상" required minlength="4">
         </div>
-        <button type="submit" class="login-btn">로그인</button>
+        <div class="form-group">
+          <label>이름</label>
+          <input type="text" name="name" placeholder="이름 (선택)">
+        </div>
+        <div class="form-group">
+          <label>연락처</label>
+          <input type="tel" name="phone" placeholder="010-0000-0000 (선택)">
+        </div>
+        <button type="submit" class="signup-btn">회원가입</button>
       </form>
 
-      <div style="margin-top:20px; font-size:0.82rem;">
-        <a href="{{ url_prefix }}/signup" style="color:#4f8ef7; text-decoration:none;">
-          계정이 없으신가요? 회원가입
-        </a>
-      </div>
-
-      <div class="env-badge">
-        <span class="env-dot {{ 'prod' if env == 'production' else 'test' }}"></span>
-        {{ '운영 서버 (Mac)' if env == 'production' else '테스트 서버 (Windows)' }}
+      <div class="link-row">
+        이미 계정이 있으신가요? <a href="{{ url_prefix }}/login">로그인</a>
       </div>
     </div>
   </div>

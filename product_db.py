@@ -667,15 +667,20 @@ def get_total_count() -> int:
         conn.close()
 
 
-def get_unuploaded_products() -> list:
+def get_unuploaded_products(source_type="") -> list:
     """카페 업로드 안 된 상품 목록 반환 (빅데이터 DB에서)"""
     conn = _conn()
     try:
-        rows = conn.execute("""
+        sql = """
             SELECT * FROM products
-            WHERE cafe_status = '' OR cafe_status IS NULL
-            ORDER BY created_at DESC
-        """).fetchall()
+            WHERE (cafe_status = '' OR cafe_status IS NULL)
+        """
+        params = []
+        if source_type:
+            sql += " AND (source_type = ?)"
+            params.append(source_type)
+        sql += " ORDER BY created_at DESC"
+        rows = conn.execute(sql, params).fetchall()
         products = []
         for r in rows:
             products.append({
@@ -699,6 +704,7 @@ def get_unuploaded_products() -> list:
                 "cafe_status": "",
                 "scraped_at": r["scraped_at"],
                 "created_at": r["created_at"],
+                "source_type": r["source_type"] if "source_type" in r.keys() else "sports",
                 "from_db": True,
             })
         return products

@@ -15,6 +15,66 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 
 logger = logging.getLogger(__name__)
 
+# ── 상품명 기반 카테고리 자동 분류 ──
+_CATEGORY_RULES = [
+    # (카테고리ID, 카테고리명, 키워드 목록)
+    ("951002", "가방", [
+        "バッグ", "リュック", "ポーチ", "ボストン", "クラッチ", "ウエスト",
+        "ショルダー", "トート", "ハンド", "バック", "カナパ", "スピーディ",
+        "アルマ", "サック", "ボリード", "バーキン", "ケリー",
+    ]),
+    ("951003", "신발", [
+        "シューズ", "スニーカー", "ブーツ", "サンダル", "パンプス",
+        "ローファー", "スリッポン", "ミュール",
+    ]),
+    ("951004", "시계", [
+        "腕時計", "ウォッチ", "時計",
+    ]),
+    ("951005", "악세서리", [
+        "ネックレス", "ブレスレット", "リング", "ピアス", "イヤリング",
+        "ベルト", "サングラス", "キーケース", "キーリング", "スカーフ",
+        "マフラー", "帽子", "キャップ", "財布", "ウォレット", "コインケース",
+        "カードケース", "手袋",
+    ]),
+    ("951001", "의류", [
+        "ジャケット", "コート", "シャツ", "パンツ", "スカート", "ワンピース",
+        "ブラウス", "ニット", "セーター", "カーディガン", "ベスト",
+        "Tシャツ", "スウェット", "パーカー", "ダウン",
+    ]),
+]
+
+_BREADCRUMB_CATEGORY_MAP = {
+    "バッグ": ("951002", "가방"), "bag": ("951002", "가방"),
+    "衣類": ("951001", "의류"), "clothing": ("951001", "의류"),
+    "シューズ": ("951003", "신발"), "shoes": ("951003", "신발"),
+    "時計": ("951004", "시계"), "watch": ("951004", "시계"),
+    "アクセサリー": ("951005", "악세서리"), "accessory": ("951005", "악세서리"),
+    "ジュエリー": ("951005", "악세서리"),
+    "小物": ("951005", "악세서리"),
+}
+
+
+def _classify_category(name: str, breadcrumb: str = "") -> tuple:
+    """상품 카테고리 자동 분류 → (category_id, subcategory)
+    1차: breadcrumb에서 추출
+    2차: 상품명 키워드 매칭
+    """
+    # 1차: breadcrumb
+    if breadcrumb:
+        for key, (cat_id, cat_name) in _BREADCRUMB_CATEGORY_MAP.items():
+            if key in breadcrumb:
+                return cat_id, cat_name
+
+    # 2차: 상품명 키워드
+    if name:
+        for cat_id, cat_name, keywords in _CATEGORY_RULES:
+            for kw in keywords:
+                if kw in name:
+                    return cat_id, cat_name
+
+    return "", ""
+
+
 _app_status = None
 _browser = None
 _playwright = None
@@ -106,15 +166,17 @@ async def scrape_2ndstreet(
                 break
 
             # ── URL 구성 ──
-            url = f"https://www.2ndstreet.jp/search?category={category}"
+            params = []
+            if category:
+                params.append(f"category={category}")
             if brand_code:
-                url += f"&brand%5B%5D={brand_code}"
-            # 컨디션: 신품・미사용 / 중고A / 중고B 까지만
-            url += "&conditions%5B%5D=NS&conditions%5B%5D=A&conditions%5B%5D=B"
-            url += "&sortBy=recommend"
+                params.append(f"brand%5B%5D={brand_code}")
+            # 컨디션: 전체 (제한 없음)
+            params.append("sortBy=recommend")
             if keyword:
-                url += f"&keyword={keyword}"
-            url += f"&page={page_num}"
+                params.append(f"keyword={keyword}")
+            params.append(f"page={page_num}")
+            url = "https://www.2ndstreet.jp/search?" + "&".join(params)
 
             log(f"📄 페이지 {page_num} 로딩: {url}")
 
@@ -269,7 +331,16 @@ async def scrape_2ndstreet(
                         prod["color"] = detail["color"]
                     if detail.get("size"):
                         prod["size"] = detail["size"]
-                    log(f"      ✅ 이미지 {len(detail.get('detail_images',[]))}개, 설명 {len(detail.get('description',''))}자")
+                    # 자동 카테고리 분류
+                    if not prod.get("category_id") or prod["category_id"] == category:
+                        auto_cat_id, auto_subcat = _classify_category(
+                            prod.get("name", ""),
+                            detail.get("breadcrumb", "")
+                        )
+                        if auto_cat_id:
+                            prod["category_id"] = auto_cat_id
+                            prod["subcategory"] = auto_subcat
+                    log(f"      ✅ 이미지 {len(detail.get('detail_images',[]))}개, 카테고리: {prod.get('subcategory','?')}")
                     await asyncio.sleep(1)
                 except Exception as e:
                     log(f"      ⚠️ 상세 스크래핑 실패: {e}")
@@ -282,16 +353,27 @@ async def scrape_2ndstreet(
 
     log(f"🏪 2ndstreet 수집 완료: 총 {len(products)}개")
 
-    # ── 번역 ──
+    # ── 번역 (사전 번역 → 구글 번역) ──
     if products:
         log("🌏 일본어 → 한국어 번역 중...")
         try:
-            from translator import translate_ja_ko, translate_brand
-            for p in products:
+            from translator import translate_ja_ko, translate_brand, translate_vintage_name
+            import re as _re
+            translated = 0
+            for i, p in enumerate(products):
                 if p.get("name") and not p.get("name_ko"):
-                    p["name_ko"] = translate_ja_ko(p["name"])
+                    # 1차: 빈티지 사전 번역
+                    name_ko = translate_vintage_name(p["name"])
+                    # 2차: 사전 번역 후에도 일본어가 남아있으면 구글 번역
+                    if _re.search(r'[\u3040-\u30FF\u4E00-\u9FFF]', name_ko):
+                        name_ko = translate_ja_ko(p["name"])
+                    p["name_ko"] = name_ko
+                    translated += 1
                 if p.get("brand") and not p.get("brand_ko"):
                     p["brand_ko"] = translate_brand(p["brand"])
+                if (i + 1) % 20 == 0:
+                    log(f"   🌐 번역 진행: {i+1}/{len(products)}개")
+            log(f"   ✅ 번역 완료: {translated}개")
         except Exception as e:
             log(f"   ⚠️ 번역 오류: {e}")
 
@@ -354,35 +436,68 @@ async def _extract_product_from_card(el, page) -> dict:
         pass
 
     try:
-        # 텍스트 기반 정보 추출
-        text = await el.inner_text()
-        lines = [l.strip() for l in text.split("\n") if l.strip()]
-
-        for line in lines:
-            # 가격 (¥ 또는 円)
-            price_match = re.search(r'[¥￥]?\s?([\d,]+)\s*(?:円|$)', line)
-            if price_match and not product["price_jpy"]:
-                price_str = price_match.group(1).replace(",", "")
-                if price_str.isdigit():
-                    product["price_jpy"] = int(price_str)
-                continue
-
-            # 상태 (A, B, C, D, S, N)
-            grade_match = re.match(r'^[SABCDN]\s*$', line)
-            if grade_match:
-                product["condition_grade"] = line.strip()
-                continue
-
-        # 브랜드 (보통 첫 줄)
-        if lines and not product["brand"]:
-            product["brand"] = lines[0]
-
-        # 상품명 (보통 두 번째 줄)
-        if len(lines) > 1 and not product["name"]:
-            product["name"] = lines[1]
-
+        # JavaScript로 구조화된 정보 직접 추출
+        card_info = await el.evaluate("""(el) => {
+            const info = {brand: '', name: '', price: 0, grade: ''};
+            // 브랜드
+            const brandEl = el.querySelector('[class*="brand"], [class*="Brand"]');
+            if (brandEl) info.brand = brandEl.innerText.trim();
+            // 상품명
+            const nameEl = el.querySelector('[class*="name"], [class*="Name"], [class*="title"], [class*="Title"]');
+            if (nameEl) info.name = nameEl.innerText.trim();
+            // 가격 — 전체 텍스트에서 추출
+            const text = el.innerText || '';
+            const priceMatch = text.match(/[¥￥]\s?([\d,]+)/);
+            if (priceMatch) info.price = parseInt(priceMatch[1].replace(/,/g, ''));
+            // 등급
+            const gradeEl = el.querySelector('[class*="condition"], [class*="Condition"], [class*="grade"], [class*="Grade"]');
+            if (gradeEl) {
+                const gt = gradeEl.innerText.trim();
+                const gm = gt.match(/(新品|未使用|[SABCDN])/);
+                if (gm) info.grade = gm[1] === '新品' || gm[1] === '未使用' ? 'NS' : gm[1];
+            }
+            return info;
+        }""")
+        if card_info.get("brand") and not product["brand"]:
+            product["brand"] = card_info["brand"]
+        if card_info.get("name") and not product["name"]:
+            product["name"] = card_info["name"]
+        if card_info.get("price") and not product["price_jpy"]:
+            product["price_jpy"] = card_info["price"]
+        if card_info.get("grade") and not product["condition_grade"]:
+            product["condition_grade"] = card_info["grade"]
     except Exception:
         pass
+
+    # 폴백: 텍스트 기반 추출
+    if not product["price_jpy"] or not product["brand"]:
+        try:
+            text = await el.inner_text()
+            full_text = text.replace("\n", " ")
+            # 가격 (전체 텍스트에서)
+            if not product["price_jpy"]:
+                price_match = re.search(r'[¥￥]\s?([\d,]+)', full_text)
+                if price_match:
+                    price_str = price_match.group(1).replace(",", "")
+                    if price_str.isdigit() and int(price_str) > 100:
+                        product["price_jpy"] = int(price_str)
+
+            lines = [l.strip() for l in text.split("\n") if l.strip()]
+            # 등급
+            if not product["condition_grade"]:
+                for line in lines:
+                    grade_match = re.match(r'^(?:中古)?([SABCDN])\s*$', line)
+                    if grade_match:
+                        product["condition_grade"] = grade_match.group(1)
+                        break
+            # 브랜드 (첫 줄)
+            if lines and not product["brand"]:
+                product["brand"] = lines[0]
+            # 상품명 (두 번째 줄)
+            if len(lines) > 1 and not product["name"]:
+                product["name"] = lines[1]
+        except Exception:
+            pass
 
     return product
 
@@ -461,6 +576,16 @@ async def _extract_detail_page(page) -> dict:
             detail["color"] = spec_info["color"]
         if spec_info.get("size"):
             detail["size"] = spec_info["size"]
+
+        # 1차: breadcrumb에서 카테고리 추출
+        category_info = await page.evaluate("""() => {
+            const bc = document.querySelectorAll('.breadcrumb a, .breadcrumb li, nav[aria-label*="bread"] a, .pankuzu a, [class*="breadcrumb"] a');
+            const texts = [];
+            for (const el of bc) texts.push(el.innerText.trim());
+            return texts.join(' > ');
+        }""")
+        if category_info:
+            detail["breadcrumb"] = category_info
 
     except Exception:
         pass
