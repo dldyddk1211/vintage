@@ -680,6 +680,39 @@ async def rescrape_details(log=None):
                 conn.commit()
                 conn.close()
 
+                # AI 번역 (설명 + 상품명)
+                if updated_fields:
+                    try:
+                        from translator import translate_ja_ko
+                        conn2 = db_conn()
+                        if detail.get("description"):
+                            desc_ko = translate_ja_ko(detail["description"])
+                            if desc_ko:
+                                conn2.execute(
+                                    "UPDATE products SET description_ko=? WHERE product_code=? AND site_id='2ndstreet'",
+                                    (desc_ko, code)
+                                )
+                                updated_fields.append("번역")
+                        # name_ko가 없거나 일본어가 남아있으면 재번역
+                        import re as _re
+                        cur_name_ko = conn2.execute(
+                            "SELECT name_ko, name FROM products WHERE product_code=? AND site_id='2ndstreet'",
+                            (code,)
+                        ).fetchone()
+                        if cur_name_ko:
+                            nk = cur_name_ko[0] or ""
+                            if _re.search(r'[\u3040-\u30FF\u4E00-\u9FFF]', nk) or not nk:
+                                name_ko = translate_ja_ko(cur_name_ko[1] or "")
+                                if name_ko:
+                                    conn2.execute(
+                                        "UPDATE products SET name_ko=? WHERE product_code=? AND site_id='2ndstreet'",
+                                        (name_ko, code)
+                                    )
+                        conn2.commit()
+                        conn2.close()
+                    except Exception as te:
+                        log(f"      ⚠️ 번역: {str(te)[:40]}")
+
                 if updated_fields:
                     log(f"      ✅ {', '.join(updated_fields)}")
                     success += 1

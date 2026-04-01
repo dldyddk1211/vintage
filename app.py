@@ -321,9 +321,16 @@ def shop_api_products():
             try:
                 import json as _json
                 imgs = _json.loads(r["detail_images"]) if r["detail_images"] else []
-                detail_imgs = [img for img in imgs if "/goods/" in img and "_mn.jpg" in img]
+                detail_imgs = [img for img in imgs if any(ext in img.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp'])]
             except Exception:
                 pass
+
+            # 설명: description_ko 우선, 없으면 description
+            desc = ""
+            if r.get("description_ko") and r["description_ko"].strip():
+                desc = r["description_ko"]
+            elif r.get("description") and r["description"].strip() and r["description"] != "商品のお問い合わせ":
+                desc = r["description"]
 
             products.append({
                 "id": r["id"],
@@ -343,8 +350,8 @@ def shop_api_products():
                 "size_info": r["color"] if "color" in r.keys() else "",
                 "material": r["material"] if "material" in r.keys() else "",
                 "color_raw": r["color"] if "color" in r.keys() else "",
-                "description": r["description"] if r["description"] and r["description"] != "商品のお問い合わせ" else "",
-                "detail_images": detail_imgs[:8],
+                "description": desc,
+                "detail_images": detail_imgs[:12],
             })
 
         return jsonify({
