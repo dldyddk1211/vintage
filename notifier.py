@@ -129,3 +129,63 @@ def notify_upload_error(product_name: str, error: str):
         f"💥 {error[:200]}"
     )
     send_telegram(msg)
+
+
+# ── AI API 상태 모니터링 ──────────────────
+
+_ai_api_last_ok = True  # 마지막 체크 시 정상 여부 (중복 알림 방지)
+
+def check_ai_api_and_notify():
+    """AI API 상태를 확인하고 문제 시 텔레그램 알림 전송"""
+    global _ai_api_last_ok
+
+    if not is_configured():
+        return
+
+    try:
+        from post_generator import verify_ai_key, get_ai_config
+        config = get_ai_config()
+        provider = config.get("provider", "none")
+
+        if provider == "none":
+            return  # AI 미설정 시 체크 안 함
+
+        result = verify_ai_key()
+
+        if not result.get("ok"):
+            # 오류 발생 — 이전에 정상이었으면 알림 전송
+            if _ai_api_last_ok:
+                msg = (
+                    f"🚨 <b>AI API 오류 감지</b>\n"
+                    f"🔧 Provider: {result.get('provider', '?')}\n"
+                    f"💬 {result.get('message', '알 수 없는 오류')}\n\n"
+                    f"⏰ 5분마다 재확인 중..."
+                )
+                send_telegram(msg)
+                logger.warning(f"AI API 오류 감지: {result.get('message')}")
+            else:
+                # 계속 오류 상태 — 30분마다만 재알림
+                import time
+                if not hasattr(check_ai_api_and_notify, '_last_repeat'):
+                    check_ai_api_and_notify._last_repeat = 0
+                now = time.time()
+                if now - check_ai_api_and_notify._last_repeat > 1800:  # 30분
+                    send_telegram(
+                        f"⚠️ <b>AI API 여전히 오류</b>\n"
+                        f"🔧 {result.get('provider')}: {result.get('message', '')[:100]}"
+                    )
+                    check_ai_api_and_notify._last_repeat = now
+
+            _ai_api_last_ok = False
+        else:
+            # 정상 복구 — 이전에 오류였으면 복구 알림
+            if not _ai_api_last_ok:
+                send_telegram(
+                    f"✅ <b>AI API 정상 복구</b>\n"
+                    f"🔧 {result.get('provider')}: 정상 작동 중"
+                )
+                logger.info(f"AI API 정상 복구: {result.get('provider')}")
+            _ai_api_last_ok = True
+
+    except Exception as e:
+        logger.warning(f"AI API 체크 오류: {e}")

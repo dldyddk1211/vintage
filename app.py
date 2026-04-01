@@ -1154,6 +1154,16 @@ def _register_task_schedule_jobs():
 # 스케줄러 초기화 함수 (중복 시작 방지)
 _scheduler_started = False
 
+
+def _check_ai_api_job():
+    """AI API 상태 확인 → 문제 시 텔레그램 알림"""
+    try:
+        from notifier import check_ai_api_and_notify
+        check_ai_api_and_notify()
+    except Exception as e:
+        logger.warning(f"AI API 모니터링 오류: {e}")
+
+
 def _start_scheduler_once():
     """스케줄러를 한 번만 시작 (중복 방지)"""
     global _scheduler_started
@@ -1162,6 +1172,16 @@ def _start_scheduler_once():
     _register_schedule_jobs()
     _register_check_schedule_job()
     _register_task_schedule_jobs()
+    # AI API 상태 모니터링 (5분 간격)
+    scheduler.add_job(
+        func=_check_ai_api_job,
+        trigger="interval",
+        minutes=5,
+        id="ai_api_monitor",
+        name="AI API 상태 모니터링 (5분)",
+        replace_existing=True,
+    )
+    logger.info("📡 AI API 모니터링 등록 (5분 간격)")
     scheduler.start()
     _scheduler_started = True
     logger.info("📅 스케줄러 시작됨 (PID: %d)", os.getpid())
