@@ -920,9 +920,19 @@ async def _extract_detail_page(page) -> dict:
                     base_url = f"https://cdn2.2ndstreet.jp/img/pc/goods/{gid[:6]}/{gid[6:8]}/{gid[8:]}/1_tn.jpg"
 
         if base_url and "/goods/" in base_url:
-            # 메인 이미지 경로에서 1~9번 이미지 URL 생성
+            # 메인 이미지 경로에서 이미지 URL 생성 + 존재 확인
             base_dir = base_url.rsplit("/", 1)[0] + "/"
-            detail["detail_images"] = [f"{base_dir}{n}.jpg" for n in range(1, 10)]
+            import requests as _req
+            for n in range(1, 11):
+                img_url = f"{base_dir}{n}.jpg"
+                try:
+                    resp = _req.head(img_url, timeout=3, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.2ndstreet.jp/"})
+                    if resp.status_code == 200:
+                        detail["detail_images"].append(img_url)
+                    else:
+                        break  # 403/404면 이후 번호도 없음
+                except Exception:
+                    break
 
         # 상품 설명 텍스트 (검색 안내 팝업만 제외 — 실제 상품 설명은 허용)
         _desc_excludes = ['キーワード', '検索窓']

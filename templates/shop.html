@@ -695,11 +695,16 @@ function openModal(idx) {
   } else {
     document.getElementById("modal-price").innerHTML = `&yen;${p.price_jpy.toLocaleString()}`;
   }
-  const mainImg = (p.detail_images && p.detail_images.length) ? p.detail_images[0].replace("_mn.jpg",".jpg") : p.img_url;
+  // 메인 이미지: img_url 썸네일 → 큰 이미지로 변환
+  const mainImg = p.img_url ? p.img_url.replace("_tn.jpg", ".jpg").replace("_mn.jpg", ".jpg") : (p.detail_images && p.detail_images[0]) || "";
   document.getElementById("modal-main-img").src = mainImg;
+  document.getElementById("modal-main-img").onerror = function() {
+    // 큰 이미지 실패 시 썸네일로 폴백
+    if (p.img_url && this.src !== p.img_url) this.src = p.img_url;
+  };
   const thumbsEl = document.getElementById("modal-thumbs");
   thumbsEl.innerHTML = (p.detail_images || []).map((img, i) =>
-    `<img class="modal-thumb ${i===0?'active':''}" src="${img}" onclick="setMainImg(this,'${img.replace('_mn.jpg','.jpg')}')">`
+    `<img class="modal-thumb ${i===0?'active':''}" src="${img}" onclick="setMainImg(this,'${img}')" onerror="this.style.display='none'">`
   ).join("");
   // 등급 라벨
   const gradeLabels = {"NS": "신품/미사용", "S": "중고S (최상)", "A": "중고A (양호)", "B": "중고B (사용감 있음)", "C": "중고C (사용감 많음)", "D": "중고D (난있음)"};
