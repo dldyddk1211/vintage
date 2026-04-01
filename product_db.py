@@ -75,6 +75,7 @@ def init_db():
             ("material", "''"),
             ("gender", "''"),
             ("subcategory", "''"),
+            ("internal_code", "''"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE products ADD COLUMN {col} TEXT DEFAULT {default}")
@@ -82,13 +83,55 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
         conn.execute("CREATE INDEX IF NOT EXISTS idx_source_type ON products(source_type)")
+        # site_id + product_code 유니크 인덱스 (중복 검열 강화)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_site_code ON products(site_id, product_code)")
 
         logger.info(f"빅데이터 DB 초기화 완료: {_DB_PATH}")
     finally:
         conn.close()
 
 
-def exists(site_id: str, product_code: str, price_jpy: int) -> bool:
+# ── 고유번호 생성 ──
+_SITE_CODE = {
+    "2ndstreet": "S",
+    "kindal": "K",
+    "brandoff": "B",
+    "komehyo": "KM",
+    "xebio": "X",
+}
+
+# 같은 배치 내에서 번호 중복 방지용 카운터
+_internal_code_counter = {}
+
+def _generate_internal_code(conn, site_id: str) -> str:
+    """사이트별 고유번호 생성: S-260331-0001 (배치 내 중복 방지)"""
+    prefix = _SITE_CODE.get(site_id, site_id[0].upper())
+    today = datetime.now().strftime("%y%m%d")
+    key = f"{prefix}-{today}"
+
+    # 메모리 카운터에 값이 있으면 그걸 사용 (같은 배치 내 중복 방지)
+    if key in _internal_code_counter:
+        _internal_code_counter[key] += 1
+        return f"No.{key}-{_internal_code_counter[key]:04d}"
+
+    # DB에서 마지막 번호 조회
+    row = conn.execute(
+        "SELECT internal_code FROM products WHERE internal_code LIKE ? ORDER BY internal_code DESC LIMIT 1",
+        (f"No.{prefix}-{today}-%",)
+    ).fetchone()
+    if row and row["internal_code"]:
+        try:
+            last_num = int(row["internal_code"].split("-")[-1])
+            next_num = last_num + 1
+        except (ValueError, IndexError):
+            next_num = 1
+    else:
+        next_num = 1
+    _internal_code_counter[key] = next_num
+    return f"No.{key}-{next_num:04d}"
+
+
+def exists(site_id: str, product_code: str, price_jpy: int = 0) -> bool:
     """중복 여부 확인"""
     if not product_code:
         return False
@@ -104,85 +147,115 @@ def exists(site_id: str, product_code: str, price_jpy: int) -> bool:
 
 
 def bulk_exists(site_id: str, products: list, days=15) -> set:
-    """상품 리스트에서 이미 DB에 있고 days일 이내인 (product_code, price_jpy) 튜플 셋 반환
-    days일 이상 지난 상품은 중복으로 취급하지 않음 (재수집 허용)
-    """
+    """상품 리스트에서 이미 DB에 있는 product_code 셋 반환"""
     conn = _conn()
     try:
         existing = set()
-        # 배치로 조회 (100개씩)
-        codes = [(p.get("product_code", ""), p.get("price_jpy", 0)) for p in products if p.get("product_code")]
+        codes = [p.get("product_code", "") for p in products if p.get("product_code")]
         for i in range(0, len(codes), 100):
             batch = codes[i:i+100]
-            placeholders = ",".join(["(?,?)" for _ in batch])
-            params = []
-            for code, price in batch:
-                params.extend([code, price])
+            placeholders = ",".join(["?" for _ in batch])
             rows = conn.execute(
-                f"SELECT product_code, price_jpy FROM products "
-                f"WHERE site_id=? AND (product_code, price_jpy) IN ({placeholders}) "
-                f"AND created_at >= datetime('now','localtime','-{days} days')",
-                [site_id] + params
+                f"SELECT product_code FROM products "
+                f"WHERE site_id=? AND product_code IN ({placeholders})",
+                [site_id] + batch
             ).fetchall()
             for row in rows:
-                existing.add((row["product_code"], row["price_jpy"]))
+                existing.add(row["product_code"])
         return existing
     finally:
         conn.close()
 
 
 def insert_products(products: list) -> int:
-    """상품 리스트를 DB에 저장 (15일 이상 된 중복은 갱신). 저장 수 반환"""
+    """상품 리스트를 DB에 저장. 중복 시 가격/이미지/상태 업데이트 (cafe_status 유지). 저장+업데이트 수 반환"""
     if not products:
         return 0
     conn = _conn()
     try:
         inserted = 0
+        updated = 0
         for p in products:
+            site_id = p.get("site_id", "xebio")
+            code = p.get("product_code", "")
+            if not code:
+                continue
+
             try:
-                conn.execute("""
-                    INSERT OR REPLACE INTO products
-                    (site_id, category_id, product_code, name, name_ko,
-                     brand, brand_ko, price_jpy, link, img_url,
-                     description, description_ko, sizes, detail_images,
-                     original_price, discount_rate, in_stock, scraped_at,
-                     source_type, condition_grade, color, material, gender, subcategory)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    p.get("site_id", "xebio"),
-                    p.get("category_id", ""),
-                    p.get("product_code", ""),
-                    p.get("name", ""),
-                    p.get("name_ko", ""),
-                    p.get("brand", ""),
-                    p.get("brand_ko", ""),
-                    p.get("price_jpy", 0),
-                    p.get("link", ""),
-                    p.get("img_url", ""),
-                    p.get("description", ""),
-                    p.get("description_ko", ""),
-                    json.dumps(p.get("sizes", []), ensure_ascii=False),
-                    json.dumps(p.get("detail_images", []), ensure_ascii=False),
-                    p.get("original_price", 0),
-                    p.get("discount_rate", 0),
-                    1 if p.get("in_stock", True) else 0,
-                    p.get("scraped_at", datetime.now().isoformat()),
-                    p.get("source_type", "sports"),
-                    p.get("condition_grade", ""),
-                    p.get("color", ""),
-                    p.get("material", ""),
-                    p.get("gender", ""),
-                    p.get("subcategory", ""),
-                ))
-                if conn.total_changes:
+                # 기존 상품 확인 (site_id + product_code)
+                existing = conn.execute(
+                    "SELECT id, price_jpy, cafe_status FROM products WHERE site_id = ? AND product_code = ?",
+                    (site_id, code)
+                ).fetchone()
+
+                if existing:
+                    # 중복 — 가격/이미지/상세 정보만 업데이트 (cafe_status 유지)
+                    conn.execute("""
+                        UPDATE products SET
+                            price_jpy = ?, name = COALESCE(NULLIF(?, ''), name),
+                            name_ko = COALESCE(NULLIF(?, ''), name_ko),
+                            brand = COALESCE(NULLIF(?, ''), brand),
+                            brand_ko = COALESCE(NULLIF(?, ''), brand_ko),
+                            img_url = COALESCE(NULLIF(?, ''), img_url),
+                            link = COALESCE(NULLIF(?, ''), link),
+                            description = COALESCE(NULLIF(?, ''), description),
+                            detail_images = CASE WHEN ? != '[]' THEN ? ELSE detail_images END,
+                            condition_grade = COALESCE(NULLIF(?, ''), condition_grade),
+                            color = COALESCE(NULLIF(?, ''), color),
+                            material = COALESCE(NULLIF(?, ''), material),
+                            category_id = COALESCE(NULLIF(?, ''), category_id),
+                            subcategory = COALESCE(NULLIF(?, ''), subcategory),
+                            in_stock = 1, scraped_at = ?
+                        WHERE id = ?
+                    """, (
+                        p.get("price_jpy", 0),
+                        p.get("name", ""), p.get("name_ko", ""),
+                        p.get("brand", ""), p.get("brand_ko", ""),
+                        p.get("img_url", ""), p.get("link", ""),
+                        p.get("description", ""),
+                        json.dumps(p.get("detail_images", []), ensure_ascii=False),
+                        json.dumps(p.get("detail_images", []), ensure_ascii=False),
+                        p.get("condition_grade", ""),
+                        p.get("color", ""), p.get("material", ""),
+                        p.get("category_id", ""), p.get("subcategory", ""),
+                        p.get("scraped_at", datetime.now().isoformat()),
+                        existing["id"],
+                    ))
+                    updated += 1
+                else:
+                    # 신규 저장 + 고유번호 생성
+                    internal_code = _generate_internal_code(conn, site_id)
+                    conn.execute("""
+                        INSERT INTO products
+                        (site_id, category_id, product_code, name, name_ko,
+                         brand, brand_ko, price_jpy, link, img_url,
+                         description, description_ko, sizes, detail_images,
+                         original_price, discount_rate, in_stock, scraped_at,
+                         source_type, condition_grade, color, material, gender, subcategory,
+                         internal_code)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """, (
+                        site_id, p.get("category_id", ""), code,
+                        p.get("name", ""), p.get("name_ko", ""),
+                        p.get("brand", ""), p.get("brand_ko", ""),
+                        p.get("price_jpy", 0), p.get("link", ""), p.get("img_url", ""),
+                        p.get("description", ""), p.get("description_ko", ""),
+                        json.dumps(p.get("sizes", []), ensure_ascii=False),
+                        json.dumps(p.get("detail_images", []), ensure_ascii=False),
+                        p.get("original_price", 0), p.get("discount_rate", 0),
+                        1 if p.get("in_stock", True) else 0,
+                        p.get("scraped_at", datetime.now().isoformat()),
+                        p.get("source_type", "sports"),
+                        p.get("condition_grade", ""), p.get("color", ""),
+                        p.get("material", ""), p.get("gender", ""), p.get("subcategory", ""),
+                        internal_code,
+                    ))
                     inserted += 1
-            except sqlite3.IntegrityError:
-                pass  # 중복 — 스킵
             except Exception as e:
                 logger.debug(f"상품 저장 오류: {e}")
         conn.commit()
-        logger.info(f"빅데이터 DB: {inserted}개 신규 저장 (총 {len(products)}개 중)")
-        return inserted
+        logger.info(f"빅데이터 DB: {inserted}개 신규, {updated}개 업데이트 (총 {len(products)}개)")
+        return inserted + updated
     finally:
         conn.close()
 
