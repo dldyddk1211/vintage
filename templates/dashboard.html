@@ -413,6 +413,10 @@
         <span class="nav-icon">&#x1f50d;</span>
         <span>수집</span>
       </div>
+      <div class="nav-item" data-page="scrape-tasks" onclick="showPage('scrape-tasks');loadScrapeTasks()">
+        <span class="nav-icon">&#x1f4cb;</span>
+        <span>수집 작업리스트</span>
+      </div>
     </div>
 
     <!-- ▶ Brand Auc -->
@@ -1264,6 +1268,39 @@
           <div style="margin-top:12px;font-size:0.75rem;color:var(--muted);line-height:1.6;">
             &#x1f4a1; <b>사용법</b>: 모니터 시작 &#x2192; 카페 새 글 감지 &#x2192; 텔레그램 알림 수신 &#x2192; 답장으로 댓글 작성
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 수집 작업리스트 ═══ -->
+    <div class="page-section" id="page-scrape-tasks">
+      <div class="panel">
+        <div class="panel-title">
+          <span>&#x1f4cb; 수집 작업리스트</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn b-gray" onclick="loadScrapeTasks()" style="padding:5px 12px;font-size:0.78rem">&#x1f504; 새로고침</button>
+            <button class="btn b-red" onclick="clearScrapeTasks()" style="padding:5px 12px;font-size:0.78rem">&#x1f5d1; 전체 삭제</button>
+          </div>
+        </div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-bottom:12px;">수집 완료된 작업 이력입니다. 대량 수집 시 진행 상황을 확인할 수 있습니다.</div>
+        <div style="overflow-x:auto;">
+          <table class="tbl" style="width:100%;font-size:0.78rem;" id="scrape-task-table">
+            <thead>
+              <tr>
+                <th style="width:40px">#</th>
+                <th>일시</th>
+                <th>사이트</th>
+                <th>카테고리</th>
+                <th>브랜드</th>
+                <th>키워드</th>
+                <th>수집 수</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody id="scrape-task-body">
+              <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -2736,6 +2773,45 @@ async function runTranslate() {
     else addLog(`\u274C ${d.message}`, "err");
   } catch(e) { addLog("\u274C \uBC88\uC5ED \uC694\uCCAD \uC2E4\uD328: " + e, "err"); }
   finally { if (btn) { btn.disabled = false; btn.textContent = "\uD83C\uDF10 \uD55C\uAD6D\uC5B4 \uBC88\uC5ED"; } }
+}
+
+// ── 수집 작업리스트 ─────────────────────────
+async function loadScrapeTasks() {
+  const tbody = document.getElementById("scrape-task-body");
+  if (!tbody) return;
+  try {
+    const res = await fetch(PREFIX + "/scrape-history?limit=100");
+    const tasks = await res.json();
+    if (!tasks.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">수집 이력이 없습니다</td></tr>';
+      return;
+    }
+    const statusColors = {"수집완료":"var(--green)","수집중":"var(--accent)","업로드완료":"#6cf","오류":"var(--red)"};
+    tbody.innerHTML = tasks.map((t, i) => {
+      const sc = statusColors[t.status] || "var(--muted)";
+      return `<tr style="border-bottom:1px solid var(--border)22;">
+        <td style="padding:6px;color:var(--dim)">${i+1}</td>
+        <td style="padding:6px;white-space:nowrap;">${t.date || ''}</td>
+        <td style="padding:6px;">${t.site_name || t.site_id || ''}</td>
+        <td style="padding:6px;">${t.category_name || t.category_id || ''}</td>
+        <td style="padding:6px;font-weight:600;">${t.brand || '전체'}</td>
+        <td style="padding:6px;color:var(--muted)">${t.keyword || '-'}</td>
+        <td style="padding:6px;text-align:center;font-weight:700;color:var(--accent)">${t.product_count || 0}</td>
+        <td style="padding:6px;color:${sc};font-weight:600;">${t.status || ''}</td>
+      </tr>`;
+    }).join("");
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--red);padding:20px;">로드 실패: ${e}</td></tr>`;
+  }
+}
+
+async function clearScrapeTasks() {
+  if (!confirm("수집 이력을 모두 삭제하시겠습니까?")) return;
+  try {
+    await fetch(PREFIX + "/scrape-history", {method: "DELETE"});
+    loadScrapeTasks();
+    addLog("\u2705 수집 이력 삭제 완료", "ok");
+  } catch(e) { addLog("\u274C 이력 삭제 실패", "err"); }
 }
 
 async function runRescrapeVt() {

@@ -668,6 +668,23 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages="", brand_
         status["product_count"] = len(products)
         status["last_scrape"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         push_log(f"🎉 스크래핑 완료: {len(products)}개 상품 수집")
+        # 수집 이력 저장
+        try:
+            from scrape_history import add_history
+            from site_config import get_brands as get_site_brands
+            brand_name = ""
+            if brand_code:
+                brands_map = get_site_brands(site_id)
+                brand_name = brands_map.get(brand_code, brand_code)
+            add_history(
+                site_id=site_id,
+                category_id=category_id or "전체",
+                product_count=len(products),
+                keyword=keyword or "",
+                brand=brand_name or "",
+            )
+        except Exception as e:
+            logger.warning(f"수집 이력 저장 실패: {e}")
     except Exception as e:
         import traceback
         push_log(f"❌ 스크래핑 오류: {e}")
@@ -1676,6 +1693,15 @@ def api_scrape_history():
     """수집 이력 반환"""
     limit = request.args.get("limit", 50, type=int)
     return jsonify(get_scrape_history(limit))
+
+
+@app.route(f"{URL_PREFIX}/scrape-history", methods=["DELETE"])
+@admin_required
+def api_scrape_history_clear():
+    """수집 이력 전체 삭제"""
+    from scrape_history import _save
+    _save([])
+    return jsonify({"ok": True})
 
 
 # ── 빅데이터 관리 API ──────────────────────────
