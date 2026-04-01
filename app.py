@@ -263,21 +263,37 @@ def shop_api_products():
         sql = f"SELECT * FROM products WHERE {base_where}"
         params = list(base_params)
         if brand:
-            sql += " AND brand = ?"
-            params.append(brand)
+            brands_list = [b.strip() for b in brand.split(",") if b.strip()]
+            if len(brands_list) == 1:
+                sql += " AND brand = ?"
+                params.append(brands_list[0])
+            elif len(brands_list) > 1:
+                placeholders = ",".join(["?"] * len(brands_list))
+                sql += f" AND brand IN ({placeholders})"
+                params.extend(brands_list)
         if condition:
-            sql += " AND condition_grade = ?"
-            params.append(condition)
+            cond_list = [c.strip() for c in condition.split(",") if c.strip()]
+            if len(cond_list) == 1:
+                sql += " AND condition_grade = ?"
+                params.append(cond_list[0])
+            elif len(cond_list) > 1:
+                placeholders = ",".join(["?"] * len(cond_list))
+                sql += f" AND condition_grade IN ({placeholders})"
+                params.extend(cond_list)
         if bag_type:
-            # 한국어 → 일본어 역변환
-            ja_key = ""
-            for ja, ko in bag_type_map.items():
-                if ko == bag_type:
-                    ja_key = ja
-                    break
-            if ja_key:
+            bag_list = [b.strip() for b in bag_type.split(",") if b.strip()]
+            ja_keys = []
+            for bt in bag_list:
+                for ja, ko in bag_type_map.items():
+                    if ko == bt:
+                        ja_keys.append(ja)
+                        break
+            if len(ja_keys) == 1:
                 sql += " AND name LIKE ?"
-                params.append(f"%{ja_key}%")
+                params.append(f"%{ja_keys[0]}%")
+            elif len(ja_keys) > 1:
+                sql += " AND (" + " OR ".join(["name LIKE ?"] * len(ja_keys)) + ")"
+                params.extend([f"%{k}%" for k in ja_keys])
         if keyword:
             sql += " AND (name LIKE ? OR brand LIKE ?)"
             params.extend([f"%{keyword}%", f"%{keyword}%"])

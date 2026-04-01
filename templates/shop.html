@@ -427,6 +427,8 @@ let filters = { site: "", brand: "", condition: "", bag_type: "", keyword: "" };
 let currentPage = 1;
 let allProducts = [];
 let currentModalIdx = -1;
+// 필터: 다중 선택 지원 (배열)
+let multiFilters = { brand: [], condition: [], bag_type: [] };
 
 // 일본어 → 한국어 사전 (전역)
 const jaKoDict = {
@@ -484,16 +486,47 @@ function transJa(text) {
 }
 
 function selectFilter(type, el) {
-  filters[type] = el.dataset.val;
-  el.parentElement.querySelectorAll(".filter-item").forEach(i => i.classList.remove("active"));
-  el.classList.add("active");
+  const val = el.dataset.val;
+  // site는 단일 선택 유지
+  if (type === "site") {
+    filters[type] = val;
+    el.parentElement.querySelectorAll(".filter-item").forEach(i => i.classList.remove("active"));
+    el.classList.add("active");
+    loadShop(1);
+    document.getElementById("sidebar").classList.remove("open");
+    return;
+  }
+  // brand, condition, bag_type → 다중 선택
+  if (val === "") {
+    // "전체" 클릭 → 선택 초기화
+    multiFilters[type] = [];
+    el.parentElement.querySelectorAll(".filter-item").forEach(i => i.classList.remove("active"));
+    el.classList.add("active");
+  } else {
+    // "전체" 비활성화
+    el.parentElement.querySelector('.filter-item[data-val=""]').classList.remove("active");
+    // 토글
+    const idx = multiFilters[type].indexOf(val);
+    if (idx >= 0) {
+      multiFilters[type].splice(idx, 1);
+      el.classList.remove("active");
+    } else {
+      multiFilters[type].push(val);
+      el.classList.add("active");
+    }
+    // 아무것도 안 선택되면 "전체" 활성화
+    if (multiFilters[type].length === 0) {
+      el.parentElement.querySelector('.filter-item[data-val=""]').classList.add("active");
+    }
+  }
+  // 기존 filters에도 반영 (쉼표 구분)
+  filters[type] = multiFilters[type].join(",");
   loadShop(1);
-  // 모바일: 사이드바 닫기
-  document.getElementById("sidebar").classList.remove("open");
 }
 
 function resetFilters() {
   filters = { site: "", brand: "", condition: "", bag_type: "", keyword: "" };
+  multiFilters = { brand: [], condition: [], bag_type: [] };
   document.getElementById("keyword-input").value = "";
   document.getElementById("price-min").value = "";
   document.getElementById("price-max").value = "";
