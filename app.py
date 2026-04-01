@@ -332,10 +332,12 @@ def shop_api_products():
 
             # 설명: description_ko 우선, 없으면 description
             desc = ""
-            if r.get("description_ko") and r["description_ko"].strip():
-                desc = r["description_ko"]
-            elif r.get("description") and r["description"].strip() and r["description"] != "商品のお問い合わせ":
-                desc = r["description"]
+            desc_ko = r["description_ko"] if "description_ko" in r.keys() else ""
+            desc_ja = r["description"] if "description" in r.keys() else ""
+            if desc_ko and desc_ko.strip():
+                desc = desc_ko
+            elif desc_ja and desc_ja.strip() and desc_ja != "商品のお問い合わせ":
+                desc = desc_ja
 
             products.append({
                 "id": r["id"],
