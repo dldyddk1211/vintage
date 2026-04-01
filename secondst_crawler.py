@@ -886,29 +886,31 @@ async def _extract_detail_page(page) -> dict:
     }
 
     try:
-        # 상세 이미지 (상품 사진만 — 아이콘/SVG/로고 제외)
-        imgs = await page.query_selector_all("img[src*='cdn2.2ndstreet.jp']")
-        seen = set()
-        _img_excludes = ['.svg', '/icon', '/logo', '/header/', '/cmn/', '/common/', '/banner/']
-        for img in imgs:
-            src = await img.get_attribute("src") or ""
-            if not src or src in seen:
-                continue
-            # 아이콘/SVG/공통 이미지 제외
-            if any(ex in src.lower() for ex in _img_excludes):
-                continue
-            # 상품 이미지만 (goods/ 또는 product/ 경로, 또는 .jpg/.png/.webp)
-            if not any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                continue
-            # 썸네일(_tn) → 큰 이미지로 변환
-            if "_tn." in src:
-                src = src.replace("_tn.", ".")
-            if src in seen:
-                continue
-            seen.add(src)
-            detail["detail_images"].append(src)
-            if len(detail["detail_images"]) >= 20:
-                break
+        # 상세 이미지: 메인 이미지 URL에서 번호(1~10)를 변경하여 생성
+        # 패턴: .../goods/XXXXXX/XX/XXXXX/1_tn.jpg → 1.jpg, 2.jpg, ...
+        import re as _re_img
+        main_img_el = page.locator("img[src*='cdn2.2ndstreet.jp'][src*='/goods/']").first
+        base_url = ""
+        if await main_img_el.count() > 0:
+            base_url = await main_img_el.get_attribute("src") or ""
+        if not base_url:
+            # og:image 또는 meta에서 찾기
+            og = await page.query_selector("meta[property='og:image']")
+            if og:
+                base_url = await og.get_attribute("content") or ""
+        if not base_url:
+            # URL에서 goodsId 추출하여 직접 구성
+            url_match = _re_img.search(r'goodsId/(\d+)', page.url)
+            if url_match:
+                gid = url_match.group(1)
+                # 상품코드에서 경로 구성: 2329972265995 → 232997/22/65995
+                if len(gid) >= 10:
+                    base_url = f"https://cdn2.2ndstreet.jp/img/pc/goods/{gid[:6]}/{gid[6:8]}/{gid[8:]}/1_tn.jpg"
+
+        if base_url and "/goods/" in base_url:
+            # 메인 이미지 경로에서 1~9번 이미지 URL 생성
+            base_dir = base_url.rsplit("/", 1)[0] + "/"
+            detail["detail_images"] = [f"{base_dir}{n}.jpg" for n in range(1, 10)]
 
         # 상품 설명 텍스트 (검색 안내 팝업만 제외 — 실제 상품 설명은 허용)
         _desc_excludes = ['キーワード', '検索窓']
