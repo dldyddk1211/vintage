@@ -220,6 +220,39 @@ def _calc_vintage_price(jpy: int, margin_type="b2c") -> int:
     return int(math.ceil(raw / 100) * 100)
 
 
+@app.route(f"{URL_PREFIX}/shop/api/notify", methods=["POST"])
+@login_required
+def shop_notify():
+    """주문/문의 시 텔레그램 알림"""
+    data = request.json or {}
+    ntype = data.get("type", "inquiry")
+    brand = data.get("brand", "")
+    name = data.get("name", "")
+    code = data.get("code", "")
+    price = data.get("price", "")
+    price_jpy = data.get("price_jpy", 0)
+    username = session.get("username", "비회원")
+    customer_name = session.get("name", "")
+
+    icon = "🛒" if ntype == "order" else "💬"
+    label = "주문" if ntype == "order" else "문의"
+    user_info = f"{username}" + (f" ({customer_name})" if customer_name else "")
+
+    msg = (
+        f"{icon} <b>고객 {label} 알림</b>\n"
+        f"👤 {user_info}\n"
+        f"🏷 {brand} {name}\n"
+        f"🔖 {code}\n"
+        f"💰 {price} (¥{price_jpy:,})"
+    )
+    try:
+        from notifier import send_telegram
+        send_telegram(msg)
+    except Exception as e:
+        logger.warning(f"주문 알림 전송 실패: {e}")
+    return jsonify({"ok": True})
+
+
 @app.route(f"{URL_PREFIX}/shop/api/products")
 @login_required
 def shop_api_products():

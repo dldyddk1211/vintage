@@ -788,8 +788,12 @@ function orderProduct() {
   const name = transJa(p.name);
   const code = p.product_code || '';
   const price = p.price_krw ? p.price_krw.toLocaleString() + '원' : '¥' + p.price_jpy.toLocaleString();
-  const msg = `[주문]\n상품: ${p.brand} ${name}\n고유번호: ${code}\n가격: ${price}`;
   if (confirm(`아래 상품을 주문하시겠습니까?\n\n${p.brand} ${name}\n${price}\n\n카카오톡 채널로 이동합니다.`)) {
+    // 텔레그램 알림
+    fetch(PREFIX + "/shop/api/notify", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({type:"order", brand:p.brand, name:name, code:code, price:price, price_jpy:p.price_jpy})
+    }).catch(()=>{});
     window.open(KAKAO_CHAT_URL, "_blank");
   }
 }
@@ -800,6 +804,11 @@ function inquiryProduct() {
   const name = transJa(p.name);
   const code = p.product_code || '';
   const price = p.price_krw ? p.price_krw.toLocaleString() + '원' : '¥' + p.price_jpy.toLocaleString();
+  // 텔레그램 알림
+  fetch(PREFIX + "/shop/api/notify", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({type:"inquiry", brand:p.brand, name:name, code:code, price:price, price_jpy:p.price_jpy})
+  }).catch(()=>{});
   window.open(KAKAO_CHAT_URL, "_blank");
 }
 
