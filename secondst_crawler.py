@@ -204,90 +204,75 @@ async def scrape_2ndstreet(
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 await asyncio.sleep(5)
 
-                # 1) 크롬 번역 바 닫기 — 페이지 빈 공간 클릭
+                # 1) WorldShopping body-lock 해제 + 오버레이 제거 (클릭 차단 원인)
                 try:
-                    await page.mouse.click(640, 300)
-                    await asyncio.sleep(1)
+                    await page.evaluate("""() => {
+                        // WorldShopping body-lock 해제 (이게 쿠키 버튼 클릭을 차단함)
+                        document.body.classList.remove('zigzag-worldshopping-style-body-lock');
+                        // WorldShopping 오버레이/배너 제거
+                        document.querySelectorAll(
+                            '[id*="zigzag-worldshopping"], [id*="ws-"], ' +
+                            'iframe[src*="worldshopping"], ' +
+                            '[class*="WorldShopping"]:not(body):not(script):not(style), ' +
+                            '[class*="worldshopping"]:not(body):not(script):not(style)'
+                        ).forEach(el => el.remove());
+                        document.body.style.overflow = 'auto';
+                    }""")
+                    log("   🔓 WorldShopping body-lock 해제")
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
+
+                # 2) OneTrust 쿠키 배너 — JS로 직접 클릭 (Playwright 클릭이 차단될 수 있으므로)
+                try:
+                    clicked = await page.evaluate("""() => {
+                        const btn = document.querySelector('#onetrust-accept-btn-handler');
+                        if (btn) { btn.click(); return true; }
+                        return false;
+                    }""")
+                    if clicked:
+                        log("   🍪 쿠키 배너 닫기 (OneTrust)")
+                        await asyncio.sleep(2)
                 except Exception:
                     pass
 
-                # 2) 쿠키 배너 + 팝업 처리 (3라운드)
-                for _round in range(3):
-                    # WorldShopping 쿠키 배너 (iframe 내부)
+                # 3) 남은 팝업 처리
+                for cookie_sel in [
+                    "button:has-text('以上の内容を確認しました')",
+                    "button:has-text('이상의 내용을 확인했습니다')",
+                    "button:has-text('確認しました')",
+                    "button:has-text('閉じる')",
+                    "button:has-text('닫기')",
+                ]:
                     try:
-                        ws_frames = page.frames
-                        for frame in ws_frames:
-                            if "worldshopping" in (frame.url or "").lower() or "onetrust" in (frame.url or "").lower():
-                                for ws_sel in [
-                                    "button:has-text('すべての Cookie を受け入れる')",
-                                    "button:has-text('受け入れる')",
-                                    "#onetrust-accept-btn-handler",
-                                    "button[class*='accept']",
-                                ]:
-                                    try:
-                                        ws_btn = frame.locator(ws_sel).first
-                                        if await ws_btn.count() > 0 and await ws_btn.is_visible():
-                                            await ws_btn.click()
-                                            log(f"   🍪 iframe 쿠키 배너 닫기")
-                                            await asyncio.sleep(2)
-                                    except Exception:
-                                        continue
+                        btn = page.locator(cookie_sel).first
+                        if await btn.count() > 0 and await btn.is_visible():
+                            await btn.click(timeout=3000)
+                            log(f"   🍪 팝업 닫기: {cookie_sel[:40]}")
+                            await asyncio.sleep(1)
                     except Exception:
-                        pass
+                        continue
 
-                    # 메인 페이지 쿠키/팝업 버튼 클릭
-                    for cookie_sel in [
-                        # 쿠키 동의
-                        "#onetrust-accept-btn-handler",
-                        "button:has-text('すべての Cookie を受け入れる')",
-                        "button:has-text('모든 Cookie 허용')",
-                        "button:has-text('すべて許可する')",
-                        "button:has-text('모두 허용')",
-                        "button:has-text('保存して閉じる')",
-                        "button:has-text('저장하고 닫기')",
-                        # 해외 안내
-                        "button:has-text('以上の内容を確認しました')",
-                        "button:has-text('이상의 내용을 확인했습니다')",
-                        "button:has-text('확인했습니다')",
-                        # 닫기
-                        "button:has-text('閉じる')",
-                        "button:has-text('닫기')",
-                        "button:has-text('×')",
-                        "[class*='search'] [class*='close']",
-                        # WorldShopping
-                        "[class*='WorldShopping'] [class*='close']",
-                        "[class*='worldshopping'] button",
-                        "[class*='ws-dialog'] button",
-                    ]:
-                        try:
-                            btn = page.locator(cookie_sel).first
-                            if await btn.count() > 0 and await btn.is_visible():
-                                await btn.click()
-                                log(f"   🍪 팝업 닫기: {cookie_sel[:40]}")
-                                await asyncio.sleep(1.5)
-                        except Exception:
-                            continue
-
-                    # JS 강제 제거
-                    try:
-                        await page.evaluate("""() => {
-                            // WorldShopping 배너 + iframe
-                            document.querySelectorAll('[id*="worldshopping"], [class*="worldshopping"], [class*="WorldShopping"], [id*="ws-"], iframe[src*="worldshopping"]').forEach(el => el.remove());
-                            // 쿠키 배너 (OneTrust 포함)
-                            document.querySelectorAll('[id*="onetrust"], [class*="onetrust"], [class*="cookie-banner"], [class*="CookieBanner"], #onetrust-consent-sdk, .onetrust-pc-dark-filter').forEach(el => el.remove());
-                            // 쿠폰 팝업
-                            document.querySelectorAll('[class*="coupon"], [class*="Coupon"], [class*="modal-overlay"]').forEach(el => el.remove());
-                            // 정렬/검색 안내 팝업
-                            document.querySelectorAll('[class*="balloon"], [class*="tooltip"], [class*="guide"], [class*="announce"]').forEach(el => el.remove());
-                            // 크롬 번역 바 제거
-                            document.querySelectorAll('.goog-te-banner-frame, .skiptranslate, #goog-gt-tt').forEach(el => el.remove());
-                            document.documentElement.style.top = '0';
+                # 4) 잔여 오버레이 JS 강제 제거
+                try:
+                    await page.evaluate("""() => {
+                        // OneTrust 잔여 요소
+                        const ot = document.querySelector('#onetrust-consent-sdk');
+                        if (ot) ot.remove();
+                        const df = document.querySelector('.onetrust-pc-dark-filter');
+                        if (df) df.remove();
+                        // 쿠폰/안내 팝업
+                        document.querySelectorAll('[class*="coupon"], [class*="Coupon"], [class*="modal-overlay"], [class*="balloon"], [class*="tooltip"], [class*="guide"], [class*="announce"]').forEach(el => el.remove());
+                        // 크롬 번역 바
+                        document.querySelectorAll('.goog-te-banner-frame, .skiptranslate, #goog-gt-tt').forEach(el => el.remove());
+                        if (document.documentElement) document.documentElement.style.top = '0';
+                        if (document.body) {
                             document.body.style.top = '0';
                             document.body.style.overflow = 'auto';
-                        }""")
-                    except Exception:
-                        pass
-                    await asyncio.sleep(1)
+                        }
+                    }""")
+                except Exception:
+                    pass
 
                 # 첫 페이지에서 총 상품 수 확인 → 전체 페이지 자동 설정
                 if auto_detect_pages and page_num == 1:
@@ -350,10 +335,11 @@ async def scrape_2ndstreet(
                 log("   ⚠️ 상품 카드 미발견 — 팝업 재처리 후 재시도...")
                 try:
                     await page.evaluate("""() => {
-                        document.querySelectorAll('[id*="worldshopping"], [class*="worldshopping"], [class*="WorldShopping"], [id*="ws-"], [id*="onetrust"], [class*="onetrust"], [class*="cookie"], [class*="modal"], [class*="overlay"], [class*="popup"], [class*="dialog"]').forEach(el => el.remove());
+                        document.body.classList.remove('zigzag-worldshopping-style-body-lock');
+                        document.querySelectorAll('[id*="worldshopping"], [class*="worldshopping"]:not(body):not(script):not(style), [class*="WorldShopping"]:not(body):not(script):not(style), [id*="ws-"], [id*="onetrust"], [class*="onetrust"], [class*="cookie"], [class*="modal"], [class*="overlay"], [class*="popup"], [class*="dialog"]').forEach(el => el.remove());
                         document.body.style.overflow = 'auto';
-                        document.documentElement.style.top = '0';
-                        document.body.style.top = '0';
+                        if (document.documentElement) document.documentElement.style.top = '0';
+                        if (document.body) document.body.style.top = '0';
                     }""")
                 except Exception:
                     pass
@@ -449,45 +435,38 @@ async def scrape_2ndstreet(
                     await page.goto(link, wait_until="domcontentloaded", timeout=20000)
                     await asyncio.sleep(2)
 
-                    # 번역 바 닫기 — 빈 공간 클릭
-                    try:
-                        await page.mouse.click(640, 300)
-                        await asyncio.sleep(0.5)
-                    except Exception:
-                        pass
-                    # iframe 쿠키 배너 처리
-                    try:
-                        for frame in page.frames:
-                            if "worldshopping" in (frame.url or "").lower() or "onetrust" in (frame.url or "").lower():
-                                for ws_sel in ["button:has-text('すべての Cookie を受け入れる')", "#onetrust-accept-btn-handler", "button[class*='accept']"]:
-                                    try:
-                                        ws_btn = frame.locator(ws_sel).first
-                                        if await ws_btn.count() > 0 and await ws_btn.is_visible():
-                                            await ws_btn.click()
-                                            await asyncio.sleep(1)
-                                    except Exception:
-                                        continue
-                    except Exception:
-                        pass
-                    # 메인 페이지 팝업 닫기
-                    for sel in ["#onetrust-accept-btn-handler", "button:has-text('すべての Cookie を受け入れる')", "button:has-text('모든 Cookie 허용')", "button:has-text('以上の内容を確認しました')", "button:has-text('이상의 내용을 확인했습니다')", "button:has-text('閉じる')", "button:has-text('닫기')"]:
-                        try:
-                            btn = page.locator(sel).first
-                            if await btn.count() > 0 and await btn.is_visible():
-                                await btn.click()
-                                await asyncio.sleep(0.5)
-                        except:
-                            pass
-                    # JS 강제 제거
+                    # WorldShopping body-lock 해제 + 쿠키 배너 JS 클릭
                     try:
                         await page.evaluate("""() => {
-                            document.querySelectorAll('[id*="worldshopping"], [class*="worldshopping"], [class*="WorldShopping"], [id*="ws-"], iframe[src*="worldshopping"], [id*="onetrust"], [class*="onetrust"], #onetrust-consent-sdk, .onetrust-pc-dark-filter').forEach(el => el.remove());
+                            document.body.classList.remove('zigzag-worldshopping-style-body-lock');
+                            document.querySelectorAll(
+                                '[id*="zigzag-worldshopping"], [id*="ws-"], ' +
+                                'iframe[src*="worldshopping"], ' +
+                                '[class*="WorldShopping"]:not(body):not(script):not(style), ' +
+                                '[class*="worldshopping"]:not(body):not(script):not(style)'
+                            ).forEach(el => el.remove());
                             document.body.style.overflow = 'auto';
-                            document.documentElement.style.top = '0';
-                            document.body.style.top = '0';
+                            const btn = document.querySelector('#onetrust-accept-btn-handler');
+                            if (btn) btn.click();
+                            const ot = document.querySelector('#onetrust-consent-sdk');
+                            if (ot) ot.remove();
+                            const df = document.querySelector('.onetrust-pc-dark-filter');
+                            if (df) df.remove();
+                            document.querySelectorAll('.goog-te-banner-frame, .skiptranslate').forEach(el => el.remove());
+                            if (document.documentElement) document.documentElement.style.top = '0';
+                            if (document.body) document.body.style.top = '0';
                         }""")
                     except Exception:
                         pass
+                    # 남은 팝업 닫기
+                    for sel in ["button:has-text('以上の内容を確認しました')", "button:has-text('閉じる')"]:
+                        try:
+                            btn = page.locator(sel).first
+                            if await btn.count() > 0 and await btn.is_visible():
+                                await btn.click(timeout=3000)
+                                await asyncio.sleep(0.5)
+                        except:
+                            pass
 
                     detail = await _extract_detail_page(page)
                     if detail.get("detail_images"):
