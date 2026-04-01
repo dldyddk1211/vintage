@@ -67,6 +67,9 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("logged_in"):
+            # API 요청이면 JSON 에러 반환 (프론트 SyntaxError 방지)
+            if "/api/" in request.path or request.is_json:
+                return jsonify({"ok": False, "error": "로그인이 필요합니다"}), 401
             return redirect(f"{URL_PREFIX}/login")
         return f(*args, **kwargs)
     return decorated
@@ -77,6 +80,8 @@ def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("logged_in"):
+            if "/api/" in request.path or request.is_json:
+                return jsonify({"ok": False, "error": "로그인이 필요합니다"}), 401
             return redirect(f"{URL_PREFIX}/login")
         # 기존 세션(role 없음)은 admin으로 간주
         if session.get("role", "admin") != "admin":

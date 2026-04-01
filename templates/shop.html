@@ -526,6 +526,7 @@ async function loadShop(page = 1) {
     if (priceMax) params.set("price_max", priceMax);
 
     const res = await fetch(PREFIX + "/shop/api/products?" + params);
+    if (res.status === 401) { location.href = PREFIX + "/login"; return; }
     const d = await res.json();
     allProducts = d.products || [];
 
