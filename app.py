@@ -14,7 +14,7 @@ from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from functools import wraps
-from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for
+from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for, send_from_directory
 import queue
 
 from config import (
@@ -530,6 +530,96 @@ def change_member_level(username):
         return jsonify({"ok": False, "message": "해당 회원을 찾을 수 없습니다"})
     finally:
         conn.close()
+
+
+@app.route(f"{URL_PREFIX}/members/<path:username>/info", methods=["GET"])
+@admin_required
+def get_member_info(username):
+    """회원 상세 정보 조회"""
+    from user_db import _conn
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        if not row:
+            return jsonify({"ok": False})
+        cols = row.keys()
+        return jsonify({"ok": True, "user": {c: (row[c] or "") for c in cols if c != "password_hash"}})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/members/<path:username>/info", methods=["POST"])
+@admin_required
+def update_member_info(username):
+    """회원 배송/통관/사업자 정보 업데이트"""
+    data = request.json or {}
+    from user_db import _conn
+    conn = _conn()
+    try:
+        fields = {
+            "name": data.get("name"),
+            "phone": data.get("phone"),
+            "postal_code": data.get("postal_code"),
+            "address": data.get("address"),
+            "address_detail": data.get("address_detail"),
+            "customs_id": data.get("customs_id"),
+            "business_number": data.get("business_number"),
+        }
+        updates = []
+        params = []
+        for k, v in fields.items():
+            if v is not None:
+                updates.append(f"{k} = ?")
+                params.append(v.strip())
+        if not updates:
+            return jsonify({"ok": False, "message": "변경할 정보 없음"})
+        params.append(username)
+        conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE username = ?", params)
+        conn.commit()
+        logger.info(f"회원 정보 수정: {username}")
+        return jsonify({"ok": True, "message": "저장 완료"})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/members/<path:username>/upload-cert", methods=["POST"])
+@admin_required
+def upload_member_cert(username):
+    """사업자등록증 파일 업로드"""
+    if "file" not in request.files:
+        return jsonify({"ok": False, "message": "파일이 없습니다"})
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"ok": False, "message": "파일이 없습니다"})
+    # 확장자 제한
+    allowed = {".jpg", ".jpeg", ".png", ".pdf"}
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in allowed:
+        return jsonify({"ok": False, "message": f"허용 파일: {', '.join(allowed)}"})
+    # 저장 경로
+    upload_dir = os.path.join(get_path("db"), "certs")
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f"{username}_cert{ext}"
+    filepath = os.path.join(upload_dir, filename)
+    f.save(filepath)
+    # DB 업데이트
+    from user_db import _conn
+    conn = _conn()
+    try:
+        conn.execute("UPDATE users SET business_cert_file = ? WHERE username = ?", (filename, username))
+        conn.commit()
+        logger.info(f"사업자등록증 업로드: {username} → {filename}")
+        return jsonify({"ok": True, "message": "업로드 완료", "filename": filename})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/members/cert/<path:filename>")
+@admin_required
+def serve_cert(filename):
+    """사업자등록증 파일 서빙"""
+    cert_dir = os.path.join(get_path("db"), "certs")
+    return send_from_directory(cert_dir, filename)
 
 
 @app.route(f"{URL_PREFIX}/vintage/translate", methods=["POST"])

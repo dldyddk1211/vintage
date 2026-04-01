@@ -34,10 +34,30 @@ def init_db():
                 name TEXT DEFAULT '',
                 phone TEXT DEFAULT '',
                 role TEXT NOT NULL DEFAULT 'customer',
+                level TEXT NOT NULL DEFAULT 'b2c',
                 created_at TEXT DEFAULT (datetime('now','localtime'))
             );
             CREATE INDEX IF NOT EXISTS idx_username ON users(username);
         """)
+        # 마이그레이션
+        for col, default in [
+            ("level", "'b2c'"),
+            ("status", "'approved'"),
+            ("expires_at", "''"),
+            # 배송 정보
+            ("postal_code", "''"),
+            ("address", "''"),
+            ("address_detail", "''"),
+            # 통관/사업자
+            ("customs_id", "''"),
+            ("business_number", "''"),
+            ("business_cert_file", "''"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}")
+                conn.commit()
+            except Exception:
+                pass
         conn.commit()
         logger.info(f"회원 DB 초기화 완료: {_DB_PATH}")
     finally:
@@ -48,8 +68,8 @@ def create_user(username: str, password: str, name: str = "", phone: str = "") -
     conn = _conn()
     try:
         conn.execute(
-            "INSERT INTO users (username, password_hash, name, phone) VALUES (?,?,?,?)",
-            (username, generate_password_hash(password), name, phone),
+            "INSERT INTO users (username, password_hash, name, phone, status) VALUES (?,?,?,?,?)",
+            (username, generate_password_hash(password), name, phone, "pending"),
         )
         conn.commit()
         logger.info(f"회원가입: {username}")

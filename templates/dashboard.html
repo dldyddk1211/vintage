@@ -664,6 +664,15 @@
       </div>
     </div>
 
+    <!-- 회원 상세 모달 -->
+    <div id="member-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;" onclick="if(event.target===this)this.style.display='none'">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;width:95%;max-width:520px;max-height:85vh;overflow-y:auto;padding:24px;position:relative;">
+        <button onclick="document.getElementById('member-modal').style.display='none'" style="position:absolute;top:12px;right:16px;background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer;">&times;</button>
+        <h3 style="margin:0 0 18px 0;color:var(--accent);font-size:1rem;" id="mm-title">회원 상세</h3>
+        <div id="mm-content" style="font-size:0.82rem;">로딩 중...</div>
+      </div>
+    </div>
+
     <!-- ═══ 3. 상품 목록 ═══ -->
     <div class="page-section" id="page-products">
       <div class="panel">
@@ -3798,6 +3807,7 @@ async function loadMembers() {
         </td>
         <td style="color:var(--muted);font-size:0.75rem">${m.created_at || ''}</td>
         <td>
+          <button onclick="openMemberDetail('${m.username}')" class="btn b-blue" style="padding:3px 8px;font-size:0.7rem;">상세</button>
           <button onclick="deleteMember('${m.username}')" class="btn b-red" style="padding:3px 8px;font-size:0.7rem;">삭제</button>
         </td>
       </tr>
@@ -3806,6 +3816,90 @@ async function loadMembers() {
   } catch(e) {
     console.error("회원 로드 실패:", e);
   }
+}
+
+async function openMemberDetail(username) {
+  const modal = document.getElementById("member-modal");
+  const content = document.getElementById("mm-content");
+  document.getElementById("mm-title").textContent = `회원 상세: ${username}`;
+  content.innerHTML = "로딩 중...";
+  modal.style.display = "flex";
+  try {
+    const res = await fetch(PREFIX + "/members/" + encodeURIComponent(username) + "/info");
+    const d = await res.json();
+    if (!d.ok) { content.innerHTML = "정보를 불러올 수 없습니다"; return; }
+    const u = d.user;
+    const certHtml = u.business_cert_file
+      ? `<a href="${PREFIX}/members/cert/${u.business_cert_file}" target="_blank" style="color:var(--accent)">${u.business_cert_file}</a>`
+      : '<span style="color:var(--muted)">미등록</span>';
+    content.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:0.78rem;color:var(--accent);font-weight:700;border-bottom:1px solid var(--border);padding-bottom:6px;">기본 정보</div>
+        <div style="display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;">
+          <label>이름</label><input id="mm-name" value="${u.name||''}" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
+          <label>연락처</label><input id="mm-phone" value="${u.phone||''}" placeholder="010-0000-0000" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
+        </div>
+
+        <div style="font-size:0.78rem;color:var(--accent);font-weight:700;border-bottom:1px solid var(--border);padding-bottom:6px;margin-top:8px;">배송 정보</div>
+        <div style="display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;">
+          <label>우편번호</label><input id="mm-postal" value="${u.postal_code||''}" placeholder="12345" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;width:120px;">
+          <label>주소</label><input id="mm-address" value="${u.address||''}" placeholder="시/도 구/군 동/읍" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
+          <label>상세주소</label><input id="mm-address2" value="${u.address_detail||''}" placeholder="아파트/건물/호수" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
+        </div>
+
+        <div style="font-size:0.78rem;color:var(--accent);font-weight:700;border-bottom:1px solid var(--border);padding-bottom:6px;margin-top:8px;">통관 / 사업자</div>
+        <div style="display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;">
+          <label>통관고유번호</label><input id="mm-customs" value="${u.customs_id||''}" placeholder="P000-0000-000000" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
+          <label>사업자번호</label><input id="mm-biznum" value="${u.business_number||''}" placeholder="000-00-00000" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;">
+          <label>사업자등록증</label>
+          <div>
+            ${certHtml}
+            <input type="file" id="mm-cert-file" accept=".jpg,.jpeg,.png,.pdf" style="margin-top:6px;font-size:0.75rem;color:var(--muted);">
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+          <button onclick="saveMemberDetail('${username}')" class="btn b-green" style="padding:8px 20px;font-size:0.82rem;">저장</button>
+          <button onclick="document.getElementById('member-modal').style.display='none'" class="btn b-gray" style="padding:8px 16px;font-size:0.82rem;">닫기</button>
+        </div>
+      </div>
+    `;
+  } catch(e) { content.innerHTML = "오류: " + e; }
+}
+
+async function saveMemberDetail(username) {
+  const data = {
+    name: document.getElementById("mm-name").value,
+    phone: document.getElementById("mm-phone").value,
+    postal_code: document.getElementById("mm-postal").value,
+    address: document.getElementById("mm-address").value,
+    address_detail: document.getElementById("mm-address2").value,
+    customs_id: document.getElementById("mm-customs").value,
+    business_number: document.getElementById("mm-biznum").value,
+  };
+  try {
+    const res = await fetch(PREFIX + "/members/" + encodeURIComponent(username) + "/info", {
+      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(data)
+    });
+    const d = await res.json();
+    if (d.ok) {
+      addLog("\u2705 " + username + " 회원 정보 저장 완료", "ok");
+      // 파일 업로드
+      const fileInput = document.getElementById("mm-cert-file");
+      if (fileInput && fileInput.files.length > 0) {
+        const fd = new FormData();
+        fd.append("file", fileInput.files[0]);
+        const res2 = await fetch(PREFIX + "/members/" + encodeURIComponent(username) + "/upload-cert", {method: "POST", body: fd});
+        const d2 = await res2.json();
+        if (d2.ok) addLog("\u2705 사업자등록증 업로드 완료", "ok");
+        else addLog("\u274C " + d2.message, "err");
+      }
+      loadMembers();
+      openMemberDetail(username);
+    } else {
+      addLog("\u274C " + d.message, "err");
+    }
+  } catch(e) { addLog("\u274C 저장 실패: " + e, "err"); }
 }
 
 async function deleteMember(username) {
