@@ -175,6 +175,21 @@
       font-size:1.4rem; cursor:pointer; z-index:10;
     }
     .modal-close:hover { color:var(--text); }
+    .modal-nav {
+      position:absolute; top:50%; transform:translateY(-50%);
+      background:rgba(0,0,0,0.5); border:none; color:#fff;
+      font-size:1.6rem; width:40px; height:60px; cursor:pointer;
+      z-index:20; border-radius:8px; display:flex; align-items:center; justify-content:center;
+      transition:background 0.2s;
+    }
+    .modal-nav:hover { background:rgba(212,165,74,0.7); }
+    .modal-nav-prev { left:-50px; }
+    .modal-nav-next { right:-50px; }
+    @media(max-width:960px) {
+      .modal-nav-prev { left:4px; }
+      .modal-nav-next { right:4px; }
+      .modal-nav { background:rgba(0,0,0,0.7); width:34px; height:50px; font-size:1.3rem; }
+    }
     .modal-body { display:flex; gap:0; position:relative; }
     .modal-images {
       flex:0 0 50%; background:#111318; padding:16px;
@@ -325,6 +340,21 @@
       </ul>
     </div>
 
+    <!-- 가격대 -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">가격대 (원)</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input type="number" id="price-min" placeholder="최소" min="0" step="10000"
+               style="width:50%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 8px;border-radius:6px;font-size:0.78rem;"
+               onkeydown="if(event.key==='Enter')loadShop(1)">
+        <span style="color:var(--dim);font-size:0.78rem;">~</span>
+        <input type="number" id="price-max" placeholder="최대" min="0" step="10000"
+               style="width:50%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 8px;border-radius:6px;font-size:0.78rem;"
+               onkeydown="if(event.key==='Enter')loadShop(1)">
+      </div>
+      <button onclick="loadShop(1)" style="width:100%;margin-top:6px;padding:6px;border-radius:6px;background:rgba(212,165,74,0.12);border:1px solid rgba(212,165,74,0.25);color:var(--accent);font-size:0.76rem;cursor:pointer;">가격 적용</button>
+    </div>
+
     <!-- 정렬 -->
     <div class="sidebar-section">
       <div class="sidebar-title">정렬</div>
@@ -370,6 +400,8 @@
 <div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <button class="modal-close" onclick="closeModal()">&times;</button>
+    <button class="modal-nav modal-nav-prev" id="modal-prev" onclick="navModal(-1)">&#x276E;</button>
+    <button class="modal-nav modal-nav-next" id="modal-next" onclick="navModal(1)">&#x276F;</button>
     <div class="modal-body">
       <div class="modal-images">
         <div class="modal-img-zoom" id="modal-img-zoom" onclick="toggleZoom(event)" onmousemove="moveZoom(event)" onmouseleave="resetZoom()">
@@ -394,6 +426,7 @@ const PREFIX = "{{ url_prefix }}";
 let filters = { site: "", brand: "", condition: "", bag_type: "", keyword: "" };
 let currentPage = 1;
 let allProducts = [];
+let currentModalIdx = -1;
 
 function selectFilter(type, el) {
   filters[type] = el.dataset.val;
@@ -407,6 +440,8 @@ function selectFilter(type, el) {
 function resetFilters() {
   filters = { site: "", brand: "", condition: "", bag_type: "", keyword: "" };
   document.getElementById("keyword-input").value = "";
+  document.getElementById("price-min").value = "";
+  document.getElementById("price-max").value = "";
   document.getElementById("sort-select").value = "newest";
   document.querySelectorAll(".filter-list").forEach(list => {
     list.querySelectorAll(".filter-item").forEach((item, i) => {
@@ -430,6 +465,10 @@ async function loadShop(page = 1) {
     if (filters.condition) params.set("condition", filters.condition);
     if (filters.bag_type) params.set("bag_type", filters.bag_type);
     if (filters.keyword) params.set("keyword", filters.keyword);
+    const priceMin = document.getElementById("price-min").value;
+    const priceMax = document.getElementById("price-max").value;
+    if (priceMin) params.set("price_min", priceMin);
+    if (priceMax) params.set("price_max", priceMax);
 
     const res = await fetch(PREFIX + "/shop/api/products?" + params);
     const d = await res.json();
@@ -463,8 +502,8 @@ async function loadShop(page = 1) {
         <div class="product-info">
           <div class="product-brand">${p.brand}</div>
           <div class="product-name">${p.name}</div>
-          <div class="product-price">${p.price_b2c ? p.price_b2c.toLocaleString() + '원' : '&yen;' + p.price_jpy.toLocaleString()}</div>
-          ${p.price_b2b ? `<div style="font-size:0.7rem;color:#4f8ef7;">B2B ${p.price_b2b.toLocaleString()}원</div>` : ''}
+          <div class="product-price">${p.price_krw ? p.price_krw.toLocaleString() + '원' : '&yen;' + p.price_jpy.toLocaleString()}</div>
+          ${p.user_level === 'b2b' && p.price_b2c ? `<div style="font-size:0.68rem;color:var(--muted);text-decoration:line-through;">B2C ${p.price_b2c.toLocaleString()}원</div>` : ''}
           <div style="font-size:0.68rem;color:var(--dim);">&yen;${p.price_jpy.toLocaleString()}</div>
         </div>
       </div>
@@ -551,66 +590,48 @@ function renderPagination(cur, total) {
 function openModal(idx) {
   const p = allProducts[idx];
   if (!p) return;
+  currentModalIdx = idx;
+  // 화살표 버튼 표시/숨김
+  document.getElementById("modal-prev").style.display = idx > 0 ? "" : "none";
+  document.getElementById("modal-next").style.display = idx < allProducts.length - 1 ? "" : "none";
   document.getElementById("modal-brand").textContent = p.brand;
   document.getElementById("modal-name").textContent = p.name;
-  document.getElementById("modal-price").innerHTML = p.price_b2c
-    ? `<div style="font-size:1.3rem;font-weight:800;color:var(--green)">B2C ${p.price_b2c.toLocaleString()}원</div>
-       <div style="font-size:1rem;color:#4f8ef7;margin-top:4px">B2B ${p.price_b2b.toLocaleString()}원</div>
-       <div style="font-size:0.78rem;color:var(--muted);margin-top:4px">&yen;${p.price_jpy.toLocaleString()}</div>`
-    : `&yen;${p.price_jpy.toLocaleString()}`;
+  if (p.price_krw) {
+    let priceHtml = `<div style="font-size:1.3rem;font-weight:800;color:var(--green)">${p.price_krw.toLocaleString()}원</div>`;
+    if (p.user_level === 'b2b' && p.price_b2c) {
+      priceHtml += `<div style="font-size:0.82rem;color:var(--muted);margin-top:4px;text-decoration:line-through;">B2C ${p.price_b2c.toLocaleString()}원</div>`;
+    }
+    priceHtml += `<div style="font-size:0.78rem;color:var(--muted);margin-top:4px">&yen;${p.price_jpy.toLocaleString()}</div>`;
+    document.getElementById("modal-price").innerHTML = priceHtml;
+  } else {
+    document.getElementById("modal-price").innerHTML = `&yen;${p.price_jpy.toLocaleString()}`;
+  }
   const mainImg = (p.detail_images && p.detail_images.length) ? p.detail_images[0].replace("_mn.jpg",".jpg") : p.img_url;
   document.getElementById("modal-main-img").src = mainImg;
   const thumbsEl = document.getElementById("modal-thumbs");
   thumbsEl.innerHTML = (p.detail_images || []).map((img, i) =>
     `<img class="modal-thumb ${i===0?'active':''}" src="${img}" onclick="setMainImg(this,'${img.replace('_mn.jpg','.jpg')}')">`
   ).join("");
-  // 상품명에서 컬러/소재 파싱 (형식: 종류/소재/컬러/패턴/형번)
-  const nameParts = (p.name_ja || p.name || "").split("/");
-  const bagType = nameParts[0] || "";
-  const materialFromName = nameParts[1] && nameParts[1] !== "--" ? nameParts[1] : "";
-  const colorFromName = nameParts[2] || "";
-  const modelFromName = nameParts.length >= 5 ? nameParts[nameParts.length - 1] : "";
-
-  // 사이즈 파싱 (マチ 7 高さ 20 幅 22 → 폭 7 / 높이 20 / 너비 22)
-  let sizeText = (p.size_info || "").trim();
-  if (sizeText) {
-    sizeText = sizeText
-      .replace(/マチ/g, "폭").replace(/高さ/g, "높이").replace(/幅/g, "너비")
-      .replace(/持ち手/g, "손잡이").replace(/その他サイズ/g, "기타")
-      .replace(/\s*\/\s*$/g, "").trim();
-  }
-
-  // 소재
-  const materialDict = {"レザー":"가죽","ナイロン":"나일론","キャンバス":"캔버스","デニム":"데님","スエード":"스웨이드","サテン":"새틴","コットン":"코튼","ウール":"울","ファー":"퍼"};
-  let material = p.material || materialFromName || "";
-  for (const [ja, ko] of Object.entries(materialDict)) {
-    material = material.replace(ja, ko);
-  }
-
-  // 컬러
-  const colorDict = {"ブラック":"블랙","ホワイト":"화이트","レッド":"레드","ブルー":"블루","グリーン":"그린","ピンク":"핑크","ベージュ":"베이지","ブラウン":"브라운","グレー":"그레이","ネイビー":"네이비","オレンジ":"오렌지","イエロー":"옐로","パープル":"퍼플","ゴールド":"골드","シルバー":"실버","カーキ":"카키","ボルドー":"보르도","クリーム":"크림"};
-  let colorVal = colorFromName;
-  for (const [ja, ko] of Object.entries(colorDict)) {
-    colorVal = colorVal.replace(ja, ko);
+  // 일본어 → 한국어 사전
+  const jaKoDict = {"レザー":"가죽","ナイロン":"나일론","キャンバス":"캔버스","デニム":"데님","スエード":"스웨이드","サテン":"새틴","コットン":"코튼","ウール":"울","ファー":"퍼","シルク":"실크","カシミヤ":"캐시미어","ポリエステル":"폴리에스터","エナメル":"에나멜","ブラック":"블랙","ホワイト":"화이트","レッド":"레드","ブルー":"블루","グリーン":"그린","ピンク":"핑크","ベージュ":"베이지","ブラウン":"브라운","グレー":"그레이","ネイビー":"네이비","オレンジ":"오렌지","イエロー":"옐로","パープル":"퍼플","ゴールド":"골드","シルバー":"실버","カーキ":"카키","ボルドー":"보르도","無地":"무지","総柄":"올오버패턴","マチ":"폭","高さ":"높이","幅":"너비","持ち手":"손잡이","その他サイズ":"기타","肩幅":"어깨폭","身幅":"품","着丈":"총길이","袖丈":"소매길이","ゆき":"유키","ウエスト":"허리","ヒップ":"엉덩이","股上":"밑위","股下":"밑단","회색":"회색"};
+  function transJa(text) {
+    if (!text) return "";
+    let r = text;
+    for (const [ja, ko] of Object.entries(jaKoDict)) r = r.replace(new RegExp(ja, 'g'), ko);
+    return r;
   }
 
   // 등급 라벨
   const gradeLabels = {"NS": "신품/미사용", "S": "중고S (최상)", "A": "중고A (양호)", "B": "중고B (사용감 있음)", "C": "중고C (사용감 많음)", "D": "중고D (난있음)"};
   const gradeText = gradeLabels[p.condition_grade] || p.condition_grade || "";
 
-  // 상품명에서 형번 추출 (영문+숫자 조합, 4자 이상)
-  const nameJa = p.name_ja || p.name || "";
-  const modelMatch = nameJa.match(/\b([A-Z]{1,3}\d{3,}[A-Z]*\d*|[A-Z]*\d+[A-Z]+\d+)\b/i)
-    || nameJa.match(/\/([A-Z0-9]{4,})\//);
-  const modelNum = modelMatch ? modelMatch[1] : "";
-
-  // 상세 테이블 생성
+  // 상세 테이블 생성 (고유번호 + 컨디션 맨 위)
   let rows = [];
-  if (modelNum) rows.push(["형번", modelNum]);
+  if (p.product_code && p.product_code.startsWith("No.")) rows.push(["고유번호", p.product_code]);
   if (gradeText) rows.push(["상태", gradeText]);
-  if (colorVal) rows.push(["컬러", colorVal]);
-  if (material) rows.push(["소재", material]);
-  if (sizeText) rows.push(["사이즈(cm)", sizeText]);
+  if (p.size_info) rows.push(["컬러", transJa(p.size_info)]);
+  if (p.material) rows.push(["소재", transJa(p.material)]);
+  if (p.color_raw) rows.push(["사이즈(cm)", transJa(p.color_raw)]);
 
   let tableHtml = "";
   if (rows.length > 0) {
@@ -620,8 +641,9 @@ function openModal(idx) {
   }
   document.getElementById("modal-detail-table").innerHTML = tableHtml;
 
-  // 상세 설명
-  document.getElementById("modal-desc").textContent = p.description || "";
+  // 상품 설명
+  const desc = transJa(p.description || "");
+  document.getElementById("modal-desc").innerHTML = desc ? `<div style="margin-top:8px;padding:12px;background:rgba(212,165,74,0.06);border:1px solid var(--border);border-radius:8px;font-size:0.8rem;line-height:1.7;color:var(--text);">${desc.replace(/\n/g,'<br>')}</div>` : "";
 
   const modalLink = document.getElementById("modal-link");
   if (modalLink) modalLink.href = p.link || "#";
@@ -661,7 +683,20 @@ function closeModal() {
   document.body.style.overflow = "";
 }
 
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+function navModal(dir) {
+  const newIdx = currentModalIdx + dir;
+  if (newIdx >= 0 && newIdx < allProducts.length) {
+    openModal(newIdx);
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeModal();
+  if (document.getElementById("modal").classList.contains("show")) {
+    if (e.key === "ArrowLeft") navModal(-1);
+    if (e.key === "ArrowRight") navModal(1);
+  }
+});
 
 // 이미지 보호 (우클릭, 드래그 방지)
 document.addEventListener("contextmenu", e => {
@@ -672,6 +707,18 @@ document.addEventListener("dragstart", e => {
 });
 
 loadShop(1);
+
+// 30초마다 자동 새로고침 (수집 중 실시간 반영)
+let _autoRefreshTimer = null;
+function startAutoRefresh() {
+  if (_autoRefreshTimer) return;
+  _autoRefreshTimer = setInterval(() => {
+    // 모달이 열려있으면 새로고침 안 함
+    if (document.getElementById("modal").classList.contains("show")) return;
+    loadShop(currentPage);
+  }, 30000);
+}
+startAutoRefresh();
 </script>
 </body>
 </html>

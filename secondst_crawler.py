@@ -541,6 +541,8 @@ async def rescrape_details(log=None):
     if not log:
         log = lambda msg: logger.info(msg)
 
+    import random as _random
+
     try:
         from product_db import _conn as db_conn
         import sqlite3
