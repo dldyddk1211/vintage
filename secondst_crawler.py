@@ -680,8 +680,8 @@ async def _extract_detail_page(page) -> dict:
             if len(detail["detail_images"]) >= 20:
                 break
 
-        # 상품 설명 텍스트 (검색 안내 팝업 제외)
-        _desc_excludes = ['キーワード', '検索窓', 'お問い合わせ', '注文取消し', '配送でのお買い物', '店舗取り寄せ']
+        # 상품 설명 텍스트 (검색 안내 팝업만 제외 — 실제 상품 설명은 허용)
+        _desc_excludes = ['キーワード', '検索窓']
         desc_selectors = [
             "[class*='goodsComment']",
             "[class*='itemComment']",
@@ -716,14 +716,13 @@ async def _extract_detail_page(page) -> dict:
                 if (pm2 && parseInt(pm2[1].replace(/,/g, '')) > 100) result.price = parseInt(pm2[1].replace(/,/g, ''));
             }
 
-            // 3) 상세 테이블 (th/td 패턴 — 일본어+한국어 라벨 매칭)
-            const rows = document.querySelectorAll('table tr, dl');
-            for (const row of rows) {
-                const cells = row.querySelectorAll('th, dt');
-                const vals = row.querySelectorAll('td, dd');
-                if (cells.length === 0 || vals.length === 0) continue;
-                const label = (cells[0].innerText || '').trim();
-                const value = (vals[0].innerText || '').trim();
+            // 3) 상세 스펙 (dt/dd 쌍 개별 매칭 — dl 안에 여러 쌍 대응)
+            const allDts = document.querySelectorAll('dt');
+            for (const dt of allDts) {
+                const label = (dt.innerText || '').trim();
+                const dd = dt.nextElementSibling;
+                if (!dd || dd.tagName !== 'DD') continue;
+                const value = (dd.innerText || '').trim();
                 if (!value || value === '—' || value === '-' || value === 'ー') continue;
 
                 if (label.match(/型番|형번/)) result.model = value;
@@ -733,24 +732,31 @@ async def _extract_detail_page(page) -> dict:
                 else if (label.match(/^サイズ$|^사이즈$/) || (label.match(/サイズ|사이즈/) && !label.match(/実寸|실측/))) result.size = value;
                 else if (label.match(/実寸|실측/)) result.measured_size = value;
             }
+            // table tr 폴백
+            const trs = document.querySelectorAll('table tr');
+            for (const tr of trs) {
+                const th = tr.querySelector('th');
+                const td = tr.querySelector('td');
+                if (!th || !td) continue;
+                const label = th.innerText.trim();
+                const value = td.innerText.trim();
+                if (!value || value === '—' || value === '-' || value === 'ー') continue;
+                if (!result.color && label.match(/カラー|칼라|컬러|色/)) result.color = value;
+                else if (!result.material && label.match(/素材|소재|生地|천/)) result.material = value;
+                else if (!result.size && (label.match(/^サイズ$|^사이즈$/) || (label.match(/サイズ|사이즈/) && !label.match(/実寸|실측/)))) result.size = value;
+                else if (!result.measured_size && label.match(/実寸|실측/)) result.measured_size = value;
+            }
 
             // 4) 상품 설명 (일본어/한국어)
-            // 제외할 텍스트
-            const excludes = ['キーワード', '검색창', 'お問い合わせ', '문의', 'カテゴリ', '카테고리', 'ブランド検索'];
-            function isValidDesc(text) {
-                if (!text || text.length < 10) return false;
-                for (const ex of excludes) { if (text.includes(ex)) return false; }
-                return true;
-            }
-            // 상품 설명 헤더 다음 텍스트
+            // 상품 설명 헤더(商品の説明) 바로 다음 요소에서 추출
             const allEls = document.querySelectorAll('h2, h3, div, section, p');
             for (const el of allEls) {
                 const t = (el.innerText || '').trim();
-                if (t.match(/^(商品\s*説明|상품\s*설명)$/)) {
+                if (t.match(/^(商品\s*(の\s*)?説明|상품\s*(의\s*)?설명)$/)) {
                     const next = el.nextElementSibling;
                     if (next) {
                         const dt = next.innerText.trim();
-                        if (isValidDesc(dt)) { result.description = dt; break; }
+                        if (dt && dt.length >= 10) { result.description = dt; break; }
                     }
                 }
             }
@@ -759,7 +765,7 @@ async def _extract_detail_page(page) -> dict:
                 const descEl = document.querySelector('[class*="goodsComment"], [class*="itemComment"]');
                 if (descEl) {
                     const dt = descEl.innerText.trim();
-                    if (isValidDesc(dt)) result.description = dt;
+                    if (dt && dt.length >= 10) result.description = dt;
                 }
             }
 
