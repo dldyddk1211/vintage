@@ -555,7 +555,6 @@
           <button class="btn b-orange" id="btn-unlock" onclick="unlockStatus()" style="display:none" title="상태가 stuck 상태일 때 잠금 해제">&#x1f513; 잠금해제</button>
           <button class="btn b-red"    id="btn-reset"  onclick="runReset()">&#x1f504; 리셋</button>
           <button class="btn b-gray"   id="btn-translate" onclick="runTranslate()">&#x1f310; 한국어 번역</button>
-          <button class="btn b-blue"   id="btn-rescrape" onclick="runRescrape()">&#x1f504; 상세 재수집</button>
           <button class="btn b-gray"   onclick="downloadCsv()" id="btn-csv">&#x1f4e5; CSV 다운로드</button>
         </div>
         <div class="opts">
@@ -770,6 +769,7 @@
           </div>
           <button class="btn b-blue" onclick="vtStartScrape()" style="padding:7px 16px;font-size:0.82rem;">수집 시작</button>
           <button class="btn b-red" onclick="vtStopScrape()" style="padding:7px 12px;font-size:0.82rem;">중지</button>
+          <button class="btn b-purple" id="btn-rescrape-vt" onclick="runRescrapeVt()" style="padding:7px 14px;font-size:0.82rem;">&#x1f504; 상세 재수집</button>
         </div>
       </div>
 
@@ -2738,17 +2738,24 @@ async function runTranslate() {
   finally { if (btn) { btn.disabled = false; btn.textContent = "\uD83C\uDF10 \uD55C\uAD6D\uC5B4 \uBC88\uC5ED"; } }
 }
 
-async function runRescrape() {
-  const btn = document.getElementById("btn-rescrape");
+async function runRescrapeVt() {
+  const btn = document.getElementById("btn-rescrape-vt");
+  const logEl = document.getElementById("vt-log");
   if (btn) { btn.disabled = true; btn.textContent = "\uD83D\uDD04 재수집 중..."; }
-  addLog("\uD83D\uDD04 2ndstreet 상세 페이지 재수집 시작...", "info");
+  if (logEl) logEl.innerHTML += '<div style="color:var(--accent)">\uD83D\uDD04 2ndstreet 상세 페이지 재수집 시작...</div>';
   try {
     const r = await fetch(PREFIX + "/products/rescrape-details", { method: "POST" });
     const d = await r.json();
-    if (d.ok) { addLog("\u2705 " + d.message, "ok"); }
-    else { addLog("\u274C " + d.message, "err"); if (btn) { btn.disabled = false; btn.textContent = "\uD83D\uDD04 상세 재수집"; } }
-  } catch(e) { addLog("\u274C 재수집 요청 실패: " + e, "err"); if (btn) { btn.disabled = false; btn.textContent = "\uD83D\uDD04 상세 재수집"; } }
-  // 진행 중이므로 30초 후 버튼 복원 (실제 완료는 로그로 확인)
+    if (d.ok) {
+      if (logEl) logEl.innerHTML += '<div style="color:var(--green)">\u2705 ' + d.message + '</div>';
+    } else {
+      if (logEl) logEl.innerHTML += '<div style="color:var(--red)">\u274C ' + d.message + '</div>';
+      if (btn) { btn.disabled = false; btn.textContent = "\uD83D\uDD04 상세 재수집"; }
+    }
+  } catch(e) {
+    if (logEl) logEl.innerHTML += '<div style="color:var(--red)">\u274C 재수집 요청 실패: ' + e + '</div>';
+    if (btn) { btn.disabled = false; btn.textContent = "\uD83D\uDD04 상세 재수집"; }
+  }
   setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = "\uD83D\uDD04 상세 재수집"; } }, 30000);
 }
 
