@@ -915,7 +915,7 @@
                 oninput="calcExample()">
               <span style="color:var(--muted)">%</span>
 
-              <span style="color:var(--muted)">국제배송비</span>
+              <span style="color:var(--muted)">기본대행수수료</span>
               <input type="number" id="intl-shipping-input" min="0" max="100000" step="100" value="15000"
                 style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
                 oninput="calcExample()">
@@ -932,7 +932,7 @@
             <div>&#xd7; 실시간 환율 (원/엔)</div>
             <div>&#xd7; (1 + 환율추가) <span id="markup-formula" style="color:var(--yellow)">1.02</span></div>
             <div>&#xd7; (1 + 마진율) <span id="margin-formula" style="color:var(--yellow)">1.10</span></div>
-            <div>+ 국제배송비 <span id="shipping-formula" style="color:var(--yellow)">15,000원</span></div>
+            <div>+ 기본대행수수료 <span id="shipping-formula" style="color:var(--yellow)">15,000원</span></div>
             <div style="border-top:1px solid var(--border);margin:4px 0;padding-top:4px;color:var(--green);font-weight:600">= 최종 판매가 (백원 올림)</div>
           </div>
 
@@ -990,7 +990,7 @@
                 oninput="calcVtExample()">
               <span style="color:var(--muted)">円</span>
 
-              <span style="color:var(--muted)">국제배송비</span>
+              <span style="color:var(--muted)">기본대행수수료</span>
               <input type="number" id="vt-shipping-input" min="0" max="100000" step="100" value="15000"
                 style="background:#1a1710;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.85rem;text-align:center"
                 oninput="calcVtExample()">
@@ -1007,7 +1007,7 @@
             <div>&#xd7; 실시간 환율 (원/엔)</div>
             <div>&#xd7; (1 + 환율추가) <span id="vt-markup-formula" style="color:var(--yellow)">1.02</span></div>
             <div>&#xd7; (1 + B2C마진) <span id="vt-b2c-formula" style="color:var(--yellow)">1.15</span> / B2B <span id="vt-b2b-formula" style="color:var(--yellow)">1.08</span></div>
-            <div>+ 국제배송비 <span id="vt-shipping-formula" style="color:var(--yellow)">15,000원</span></div>
+            <div>+ 기본대행수수료 <span id="vt-shipping-formula" style="color:var(--yellow)">15,000원</span></div>
             <div style="border-top:1px solid var(--border);margin:4px 0;padding-top:4px;color:var(--green);font-weight:600">= 최종 판매가 (백원 올림)</div>
           </div>
 
@@ -3754,7 +3754,7 @@ function calcExample() {
     <div>× 환율 ${rate.toFixed(2)}: <b style="color:var(--text)">${(jpy*(1+fee)*rate).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,",")}원</b></div>
     <div>× (1+환율추가 ${(markup*100).toFixed(1)}%): <b style="color:var(--text)">${(jpy*(1+fee)*rate*(1+markup)).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,",")}원</b></div>
     <div>× (1+마진 ${(margin*100).toFixed(1)}%): <b style="color:var(--accent)">${(jpy*(1+fee)*rate*(1+markup)*(1+margin)).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,",")}원</b></div>
-    <div>+ 국제배송비: <b style="color:var(--text)">${ship.toLocaleString()}원</b></div>
+    <div>+ 기본대행수수료: <b style="color:var(--text)">${ship.toLocaleString()}원</b></div>
     <div style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px">
       <b style="color:var(--green);font-size:1rem">최종 판매가: ${finalKrw.toLocaleString()}원</b>
     </div>`;
