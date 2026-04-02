@@ -764,6 +764,7 @@
                 <th>일시</th>
                 <th>유형</th>
                 <th>고객</th>
+                <th>이름</th>
                 <th>브랜드</th>
                 <th>상품명</th>
                 <th>고유번호</th>
@@ -4026,7 +4027,7 @@ async function loadOrders() {
     const res = await fetch(PREFIX + "/orders?" + params);
     const d = await res.json();
     if (!d.orders || !d.orders.length) {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px;">주문/문의 내역이 없습니다</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:30px;">주문/문의 내역이 없습니다</td></tr>';
       updateOrderBadge(0);
       return;
     }
@@ -4040,7 +4041,8 @@ async function loadOrders() {
         <td style="padding:6px;color:var(--dim)">${i+1}</td>
         <td style="padding:6px;white-space:nowrap;font-size:0.72rem;">${o.created_at||''}</td>
         <td style="padding:6px;text-align:center;">${typeIcons[o.type]||'📋'} ${o.type==='order'?'주문':'문의'}</td>
-        <td style="padding:6px;font-weight:600;">${o.username||''}${o.customer_name?' ('+o.customer_name+')':''}</td>
+        <td style="padding:6px;font-weight:600;">${o.username||''}</td>
+        <td style="padding:6px;"><a href="#" onclick="showCustomerPopup(event,'${o.username||''}')" style="color:var(--accent);text-decoration:underline;cursor:pointer;">${o.customer_name||'-'}</a></td>
         <td style="padding:6px;">${o.brand||''}</td>
         <td style="padding:6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${o.product_name||''}</td>
         <td style="padding:6px;font-family:monospace;font-size:0.72rem;"><a href="{{ url_prefix }}/shop?code=${encodeURIComponent(o.product_code||'')}" target="_blank" style="color:var(--accent);text-decoration:underline;cursor:pointer;">${o.product_code||''}</a></td>
@@ -4060,6 +4062,46 @@ async function loadOrders() {
   } catch(e) {
     tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--red);padding:20px;">로드 실패: ${e}</td></tr>`;
   }
+}
+
+async function showCustomerPopup(event, username) {
+  event.preventDefault();
+  // 기존 팝업 제거
+  document.querySelectorAll(".customer-popup").forEach(el => el.remove());
+  try {
+    const res = await fetch(PREFIX + "/members/" + encodeURIComponent(username) + "/info");
+    const d = await res.json();
+    if (!d.ok) return;
+    const u = d.user;
+    const popup = document.createElement("div");
+    popup.className = "customer-popup";
+    popup.style.cssText = "position:fixed;z-index:10000;background:var(--card);border:1px solid var(--accent);border-radius:10px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,0.6);min-width:260px;font-size:0.8rem;";
+    popup.style.left = Math.min(event.clientX, window.innerWidth - 300) + "px";
+    popup.style.top = Math.min(event.clientY + 10, window.innerHeight - 300) + "px";
+    popup.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <b style="color:var(--accent);font-size:0.88rem;">고객 정보</b>
+        <span onclick="this.parentElement.parentElement.remove()" style="cursor:pointer;color:var(--muted);font-size:1.1rem;">&times;</span>
+      </div>
+      <table style="width:100%;font-size:0.78rem;">
+        <tr><td style="color:var(--muted);padding:3px 8px 3px 0;">아이디</td><td style="font-weight:600;">${u.username||''}</td></tr>
+        <tr><td style="color:var(--muted);padding:3px 8px 3px 0;">이름</td><td>${u.name||'-'}</td></tr>
+        <tr><td style="color:var(--muted);padding:3px 8px 3px 0;">연락처</td><td>${u.phone||'-'}</td></tr>
+        <tr><td style="color:var(--muted);padding:3px 8px 3px 0;">주소</td><td>${u.postal_code?'('+u.postal_code+') ':''}${u.address||'-'} ${u.address_detail||''}</td></tr>
+        <tr><td style="color:var(--muted);padding:3px 8px 3px 0;">통관번호</td><td>${u.customs_id||'-'}</td></tr>
+        <tr><td style="color:var(--muted);padding:3px 8px 3px 0;">사업자번호</td><td>${u.business_number||'-'}</td></tr>
+        <tr><td style="color:var(--muted);padding:3px 8px 3px 0;">레벨</td><td style="font-weight:700;color:${u.level==='b2b'?'#4f8ef7':'var(--green)'};">${(u.level||'b2c').toUpperCase()}</td></tr>
+      </table>
+      <button onclick="openMemberDetail('${u.username}');this.parentElement.remove();" class="btn b-blue" style="width:100%;margin-top:10px;padding:6px;font-size:0.75rem;">상세 관리</button>
+    `;
+    document.body.appendChild(popup);
+    // 외부 클릭 시 닫기
+    setTimeout(() => {
+      document.addEventListener("click", function _close(e) {
+        if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener("click", _close); }
+      });
+    }, 100);
+  } catch(e) {}
 }
 
 function updateOrderBadge(count) {
