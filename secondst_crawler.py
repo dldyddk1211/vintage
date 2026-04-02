@@ -552,6 +552,14 @@ async def _process_detail_pages(page, products, log, _random, category=""):
                     pass
 
             detail = await _extract_detail_page(page)
+            # 이미지: img_url 기반 검증 (불일치 방지)
+            if detail.get("detail_images") and prod.get("img_url") and "/goods/" in prod["img_url"]:
+                expected_base = prod["img_url"].rsplit("/", 1)[0] + "/"
+                detail_base = detail["detail_images"][0].rsplit("/", 1)[0] + "/" if detail["detail_images"] else ""
+                if detail_base != expected_base:
+                    # 불일치 → img_url 기반으로 재생성
+                    import json as _json2
+                    detail["detail_images"] = [f"{expected_base}{n}.jpg" for n in range(1, 10)]
             if detail.get("detail_images"):
                 prod["detail_images"] = detail["detail_images"]
             if detail.get("description"):
@@ -956,41 +964,24 @@ async def _extract_detail_page(page) -> dict:
     }
 
     try:
-        # 상세 이미지: 메인 이미지 URL에서 번호(1~10)를 변경하여 생성
-        # 패턴: .../goods/XXXXXX/XX/XXXXX/1_tn.jpg → 1.jpg, 2.jpg, ...
+        # 상세 이미지: URL의 goodsId에서 직접 이미지 경로 구성 (가장 정확)
         import re as _re_img
-        main_img_el = page.locator("img[src*='cdn2.2ndstreet.jp'][src*='/goods/']").first
-        base_url = ""
-        if await main_img_el.count() > 0:
-            base_url = await main_img_el.get_attribute("src") or ""
-        if not base_url:
-            # og:image 또는 meta에서 찾기
-            og = await page.query_selector("meta[property='og:image']")
-            if og:
-                base_url = await og.get_attribute("content") or ""
-        if not base_url:
-            # URL에서 goodsId 추출하여 직접 구성
-            url_match = _re_img.search(r'goodsId/(\d+)', page.url)
-            if url_match:
-                gid = url_match.group(1)
-                # 상품코드에서 경로 구성: 2329972265995 → 232997/22/65995
-                if len(gid) >= 10:
-                    base_url = f"https://cdn2.2ndstreet.jp/img/pc/goods/{gid[:6]}/{gid[6:8]}/{gid[8:]}/1_tn.jpg"
-
-        if base_url and "/goods/" in base_url:
-            # 메인 이미지 경로에서 이미지 URL 생성 + 존재 확인
-            base_dir = base_url.rsplit("/", 1)[0] + "/"
-            import requests as _req
-            for n in range(1, 11):
-                img_url = f"{base_dir}{n}.jpg"
-                try:
-                    resp = _req.head(img_url, timeout=3, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.2ndstreet.jp/"})
-                    if resp.status_code == 200:
-                        detail["detail_images"].append(img_url)
-                    else:
-                        break  # 403/404면 이후 번호도 없음
-                except Exception:
-                    break
+        url_match = _re_img.search(r'goodsId/(\d+)', page.url)
+        if url_match:
+            gid = url_match.group(1)
+            if len(gid) >= 10:
+                base_dir = f"https://cdn2.2ndstreet.jp/img/pc/goods/{gid[:6]}/{gid[6:8]}/{gid[8:]}/"
+                import requests as _req
+                for n in range(1, 11):
+                    img_url = f"{base_dir}{n}.jpg"
+                    try:
+                        resp = _req.head(img_url, timeout=3, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.2ndstreet.jp/"})
+                        if resp.status_code == 200:
+                            detail["detail_images"].append(img_url)
+                        else:
+                            break
+                    except Exception:
+                        break
 
         # 상품 설명 텍스트 (검색 안내 팝업만 제외 — 실제 상품 설명은 허용)
         _desc_excludes = ['キーワード', '検索窓']
