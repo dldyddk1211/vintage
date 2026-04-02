@@ -1402,10 +1402,14 @@
             </select>
           </div>
           <div>
-            <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">페이지</label>
-            <input type="text" id="task-pages" placeholder="공란=전체" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:0.82rem;width:80px;">
+            <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">페이지 단위</label>
+            <select id="task-chunk" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:0.82rem;">
+              <option value="5" selected>5페이지씩</option>
+              <option value="10">10페이지씩</option>
+              <option value="20">20페이지씩</option>
+            </select>
           </div>
-          <button class="btn b-green" onclick="addScrapeTask()" style="padding:7px 16px;font-size:0.82rem;">+ 리스트 추가</button>
+          <button class="btn b-green" onclick="addScrapeTaskAuto()" style="padding:7px 16px;font-size:0.82rem;" id="btn-add-task">+ 자동 분할 추가</button>
         </div>
       </div>
 
@@ -1414,7 +1418,8 @@
         <div class="panel-title">
           <span>&#x1f4cb; 수집 작업 리스트</span>
           <div style="display:flex;gap:8px;">
-            <button class="btn b-blue" onclick="runAllTasks()" id="btn-run-all" style="padding:5px 12px;font-size:0.78rem">&#x25b6; 전체 순차 실행</button>
+            <button class="btn b-blue" onclick="runCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x25b6; 선택 실행</button>
+            <button class="btn b-purple" onclick="runAllTasks()" id="btn-run-all" style="padding:5px 12px;font-size:0.78rem">&#x25b6; 전체 순차 실행</button>
             <button class="btn b-red" onclick="deleteCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x1f5d1; 선택 삭제</button>
             <button class="btn b-gray" onclick="clearScrapeTasks()" style="padding:5px 12px;font-size:0.78rem">전체 삭제</button>
           </div>
@@ -2927,14 +2932,18 @@ async function loadScrapeTasks() {
   } catch(e) {}
 }
 
-async function addScrapeTask() {
+async function addScrapeTaskAuto() {
+  const btn = document.getElementById("btn-add-task");
   const site = document.getElementById("task-site").value;
   const cat = document.getElementById("task-cat").value;
   const brand = document.getElementById("task-brand").value;
-  const pages = document.getElementById("task-pages").value.trim();
+  const chunkSize = parseInt(document.getElementById("task-chunk").value) || 5;
   const catName = catNames[cat] || cat || "전체";
   const brandName = brandNames[brand] || brand || "전체";
-  // 상품 수량 먼저 조회
+
+  btn.disabled = true; btn.textContent = "조회중...";
+
+  // 상품 수량 조회
   let totalItems = 0, totalPages = 0;
   try {
     const params = new URLSearchParams({site, category: cat, brand});
@@ -2942,15 +2951,34 @@ async function addScrapeTask() {
     const d = await res.json();
     if (d.ok) { totalItems = d.total_items; totalPages = d.total_pages; }
   } catch(e) {}
-  // 서버에 저장
-  try {
-    await fetch(PREFIX + "/scrape/tasks", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({site, siteName:"세컨드스트리트", cat, catName, brand, brandName, pages, totalItems, totalPages})
-    });
-    addLog(`\u2705 수집 작업 추가: ${catName} / ${brandName} (${totalItems.toLocaleString()}개)`, "ok");
-    loadScrapeTasks();
-  } catch(e) { addLog("\u274C 작업 추가 실패", "err"); }
+
+  if (totalPages <= 0) {
+    addLog("\u274C 상품이 없거나 조회 실패", "err");
+    btn.disabled = false; btn.textContent = "+ 자동 분할 추가";
+    return;
+  }
+
+  // 페이지를 chunkSize 단위로 분할
+  const chunks = [];
+  for (let start = 1; start <= totalPages; start += chunkSize) {
+    const end = Math.min(start + chunkSize - 1, totalPages);
+    chunks.push(`${start}-${end}`);
+  }
+
+  addLog(`\u2705 ${catName} / ${brandName}: ${totalItems.toLocaleString()}개 (${totalPages}p) → ${chunks.length}개 작업으로 분할`, "ok");
+
+  // 서버에 분할 저장
+  for (const pages of chunks) {
+    try {
+      await fetch(PREFIX + "/scrape/tasks", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({site, siteName:"세컨드스트리트", cat, catName, brand, brandName, pages, totalItems, totalPages})
+      });
+    } catch(e) {}
+  }
+
+  btn.disabled = false; btn.textContent = "+ 자동 분할 추가";
+  loadScrapeTasks();
 }
 
 function renderTaskList() {
@@ -3026,9 +3054,23 @@ async function runSingleTask(taskId) {
   loadScrapeTasks();
 }
 
+async function runCheckedTasks() {
+  const ids = [];
+  document.querySelectorAll(".task-chk:checked").forEach(c => ids.push(parseInt(c.dataset.id)));
+  if (!ids.length) { alert("실행할 작업을 선택해주세요"); return; }
+  const tasks = ids.map(id => scrapeTaskList.find(t => t.id === id)).filter(t => t && t.status === "대기");
+  if (!tasks.length) { alert("대기 상태인 작업이 없습니다"); return; }
+  addLog(`\u25b6 선택 실행 시작 (${tasks.length}개)`, "info");
+  for (const task of tasks) {
+    await runSingleTask(task.id);
+  }
+  addLog("\u2705 선택 실행 완료!", "ok");
+}
+
 async function runAllTasks() {
   const pending = scrapeTaskList.filter(t => t.status === "대기");
   if (!pending.length) { addLog("\u26a0\ufe0f 대기 중인 작업이 없습니다", "info"); return; }
+  if (!confirm(`대기 중인 ${pending.length}개 작업을 전체 실행하시겠습니까?`)) return;
   addLog(`\u25b6 전체 순차 실행 시작 (${pending.length}개)`, "info");
   for (const task of pending) {
     await runSingleTask(task.id);
