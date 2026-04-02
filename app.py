@@ -392,6 +392,124 @@ def change_password():
         conn.close()
 
 
+# ── 고객 요청/문의 게시판 ──────────────────────────
+def _init_board_db():
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS board (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            name TEXT DEFAULT '',
+            category TEXT DEFAULT 'general',
+            title TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            status TEXT DEFAULT 'open',
+            admin_reply TEXT DEFAULT '',
+            replied_at TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        )""")
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/board", methods=["GET"])
+@login_required
+def get_board():
+    _init_board_db()
+    username = session.get("username", "")
+    role = session.get("role", "customer")
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        if role == "admin":
+            rows = conn.execute("SELECT * FROM board ORDER BY created_at DESC LIMIT 200").fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM board WHERE username=? ORDER BY created_at DESC LIMIT 100", (username,)).fetchall()
+        posts = [{c: r[c] for c in r.keys()} for r in rows]
+        return jsonify({"ok": True, "posts": posts})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/board", methods=["POST"])
+@login_required
+def create_post():
+    _init_board_db()
+    data = request.json or {}
+    username = session.get("username", "")
+    name = session.get("name", "")
+    if not name:
+        try:
+            user_row = get_customer(username)
+            if user_row and "name" in user_row.keys():
+                name = user_row["name"] or ""
+        except Exception:
+            pass
+    title = (data.get("title") or "").strip()
+    content = (data.get("content") or "").strip()
+    category = data.get("category", "general")
+    if not title:
+        return jsonify({"ok": False, "message": "제목을 입력해주세요"})
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("INSERT INTO board (username, name, category, title, content) VALUES (?,?,?,?,?)",
+                     (username, name, category, title, content))
+        conn.commit()
+        # 텔레그램 알림
+        cat_labels = {"brand":"브랜드 추가","feature":"기능 요청","inquiry":"문의","general":"기타"}
+        try:
+            from notifier import send_telegram
+            send_telegram(
+                f"📋 <b>고객 요청 게시판</b>\n"
+                f"👤 {username}" + (f" ({name})" if name else "") + f"\n"
+                f"📂 {cat_labels.get(category, category)}\n"
+                f"📝 {title}\n"
+                f"💬 {content[:100]}"
+            )
+        except Exception:
+            pass
+        return jsonify({"ok": True, "message": "등록 완료"})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/board/<int:post_id>/reply", methods=["POST"])
+@admin_required
+def reply_post(post_id):
+    _init_board_db()
+    data = request.json or {}
+    reply = (data.get("reply") or "").strip()
+    status = data.get("status", "answered")
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("UPDATE board SET admin_reply=?, status=?, replied_at=datetime('now','localtime') WHERE id=?",
+                     (reply, status, post_id))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/board/<int:post_id>", methods=["DELETE"])
+@admin_required
+def delete_post(post_id):
+    _init_board_db()
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("DELETE FROM board WHERE id=?", (post_id,))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
 def _calc_vintage_price(jpy: int, margin_type="b2c") -> int:
     """빈티지 상품 한국 판매가 계산 (b2c 또는 b2b)"""
     if not jpy or jpy <= 0:

@@ -65,6 +65,7 @@
       <div class="tab active" data-tab="info" onclick="switchTab('info')">회원정보</div>
       <div class="tab" data-tab="orders" onclick="switchTab('orders')">주문내역</div>
       <div class="tab" data-tab="cart" onclick="switchTab('cart')">장바구니 <span id="mp-cart-cnt" style="color:var(--accent);font-weight:700;"></span></div>
+      <div class="tab" data-tab="board" onclick="switchTab('board')">요청/문의</div>
       <div class="tab" data-tab="password" onclick="switchTab('password')">비밀번호 변경</div>
     </div>
 
@@ -123,6 +124,29 @@
       </div>
     </div>
 
+    <!-- 요청/문의 게시판 -->
+    <div class="tab-content" id="tc-board">
+      <div class="panel">
+        <div class="section-title">새 요청/문의 작성</div>
+        <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+          <select id="board-cat" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:0.85rem;">
+            <option value="brand">브랜드 추가 요청</option>
+            <option value="feature">기능 요청</option>
+            <option value="inquiry">문의</option>
+            <option value="general">기타</option>
+          </select>
+          <input id="board-title" placeholder="제목" style="flex:1;min-width:200px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:0.85rem;">
+        </div>
+        <textarea id="board-content" placeholder="내용을 입력해주세요" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:6px;font-size:0.85rem;resize:vertical;"></textarea>
+        <div id="board-msg" class="msg" style="margin-top:8px;"></div>
+        <button onclick="submitPost()" class="btn btn-accent" style="width:100%;margin-top:10px;">등록</button>
+      </div>
+      <div class="panel">
+        <div class="section-title">나의 요청/문의 내역</div>
+        <div id="board-list" style="font-size:0.82rem;">로딩 중...</div>
+      </div>
+    </div>
+
     <!-- 비밀번호 변경 -->
     <div class="tab-content" id="tc-password">
       <div class="panel">
@@ -147,6 +171,7 @@ function switchTab(tab) {
   document.querySelectorAll(".tab-content").forEach(t => t.classList.toggle("active", t.id === "tc-" + tab));
   if (tab === "orders") loadMyOrders();
   if (tab === "cart") loadMyCart();
+  if (tab === "board") loadBoard();
 }
 
 // URL hash로 탭 자동 선택
@@ -269,6 +294,68 @@ async function changePassword() {
     msg.className = "msg " + (d.ok ? "ok" : "err");
     msg.textContent = d.message;
     if (d.ok) { document.getElementById("pw-current").value = ""; document.getElementById("pw-new").value = ""; document.getElementById("pw-confirm").value = ""; }
+  } catch(e) { msg.className = "msg err"; msg.textContent = "오류: " + e; }
+}
+
+// ── 요청/문의 게시판 ──
+const catLabels = {"brand":"브랜드 추가","feature":"기능 요청","inquiry":"문의","general":"기타"};
+const statusLabels = {"open":"대기","answered":"답변완료","closed":"종료"};
+const statusColors = {"open":"var(--yellow)","answered":"var(--green)","closed":"var(--muted)"};
+
+async function loadBoard() {
+  const el = document.getElementById("board-list");
+  try {
+    const res = await fetch(PREFIX + "/shop/api/board");
+    const d = await res.json();
+    if (!d.posts || !d.posts.length) {
+      el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px;">등록된 요청/문의가 없습니다</div>';
+      return;
+    }
+    el.innerHTML = d.posts.map(p => {
+      const sc = statusColors[p.status] || "var(--muted)";
+      const sl = statusLabels[p.status] || p.status;
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div>
+            <span style="background:rgba(212,165,74,0.12);color:var(--accent);padding:2px 8px;border-radius:4px;font-size:0.72rem;font-weight:600;">${catLabels[p.category]||p.category}</span>
+            <b style="margin-left:8px;">${p.title}</b>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="color:${sc};font-size:0.75rem;font-weight:600;">${sl}</span>
+            <span style="color:var(--dim);font-size:0.72rem;">${p.created_at||''}</span>
+          </div>
+        </div>
+        <div style="color:var(--muted);font-size:0.8rem;line-height:1.6;white-space:pre-wrap;">${p.content||''}</div>
+        ${p.admin_reply ? `
+          <div style="margin-top:10px;padding:10px 12px;background:rgba(46,204,113,0.06);border:1px solid rgba(46,204,113,0.2);border-radius:6px;">
+            <div style="font-size:0.72rem;color:var(--green);font-weight:600;margin-bottom:4px;">관리자 답변 <span style="color:var(--dim);font-weight:400;">${p.replied_at||''}</span></div>
+            <div style="font-size:0.8rem;line-height:1.6;white-space:pre-wrap;">${p.admin_reply}</div>
+          </div>
+        ` : ''}
+      </div>`;
+    }).join("");
+  } catch(e) { el.innerHTML = `<div style="color:var(--red);">로드 실패: ${e}</div>`; }
+}
+
+async function submitPost() {
+  const msg = document.getElementById("board-msg");
+  const title = document.getElementById("board-title").value.trim();
+  const content = document.getElementById("board-content").value.trim();
+  const category = document.getElementById("board-cat").value;
+  if (!title) { msg.className = "msg err"; msg.textContent = "제목을 입력해주세요"; return; }
+  try {
+    const res = await fetch(PREFIX + "/shop/api/board", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({title, content, category})
+    });
+    const d = await res.json();
+    msg.className = "msg " + (d.ok ? "ok" : "err");
+    msg.textContent = d.message;
+    if (d.ok) {
+      document.getElementById("board-title").value = "";
+      document.getElementById("board-content").value = "";
+      loadBoard();
+    }
   } catch(e) { msg.className = "msg err"; msg.textContent = "오류: " + e; }
 }
 
