@@ -3989,10 +3989,11 @@ async function loadMembers() {
           <span style="color:${stColor};font-weight:600;font-size:0.72rem;">${stLabel}</span>
           ${st === 'pending' ? `
             <select id="period-${m.username}" style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:3px;font-size:0.62rem;margin-left:4px;">
-              <option value="free">프리</option>
-              <option value="1m">1개월</option>
-              <option value="3m" selected>3개월</option>
+              <option value="1m" selected>1개월</option>
+              <option value="3m">3개월</option>
               <option value="6m">6개월</option>
+              <option value="12m">12개월</option>
+              <option value="free">무제한</option>
               <option value="12m">12개월</option>
             </select>
             <button onclick="approveMember('${m.username}')" class="btn b-green" style="padding:2px 6px;font-size:0.65rem;">승인</button>
