@@ -1389,26 +1389,28 @@
           <span>&#x1f4cb; 수집 작업 리스트</span>
           <div style="display:flex;gap:8px;">
             <button class="btn b-blue" onclick="runAllTasks()" id="btn-run-all" style="padding:5px 12px;font-size:0.78rem">&#x25b6; 전체 순차 실행</button>
-            <button class="btn b-gray" onclick="loadScrapeTasks()" style="padding:5px 12px;font-size:0.78rem">&#x1f504; 새로고침</button>
-            <button class="btn b-red" onclick="clearScrapeTasks()" style="padding:5px 12px;font-size:0.78rem">&#x1f5d1; 전체 삭제</button>
+            <button class="btn b-red" onclick="deleteCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x1f5d1; 선택 삭제</button>
+            <button class="btn b-gray" onclick="clearScrapeTasks()" style="padding:5px 12px;font-size:0.78rem">전체 삭제</button>
           </div>
         </div>
         <div style="overflow-x:auto;">
           <table class="tbl" style="width:100%;font-size:0.78rem;">
             <thead>
               <tr>
-                <th style="width:35px">#</th>
+                <th style="width:30px"><input type="checkbox" onchange="toggleAllTaskChk(this.checked)"></th>
+                <th style="width:30px">#</th>
                 <th>사이트</th>
                 <th>카테고리</th>
                 <th>브랜드</th>
                 <th>페이지</th>
+                <th>총 상품수</th>
                 <th>수집 수</th>
                 <th>상태</th>
                 <th style="width:140px">실행</th>
               </tr>
             </thead>
             <tbody id="scrape-task-body">
-              <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">작업을 추가해주세요</td></tr>
+              <tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px;">작업을 추가해주세요</td></tr>
             </tbody>
           </table>
         </div>
@@ -2905,17 +2907,36 @@ function addScrapeTask() {
     brandName: brandNames[brand] || brand || "전체",
     status: "대기",
     count: 0,
+    totalItems: "...",
   });
   saveTaskList();
   renderTaskList();
+  // 상품 수량 조회
+  checkTaskItemCount(scrapeTaskList.length - 1);
   addLog(`\u2705 수집 작업 추가: ${catNames[cat]||'전체'} / ${brandNames[brand]||'전체'}`, "ok");
+}
+
+async function checkTaskItemCount(idx) {
+  const task = scrapeTaskList[idx];
+  if (!task) return;
+  try {
+    const params = new URLSearchParams({site: task.site, category: task.cat, brand: task.brand});
+    const res = await fetch(PREFIX + "/scrape/check-count?" + params);
+    const d = await res.json();
+    if (d.ok) {
+      task.totalItems = d.total_items || 0;
+      task.totalPages = d.total_pages || 0;
+      saveTaskList();
+      renderTaskList();
+    }
+  } catch(e) { task.totalItems = "?"; }
 }
 
 function renderTaskList() {
   const tbody = document.getElementById("scrape-task-body");
   if (!tbody) return;
   if (!scrapeTaskList.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">작업을 추가해주세요</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px;">작업을 추가해주세요</td></tr>';
     return;
   }
   const statusStyle = {"대기":"color:var(--muted)","수집중":"color:var(--accent);font-weight:700","완료":"color:var(--green);font-weight:700","오류":"color:var(--red);font-weight:700"};
@@ -2929,20 +2950,40 @@ function renderTaskList() {
     } else if (isRunning) {
       btnHtml = `<span style="color:var(--accent);font-size:0.78rem;">&#x23F3; 수집중...</span>`;
     } else {
-      btnHtml = `<button onclick="runSingleTask(${i})" class="btn b-blue" style="padding:4px 12px;font-size:0.75rem;">&#x25b6; 수집</button>
-                 <button onclick="removeTask(${i})" class="btn b-red" style="padding:4px 8px;font-size:0.72rem;">&#x2716;</button>`;
+      btnHtml = `<button onclick="runSingleTask(${i})" class="btn b-blue" style="padding:4px 12px;font-size:0.75rem;">&#x25b6; 수집</button>`;
     }
+    const totalDisp = t.totalItems === "..." ? '<span style="color:var(--muted)">조회중...</span>' :
+                      t.totalItems === "?" ? '-' :
+                      `<span style="font-weight:700;">${Number(t.totalItems).toLocaleString()}</span><span style="color:var(--dim);font-size:0.68rem;"> (${t.totalPages||'?'}p)</span>`;
     return `<tr style="border-bottom:1px solid var(--border)22;">
+      <td style="padding:6px;text-align:center;"><input type="checkbox" class="task-chk" data-idx="${i}"></td>
       <td style="padding:6px;color:var(--dim)">${i+1}</td>
       <td style="padding:6px;">${t.siteName}</td>
       <td style="padding:6px;">${t.catName}</td>
       <td style="padding:6px;font-weight:600;">${t.brandName}</td>
       <td style="padding:6px;color:var(--muted)">${t.pages || '전체'}</td>
+      <td style="padding:6px;text-align:center;">${totalDisp}</td>
       <td style="padding:6px;text-align:center;font-weight:700;color:var(--accent)">${t.count || '-'}</td>
       <td style="padding:6px;${ss}">${t.status}</td>
-      <td style="padding:6px;display:flex;gap:4px;align-items:center;">${btnHtml}</td>
+      <td style="padding:6px;">${btnHtml}</td>
     </tr>`;
   }).join("");
+}
+
+function toggleAllTaskChk(checked) {
+  document.querySelectorAll(".task-chk").forEach(c => c.checked = checked);
+}
+
+function deleteCheckedTasks() {
+  const indices = [];
+  document.querySelectorAll(".task-chk:checked").forEach(c => indices.push(parseInt(c.dataset.idx)));
+  if (!indices.length) { alert("삭제할 항목을 선택해주세요"); return; }
+  if (!confirm(`${indices.length}개 작업을 삭제하시겠습니까?`)) return;
+  // 인덱스 역순으로 삭제 (앞에서 지우면 뒤 인덱스 밀림)
+  indices.sort((a,b) => b - a).forEach(i => scrapeTaskList.splice(i, 1));
+  saveTaskList();
+  renderTaskList();
+  addLog(`\u2705 ${indices.length}개 작업 삭제`, "ok");
 }
 
 function removeTask(idx) {
