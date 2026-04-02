@@ -1446,6 +1446,51 @@
           </table>
         </div>
       </div>
+
+      <!-- 진행 현황 -->
+      <div class="panel">
+        <div class="panel-title">
+          <span>&#x1f4ca; 작업 진행 현황</span>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:12px 18px;text-align:center;min-width:100px;">
+            <div style="font-size:0.7rem;color:var(--muted);">전체</div>
+            <div style="font-size:1.3rem;font-weight:800;color:var(--text);" id="st-total">0</div>
+          </div>
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:12px 18px;text-align:center;min-width:100px;">
+            <div style="font-size:0.7rem;color:var(--muted);">대기</div>
+            <div style="font-size:1.3rem;font-weight:800;color:var(--yellow);" id="st-pending">0</div>
+          </div>
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:12px 18px;text-align:center;min-width:100px;">
+            <div style="font-size:0.7rem;color:var(--muted);">수집중</div>
+            <div style="font-size:1.3rem;font-weight:800;color:var(--accent);" id="st-running">0</div>
+          </div>
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:12px 18px;text-align:center;min-width:100px;">
+            <div style="font-size:0.7rem;color:var(--muted);">완료</div>
+            <div style="font-size:1.3rem;font-weight:800;color:var(--green);" id="st-done">0</div>
+          </div>
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:12px 18px;text-align:center;min-width:100px;">
+            <div style="font-size:0.7rem;color:var(--muted);">총 수집</div>
+            <div style="font-size:1.3rem;font-weight:800;color:var(--accent);" id="st-items">0</div>
+          </div>
+        </div>
+        <!-- 프로그레스 바 -->
+        <div style="background:#0d0d0a;border-radius:6px;height:8px;overflow:hidden;border:1px solid var(--border);">
+          <div id="st-progress" style="height:100%;background:linear-gradient(90deg,var(--green),var(--accent));width:0%;transition:width 0.5s;"></div>
+        </div>
+        <div style="text-align:right;font-size:0.72rem;color:var(--muted);margin-top:4px;" id="st-pct">0%</div>
+      </div>
+
+      <!-- 실시간 로그 -->
+      <div class="panel">
+        <div class="panel-title">
+          <span>&#x1f4dc; 수집 로그</span>
+          <button onclick="document.getElementById('task-log').innerHTML=''" class="btn b-gray" style="padding:4px 10px;font-size:0.75rem">지우기</button>
+        </div>
+        <div id="task-log" style="background:#0a0a0a;border:1px solid var(--border);border-radius:6px;padding:10px;height:250px;overflow-y:auto;font-family:monospace;font-size:0.73rem;color:var(--muted);line-height:1.6;">
+          수집 작업을 실행하면 로그가 여기에 표시됩니다...
+        </div>
+      </div>
     </div>
 
     <!-- ═══ 빅데이터 관리 ═══ -->
@@ -2067,6 +2112,7 @@ function showPage(page, pushHash) {
   document.getElementById("topbar-title").textContent = pageTitles[page] || page;
 
   // 페이지 전환 시 데이터 로드
+  if (page === "scrape-tasks") { loadScrapeTasks(); startTaskLog(); } else { stopTaskLog(); }
   if (page === "products") { loadProducts(curPage); loadBrands(); }
   if (page === "members") { loadMembers(); }
   if (page === "dictionary") loadDict();
@@ -2929,7 +2975,60 @@ async function loadScrapeTasks() {
     const d = await res.json();
     scrapeTaskList = d.tasks || [];
     renderTaskList();
+    updateTaskStats();
   } catch(e) {}
+}
+
+function updateTaskStats() {
+  const total = scrapeTaskList.length;
+  const pending = scrapeTaskList.filter(t => t.status === "대기").length;
+  const running = scrapeTaskList.filter(t => t.status === "수집중").length;
+  const done = scrapeTaskList.filter(t => t.status === "완료").length;
+  const items = scrapeTaskList.reduce((s, t) => s + (t.count || 0), 0);
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+  const el = id => document.getElementById(id);
+  if (el("st-total")) el("st-total").textContent = total;
+  if (el("st-pending")) el("st-pending").textContent = pending;
+  if (el("st-running")) el("st-running").textContent = running;
+  if (el("st-done")) el("st-done").textContent = done;
+  if (el("st-items")) el("st-items").textContent = items.toLocaleString();
+  if (el("st-progress")) el("st-progress").style.width = pct + "%";
+  if (el("st-pct")) el("st-pct").textContent = `${done}/${total} (${pct}%)`;
+}
+
+let taskLogSource = null;
+function startTaskLog() {
+  if (taskLogSource) return;
+  taskLogSource = new EventSource(PREFIX + "/logs/stream");
+  taskLogSource.onmessage = function(e) {
+    const logEl = document.getElementById("task-log");
+    if (!logEl) return;
+    const msg = e.data;
+    if (!msg) return;
+    let color = "var(--muted)";
+    if (msg.includes("✅") || msg.includes("완료")) color = "var(--green)";
+    else if (msg.includes("❌") || msg.includes("오류")) color = "var(--red)";
+    else if (msg.includes("🔄") || msg.includes("📄") || msg.includes("수집중")) color = "var(--accent)";
+    else if (msg.includes("⏭️") || msg.includes("스킵")) color = "var(--yellow)";
+    logEl.innerHTML += `<div style="color:${color}">${msg}</div>`;
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+}
+function stopTaskLog() {
+  if (taskLogSource) { taskLogSource.close(); taskLogSource = null; }
+  if (window._taskRefresh) { clearInterval(window._taskRefresh); window._taskRefresh = null; }
+}
+
+// 수집 중이면 5초마다 현황 자동 갱신
+window._taskRefresh = null;
+function startTaskAutoRefresh() {
+  if (window._taskRefresh) return;
+  window._taskRefresh = setInterval(() => {
+    const page = document.querySelector(".page-section.active");
+    if (page && page.id === "page-scrape-tasks") {
+      loadScrapeTasks();
+    }
+  }, 5000);
 }
 
 async function addScrapeTaskAuto() {
@@ -3037,6 +3136,9 @@ async function deleteCheckedTasks() {
 async function runSingleTask(taskId) {
   const task = scrapeTaskList.find(t => t.id === taskId);
   if (!task || task.status === "수집중" || task.status === "완료") return;
+  // 로그 스트리밍 + 자동 갱신 시작
+  startTaskLog();
+  startTaskAutoRefresh();
   // 상태 → 수집중
   await fetch(PREFIX + "/scrape/tasks/" + taskId, {method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({status:"수집중"})});
   loadScrapeTasks();
