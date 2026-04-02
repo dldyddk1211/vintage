@@ -637,6 +637,17 @@ async function loadShop(page = 1) {
     `).join("");
 
     renderPagination(d.page, d.total_pages);
+
+    // URL에 code 파라미터 있으면 해당 상품 모달 열기
+    const urlCode = new URLSearchParams(location.search).get("code");
+    if (urlCode) {
+      const idx = allProducts.findIndex(p => p.product_code === urlCode);
+      if (idx >= 0) {
+        openModal(idx);
+        // 파라미터 제거 (뒤로가기 시 다시 안 열리게)
+        history.replaceState(null, "", location.pathname);
+      }
+    }
   } catch(e) {
     grid.innerHTML = `<div class="loading">오류: ${e}</div>`;
   }
