@@ -724,7 +724,10 @@ function openModal(idx) {
   document.getElementById("modal-brand").textContent = p.brand;
   document.getElementById("modal-name").textContent = transJa(p.name);
   if (p.price_krw) {
-    let priceHtml = `<div style="font-size:1.3rem;font-weight:800;color:var(--green)">${p.price_krw.toLocaleString()}원</div>`;
+    let priceHtml = `<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:1.3rem;font-weight:800;color:var(--green)">${p.price_krw.toLocaleString()}원</span>
+      <span style="font-size:0.72rem;color:var(--yellow);font-weight:600;">(관부가세,해외배송비 미포함)</span>
+    </div>`;
     if (p.user_level === 'b2b' && p.price_b2c) {
       priceHtml += `<div style="font-size:0.82rem;color:var(--muted);margin-top:4px;text-decoration:line-through;">B2C ${p.price_b2c.toLocaleString()}원</div>`;
     }
