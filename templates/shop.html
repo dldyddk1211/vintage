@@ -824,7 +824,8 @@ function renderCardPrice(p) {
   } else {
     // B2C: 일반 가격
     html += `<div class="product-price">${p.price_krw ? p.price_krw.toLocaleString() + '원' : ''}</div>`;
-    html += `<div style="font-size:0.65rem;color:var(--accent);">사업자 회원 추가 5% 할인</div>`;
+    const b2bPrice = Math.ceil(p.price_krw * 0.95 / 100) * 100;
+    html += `<div style="font-size:0.65rem;color:var(--accent);">사업자 회원 5% 할인 → ${b2bPrice.toLocaleString()}원</div>`;
   }
   if (IS_ADMIN) {
     html += `<div style="font-size:0.68rem;color:var(--dim);">&yen;${p.price_jpy.toLocaleString()}</div>`;
@@ -848,7 +849,8 @@ function renderModalPrice(p) {
       <span style="font-size:1.3rem;font-weight:800;color:var(--green)">${p.price_krw.toLocaleString()}원</span>
       <span style="font-size:0.72rem;color:var(--yellow);font-weight:600;">(관부가세,해외배송비 미포함)</span>
     </div>`;
-    html += `<div style="font-size:0.78rem;color:var(--accent);margin-top:4px;">&#x1f4b0; 사업자 회원은 추가 5% 할인!</div>`;
+    const b2bModalPrice = Math.ceil(p.price_krw * 0.95 / 100) * 100;
+    html += `<div style="font-size:0.82rem;color:var(--accent);margin-top:4px;">&#x1f4b0; 사업자 회원 5% 할인 <b>${b2bModalPrice.toLocaleString()}원</b></div>`;
   }
   if (IS_ADMIN) {
     html += `<div style="font-size:0.78rem;color:var(--dim);margin-top:4px">&yen;${p.price_jpy.toLocaleString()}</div>`;
