@@ -492,9 +492,7 @@
       </div>
       <div class="modal-btn-row">
         <button class="modal-close" onclick="closeModal()">&#x2190; 목록화면</button>
-        {% if is_admin or user_level == 'b2b' %}
         <button class="modal-order-btn" onclick="aiAnalyze()" id="btn-ai-analyze">AI 상품분석</button>
-        {% endif %}
       </div>
     </div>
   </div>
@@ -1006,6 +1004,10 @@ function inquiryProduct() {
 }
 
 async function aiAnalyze() {
+  if (!IS_ADMIN && USER_LEVEL !== "b2b") {
+    alert("B2B 사업자 회원 전용 기능입니다.\n\n사업자 회원 등록은 관리자에게 문의해주세요.");
+    return;
+  }
   const p = allProducts[currentModalIdx];
   if (!p) return;
   const btn = document.getElementById("btn-ai-analyze");
