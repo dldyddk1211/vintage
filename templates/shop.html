@@ -89,6 +89,14 @@
       border-radius:10px; color:var(--dim);
     }
     .filter-item.active .filter-count { color:var(--accent); background:rgba(212,165,74,0.15); }
+    .filter-dropdown { display:none; padding:6px 0; }
+    .filter-dropdown.open { display:block; }
+    .filter-chk-item {
+      display:flex; align-items:center; gap:6px; padding:5px 8px;
+      font-size:0.8rem; color:var(--muted); cursor:pointer; border-radius:4px; transition:background .1s;
+    }
+    .filter-chk-item:hover { background:rgba(212,165,74,0.06); color:var(--text); }
+    .filter-chk-item input[type="checkbox"] { accent-color:var(--accent); }
 
     /* 정렬 */
     .sort-select {
@@ -355,24 +363,28 @@
 
     <!-- 컨디션 -->
     <div class="sidebar-section">
-      <div class="sidebar-title">컨디션</div>
-      <select id="condition-select" onchange="filters.condition=this.value;loadShop(1)" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:0.82rem;">
-        <option value="">전체</option>
-        <option value="NS">신품/미사용</option>
-        <option value="S">중고 S</option>
-        <option value="A">중고 A</option>
-        <option value="B">중고 B</option>
-        <option value="C">중고 C</option>
-        <option value="D">중고 D</option>
-      </select>
+      <div class="sidebar-title" onclick="this.nextElementSibling.classList.toggle('open')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+        컨디션 <span id="cond-sel-label" style="font-size:0.7rem;color:var(--accent);font-weight:400;">전체</span>
+      </div>
+      <div class="filter-dropdown" id="condition-dropdown">
+        <label class="filter-chk-item"><input type="checkbox" value="" onchange="toggleDropFilter('condition',this)" checked> 전체</label>
+        <label class="filter-chk-item"><input type="checkbox" value="NS" onchange="toggleDropFilter('condition',this)"> 신품/미사용</label>
+        <label class="filter-chk-item"><input type="checkbox" value="S" onchange="toggleDropFilter('condition',this)"> 중고 S</label>
+        <label class="filter-chk-item"><input type="checkbox" value="A" onchange="toggleDropFilter('condition',this)"> 중고 A</label>
+        <label class="filter-chk-item"><input type="checkbox" value="B" onchange="toggleDropFilter('condition',this)"> 중고 B</label>
+        <label class="filter-chk-item"><input type="checkbox" value="C" onchange="toggleDropFilter('condition',this)"> 중고 C</label>
+        <label class="filter-chk-item"><input type="checkbox" value="D" onchange="toggleDropFilter('condition',this)"> 중고 D</label>
+      </div>
     </div>
 
     <!-- 가방 종류 -->
     <div class="sidebar-section">
-      <div class="sidebar-title">종류</div>
-      <select id="bagtype-select" onchange="filters.bag_type=this.value;loadShop(1)" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:0.82rem;">
-        <option value="">전체</option>
-      </select>
+      <div class="sidebar-title" onclick="this.nextElementSibling.classList.toggle('open')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+        종류 <span id="bag-sel-label" style="font-size:0.7rem;color:var(--accent);font-weight:400;">전체</span>
+      </div>
+      <div class="filter-dropdown" id="bagtype-dropdown">
+        <label class="filter-chk-item"><input type="checkbox" value="" onchange="toggleDropFilter('bag_type',this)" checked> 전체</label>
+      </div>
     </div>
 
     <!-- 가격대 -->
@@ -571,8 +583,13 @@ function resetFilters() {
   document.getElementById("price-min").value = "";
   document.getElementById("price-max").value = "";
   document.getElementById("sort-select").value = "newest";
-  const cs = document.getElementById("condition-select"); if (cs) cs.value = "";
-  const bs = document.getElementById("bagtype-select"); if (bs) bs.value = "";
+  // 드롭다운 체크박스 리셋
+  ["condition-dropdown","bagtype-dropdown"].forEach(id => {
+    const dd = document.getElementById(id);
+    if (dd) dd.querySelectorAll('input[type="checkbox"]').forEach((c,i) => c.checked = i===0);
+  });
+  document.getElementById("cond-sel-label").textContent = "전체";
+  document.getElementById("bag-sel-label").textContent = "전체";
   document.querySelectorAll(".filter-list").forEach(list => {
     list.querySelectorAll(".filter-item").forEach((item, i) => {
       item.classList.toggle("active", i === 0);
@@ -678,11 +695,12 @@ function renderBrandList(brands) {
 }
 
 function renderBagTypeList(types) {
-  const el = document.getElementById("bagtype-select");
+  const el = document.getElementById("bagtype-dropdown");
   if (!el) return;
-  let html = `<option value="">전체</option>`;
+  const selected = filters.bag_type ? filters.bag_type.split(",") : [];
+  let html = `<label class="filter-chk-item"><input type="checkbox" value="" onchange="toggleDropFilter('bag_type',this)" ${!selected.length?'checked':''}> 전체</label>`;
   types.forEach(t => {
-    html += `<option value="${t.name}" ${filters.bag_type===t.name?'selected':''}>${t.name} (${t.count})</option>`;
+    html += `<label class="filter-chk-item"><input type="checkbox" value="${t.name}" onchange="toggleDropFilter('bag_type',this)" ${selected.includes(t.name)?'checked':''}> ${t.name} (${t.count})</label>`;
   });
   el.innerHTML = html;
 }
@@ -703,8 +721,13 @@ function renderActiveTags() {
 function clearFilter(type) {
   filters[type] = "";
   if (type === "keyword") document.getElementById("keyword-input").value = "";
-  if (type === "condition") { const s = document.getElementById("condition-select"); if (s) s.value = ""; }
-  if (type === "bag_type") { const s = document.getElementById("bagtype-select"); if (s) s.value = ""; }
+  if (type === "condition" || type === "bag_type") {
+    const ddId = type === "condition" ? "condition-dropdown" : "bagtype-dropdown";
+    const dd = document.getElementById(ddId);
+    if (dd) dd.querySelectorAll('input[type="checkbox"]').forEach((c,i) => c.checked = i===0);
+    const lblId = type === "condition" ? "cond-sel-label" : "bag-sel-label";
+    document.getElementById(lblId).textContent = "전체";
+  }
   // 사이드바 UI 리셋
   const listId = { site: "site-list", brand: "brand-list" }[type];
   if (listId) {
@@ -813,6 +836,30 @@ function closeModal() {
   document.getElementById("modal").classList.remove("show");
   document.getElementById("modal-img-zoom").classList.remove("zoomed");
   document.body.style.overflow = "";
+}
+
+function toggleDropFilter(type, el) {
+  const dropdown = el.closest('.filter-dropdown');
+  const allChk = dropdown.querySelector('input[value=""]');
+  if (el.value === "") {
+    // "전체" 클릭 → 나머지 해제
+    dropdown.querySelectorAll('input[type="checkbox"]').forEach(c => { if (c.value) c.checked = false; });
+    allChk.checked = true;
+  } else {
+    // 개별 클릭 → "전체" 해제
+    allChk.checked = false;
+    // 아무것도 안 선택되면 "전체" 체크
+    const checked = [...dropdown.querySelectorAll('input[type="checkbox"]:checked')].filter(c => c.value);
+    if (!checked.length) allChk.checked = true;
+  }
+  // 선택값 수집
+  const vals = [...dropdown.querySelectorAll('input[type="checkbox"]:checked')].filter(c => c.value).map(c => c.value);
+  filters[type] = vals.join(",");
+  // 라벨 업데이트
+  const labelId = type === "condition" ? "cond-sel-label" : "bag-sel-label";
+  const label = document.getElementById(labelId);
+  if (label) label.textContent = vals.length ? vals.join(", ") : "전체";
+  loadShop(1);
 }
 
 const KAKAO_CHAT_URL = "http://pf.kakao.com/_geJHxj/chat";
