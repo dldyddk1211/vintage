@@ -3165,6 +3165,7 @@ async function addScrapeTaskAuto() {
 
 let taskPage = 1;
 const TASK_PER_PAGE = 20;
+const checkedTaskIds = new Set();
 
 function renderTaskList() {
   const tbody = document.getElementById("scrape-task-body");
@@ -3227,7 +3228,7 @@ function renderTaskList() {
     const ti = t.total_items || 0;
     const totalDisp = ti > 0 ? `<b>${ti.toLocaleString()}</b><span style="color:var(--dim);font-size:0.68rem;"> (${t.total_pages||'?'}p)</span>` : '-';
     return `<tr style="border-bottom:1px solid var(--border)22;">
-      <td style="padding:6px;text-align:center;"><input type="checkbox" class="task-chk" data-id="${t.id}"></td>
+      <td style="padding:6px;text-align:center;"><input type="checkbox" class="task-chk" data-id="${t.id}" ${checkedTaskIds.has(t.id)?'checked':''} onchange="onTaskChk(this)"></td>
       <td style="padding:6px;color:var(--dim)">${i+1}</td>
       <td style="padding:6px;">${t.site_name||t.siteName||''}</td>
       <td style="padding:6px;font-weight:600;">${t.brand_name||t.brandName||''}</td>
@@ -3265,18 +3266,26 @@ function renderTaskList() {
   pager.innerHTML = ph;
 }
 
+function onTaskChk(el) {
+  const id = parseInt(el.dataset.id);
+  if (el.checked) checkedTaskIds.add(id); else checkedTaskIds.delete(id);
+}
+
 function toggleAllTaskChk(checked) {
-  document.querySelectorAll(".task-chk").forEach(c => c.checked = checked);
+  document.querySelectorAll(".task-chk").forEach(c => {
+    c.checked = checked;
+    onTaskChk(c);
+  });
 }
 
 async function deleteCheckedTasks() {
-  const ids = [];
-  document.querySelectorAll(".task-chk:checked").forEach(c => ids.push(parseInt(c.dataset.id)));
+  const ids = [...checkedTaskIds];
   if (!ids.length) { alert("삭제할 항목을 선택해주세요"); return; }
   if (!confirm(`${ids.length}개 작업을 삭제하시겠습니까?`)) return;
   for (const id of ids) {
     await fetch(PREFIX + "/scrape/tasks/" + id, {method: "DELETE"}).catch(()=>{});
   }
+  checkedTaskIds.clear();
   addLog(`\u2705 ${ids.length}개 작업 삭제`, "ok");
   loadScrapeTasks();
 }
@@ -3323,16 +3332,20 @@ async function runSingleTask(taskId) {
 }
 
 async function runCheckedTasks() {
-  const ids = [];
-  document.querySelectorAll(".task-chk:checked").forEach(c => ids.push(parseInt(c.dataset.id)));
+  const ids = [...checkedTaskIds];
   if (!ids.length) { alert("실행할 작업을 선택해주세요"); return; }
   const tasks = ids.map(id => scrapeTaskList.find(t => t.id === id)).filter(t => t && t.status === "대기");
   if (!tasks.length) { alert("대기 상태인 작업이 없습니다"); return; }
+  // 확인 팝업
+  let summary = tasks.map((t,i) => `${i+1}. ${t.brand_name||t.brandName||'전체'} / ${t.cat_name||t.catName||'전체'} (p.${t.pages||'전체'})`).join("\n");
+  if (!confirm(`다음 ${tasks.length}개 작업을 실행하시겠습니까?\n\n${summary}`)) return;
   addLog(`\u25b6 선택 실행 시작 (${tasks.length}개)`, "info");
   for (const task of tasks) {
     await runSingleTask(task.id);
   }
+  checkedTaskIds.clear();
   addLog("\u2705 선택 실행 완료!", "ok");
+  loadScrapeTasks();
 }
 
 async function runAllTasks() {
