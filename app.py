@@ -702,7 +702,11 @@ def update_order(order_id):
 
 @app.route(f"{URL_PREFIX}/shop/api/ai-analyze", methods=["POST"])
 def shop_ai_analyze():
-    """AI 상품 분석"""
+    """AI 상품 분석 (관리자/B2B만)"""
+    if not session.get("logged_in"):
+        return jsonify({"ok": False, "message": "로그인이 필요합니다"})
+    if session.get("role") != "admin" and session.get("level") != "b2b":
+        return jsonify({"ok": False, "message": "B2B 회원 전용 기능입니다"})
     data = request.json or {}
     brand = data.get("brand", "")
     name = data.get("name", "")
