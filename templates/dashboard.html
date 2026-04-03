@@ -651,11 +651,34 @@
                  style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:0.82rem;flex:1;max-width:300px;">
           <span id="member-count" style="font-size:0.8rem;color:var(--muted);">총 0명</span>
         </div>
+        <!-- 일괄 작업 바 -->
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px 12px;background:#0d0d0a;border:1px solid var(--border);border-radius:8px;">
+          <span style="font-size:0.78rem;color:var(--muted);">선택: <b id="member-sel-cnt" style="color:var(--accent)">0</b>명</span>
+          <select id="bulk-level" style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:0.75rem;">
+            <option value="">레벨 변경</option>
+            <option value="b2c">B2C</option>
+            <option value="b2b">B2B</option>
+          </select>
+          <button onclick="bulkChangeLevel()" class="btn b-blue" style="padding:4px 10px;font-size:0.72rem;">적용</button>
+          <span style="color:var(--border)">|</span>
+          <select id="bulk-period" style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:0.75rem;">
+            <option value="">만료일 변경</option>
+            <option value="1m">+1개월</option>
+            <option value="3m">+3개월</option>
+            <option value="6m">+6개월</option>
+            <option value="12m">+12개월</option>
+            <option value="free">무제한</option>
+          </select>
+          <button onclick="bulkChangeExpiry()" class="btn b-blue" style="padding:4px 10px;font-size:0.72rem;">적용</button>
+          <span style="color:var(--border)">|</span>
+          <button onclick="bulkDeleteMembers()" class="btn b-red" style="padding:4px 10px;font-size:0.72rem;">선택 삭제</button>
+        </div>
         <div style="overflow-x:auto;">
           <table class="tbl" style="width:100%;font-size:0.8rem;">
             <thead>
               <tr>
-                <th style="width:40px">#</th>
+                <th style="width:30px"><input type="checkbox" onchange="toggleAllMemberChk(this.checked)"></th>
+                <th style="width:30px">#</th>
                 <th>아이디</th>
                 <th>이름</th>
                 <th>연락처</th>
@@ -4140,6 +4163,7 @@ async function loadMembers() {
       const stLabel = st === 'approved' ? '승인' : st === 'pending' ? '대기' : '거절';
       return `
       <tr>
+        <td style="text-align:center"><input type="checkbox" class="member-chk" data-user="${m.username}" onchange="updateMemberSelCnt()"></td>
         <td style="color:var(--muted)">${i + 1}</td>
         <td style="font-weight:600">${m.username}</td>
         <td>${m.name || '-'}</td>
@@ -4472,6 +4496,72 @@ async function saveMemberDetail(username) {
       addLog("\u274C " + d.message, "err");
     }
   } catch(e) { addLog("\u274C 저장 실패: " + e, "err"); }
+}
+
+function toggleAllMemberChk(checked) {
+  document.querySelectorAll(".member-chk").forEach(c => c.checked = checked);
+  updateMemberSelCnt();
+}
+function updateMemberSelCnt() {
+  const cnt = document.querySelectorAll(".member-chk:checked").length;
+  document.getElementById("member-sel-cnt").textContent = cnt;
+}
+function getCheckedMembers() {
+  const users = [];
+  document.querySelectorAll(".member-chk:checked").forEach(c => users.push(c.dataset.user));
+  return users;
+}
+
+async function bulkChangeLevel() {
+  const users = getCheckedMembers();
+  const level = document.getElementById("bulk-level").value;
+  if (!users.length) { alert("회원을 선택해주세요"); return; }
+  if (!level) { alert("레벨을 선택해주세요"); return; }
+  if (!confirm(`${users.length}명의 레벨을 ${level.toUpperCase()}로 변경하시겠습니까?`)) return;
+  for (const u of users) {
+    await fetch(PREFIX + "/members/" + encodeURIComponent(u) + "/level", {
+      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({level})
+    }).catch(()=>{});
+  }
+  addLog(`\u2705 ${users.length}명 레벨 → ${level.toUpperCase()} 변경`, "ok");
+  document.getElementById("bulk-level").value = "";
+  loadMembers();
+}
+
+async function bulkChangeExpiry() {
+  const users = getCheckedMembers();
+  const period = document.getElementById("bulk-period").value;
+  if (!users.length) { alert("회원을 선택해주세요"); return; }
+  if (!period) { alert("기간을 선택해주세요"); return; }
+  const label = period === "free" ? "무제한" : "+" + period;
+  if (!confirm(`${users.length}명의 만료일을 ${label}로 변경하시겠습니까?`)) return;
+  if (period === "free") {
+    for (const u of users) {
+      await fetch(PREFIX + "/members/" + encodeURIComponent(u) + "/expiry", {
+        method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({expires_at: ""})
+      }).catch(()=>{});
+    }
+  } else {
+    for (const u of users) {
+      await fetch(PREFIX + "/members/" + encodeURIComponent(u) + "/extend", {
+        method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({period})
+      }).catch(()=>{});
+    }
+  }
+  addLog(`\u2705 ${users.length}명 만료일 ${label} 변경`, "ok");
+  document.getElementById("bulk-period").value = "";
+  loadMembers();
+}
+
+async function bulkDeleteMembers() {
+  const users = getCheckedMembers();
+  if (!users.length) { alert("회원을 선택해주세요"); return; }
+  if (!confirm(`${users.length}명을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) return;
+  for (const u of users) {
+    await fetch(PREFIX + "/members/" + encodeURIComponent(u), {method: "DELETE"}).catch(()=>{});
+  }
+  addLog(`\u2705 ${users.length}명 삭제 완료`, "ok");
+  loadMembers();
 }
 
 async function deleteMember(username) {
