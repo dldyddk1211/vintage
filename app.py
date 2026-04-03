@@ -2436,7 +2436,9 @@ def scrape_check_count():
             params = []
             if category:
                 params.append(f"category={category}")
-            if brand:
+            if brand and brand.startswith("kw:"):
+                params.append(f"keyword={brand[3:]}")
+            elif brand:
                 params.append(f"brand%5B%5D={brand}")
             params.append("sortBy=recommend&page=1")
             url = "https://www.2ndstreet.jp/search?" + "&".join(params)

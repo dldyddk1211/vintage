@@ -195,11 +195,17 @@ async def scrape_2ndstreet(
             params = []
             if category:
                 params.append(f"category={category}")
-            if brand_code:
+            # 브랜드: kw: 접두사면 키워드 검색, 아니면 브랜드 코드
+            _brand_keyword = ""
+            if brand_code and brand_code.startswith("kw:"):
+                _brand_keyword = brand_code[3:]
+            elif brand_code:
                 params.append(f"brand%5B%5D={brand_code}")
             # 컨디션: 전체 (제한 없음)
             params.append("sortBy=recommend")
-            if keyword:
+            if _brand_keyword:
+                params.append(f"keyword={_brand_keyword}")
+            elif keyword:
                 params.append(f"keyword={keyword}")
             params.append(f"page={page_num}")
             url = "https://www.2ndstreet.jp/search?" + "&".join(params)
