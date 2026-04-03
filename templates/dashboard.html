@@ -1434,6 +1434,7 @@
             </select>
           </div>
           <button class="btn b-green" onclick="addScrapeTaskAuto()" style="padding:7px 16px;font-size:0.82rem;" id="btn-add-task">+ 자동 분할 추가</button>
+          <button class="btn b-yellow" onclick="runTestScrape()" style="padding:7px 14px;font-size:0.82rem;" id="btn-test-task">&#x1f9ea; 테스트 (1p)</button>
         </div>
       </div>
 
@@ -3059,6 +3060,33 @@ function startTaskAutoRefresh() {
       loadScrapeTasks();
     }
   }, 5000);
+}
+
+async function runTestScrape() {
+  const btn = document.getElementById("btn-test-task");
+  const site = document.getElementById("task-site").value;
+  const cat = document.getElementById("task-cat").value;
+  const brand = document.getElementById("task-brand").value;
+  const catName = catNames[cat] || cat || "전체";
+  const brandName = brandNames[brand] || brand || "전체";
+
+  btn.disabled = true; btn.textContent = "테스트 중...";
+  addLog(`\u1f9ea 테스트 수집 시작: ${catName} / ${brandName} (1페이지)`, "info");
+  startTaskLog();
+
+  try {
+    const params = new URLSearchParams({site, category: cat, brand, pages: "1"});
+    const res = await fetch(PREFIX + "/scrape?" + params, {method: "POST"});
+    const d = await res.json();
+    if (d.ok) {
+      addLog(`\u2705 테스트 완료: ${d.count}개 수집`, "ok");
+    } else {
+      addLog(`\u274C 테스트 실패: ${d.message||''}`, "err");
+    }
+  } catch(e) {
+    addLog(`\u274C 테스트 오류: ${e}`, "err");
+  }
+  btn.disabled = false; btn.textContent = "\uD83E\uDDEA 테스트 (1p)";
 }
 
 async function addScrapeTaskAuto() {
