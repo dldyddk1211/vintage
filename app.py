@@ -1218,13 +1218,19 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages="", brand_
             from secondst_crawler import scrape_2ndstreet, set_app_status as set_2nd_status
             set_2nd_status(status)
             push_log("   🚀 2ndstreet 크롤러 시작...")
-            products = asyncio.run(scrape_2ndstreet(
+            result = asyncio.run(scrape_2ndstreet(
                 status_callback=push_log,
                 category=category_id,
                 keyword=keyword,
                 pages=pages,
                 brand_code=brand_code,
             ))
+            if isinstance(result, dict):
+                products = []
+                product_count = result.get("total_saved", 0)
+            else:
+                products = result or []
+                product_count = len(products)
         else:
             push_log("   🚀 Xebio 크롤러 시작 (Playwright 브라우저 열기)...")
             products = asyncio.run(scrape_nike_sale(
@@ -1235,9 +1241,10 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages="", brand_
                 pages=pages,
                 brand_code=brand_code,
             ))
-        status["product_count"] = len(products)
+            product_count = len(products)
+        status["product_count"] = product_count
         status["last_scrape"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        push_log(f"🎉 스크래핑 완료: {len(products)}개 상품 수집")
+        push_log(f"🎉 스크래핑 완료: {product_count}개 상품 수집")
         # 수집 이력 저장
         try:
             from scrape_history import add_history
@@ -1249,7 +1256,7 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages="", brand_
             add_history(
                 site_id=site_id,
                 category_id=category_id or "전체",
-                product_count=len(products),
+                product_count=product_count,
                 keyword=keyword or "",
                 brand=brand_name or "",
             )
@@ -2428,13 +2435,16 @@ def api_scrape_sync():
         import asyncio
         from secondst_crawler import scrape_2ndstreet, set_app_status as set_2nd_status
         set_2nd_status(status)
-        products = asyncio.run(scrape_2ndstreet(
+        result = asyncio.run(scrape_2ndstreet(
             status_callback=push_log,
             category=category_id,
             pages=pages,
             brand_code=brand_code,
         ))
-        count = len(products) if products else 0
+        if isinstance(result, dict):
+            count = result.get("total_saved", 0)
+        else:
+            count = len(result) if result else 0
         status["product_count"] = count
         # 이력 저장
         try:

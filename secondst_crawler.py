@@ -503,7 +503,8 @@ async def scrape_2ndstreet(
         log(f"   ⏭️ 중복 스킵: {total_skipped}개 (동일 가격)")
     log(f"   📄 처리 페이지: {len(page_list)}페이지")
     log(f"{'='*50}")
-    return products
+    # total_saved를 반환 (products는 마지막 청크만 남음)
+    return {"total_saved": total_saved, "total_skipped": total_skipped}
 
 
 async def _process_detail_pages(page, products, log, _random, category=""):
