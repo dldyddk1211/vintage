@@ -1469,6 +1469,7 @@
             </tbody>
           </table>
         </div>
+        <div id="task-pager"></div>
       </div>
 
       <!-- 진행 현황 -->
@@ -3112,15 +3113,25 @@ async function addScrapeTaskAuto() {
   loadScrapeTasks();
 }
 
+let taskPage = 1;
+const TASK_PER_PAGE = 20;
+
 function renderTaskList() {
   const tbody = document.getElementById("scrape-task-body");
   if (!tbody) return;
   if (!scrapeTaskList.length) {
     tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px;">작업을 추가해주세요</td></tr>';
+    document.getElementById("task-pager").innerHTML = "";
     return;
   }
+  const totalPages = Math.ceil(scrapeTaskList.length / TASK_PER_PAGE);
+  if (taskPage > totalPages) taskPage = totalPages;
+  const start = (taskPage - 1) * TASK_PER_PAGE;
+  const pageItems = scrapeTaskList.slice(start, start + TASK_PER_PAGE);
+
   const statusStyle = {"대기":"color:var(--muted)","수집중":"color:var(--accent);font-weight:700","완료":"color:var(--green);font-weight:700","오류":"color:var(--red);font-weight:700"};
-  tbody.innerHTML = scrapeTaskList.map((t, i) => {
+  tbody.innerHTML = pageItems.map((t, idx) => {
+    const i = start + idx;
     const ss = statusStyle[t.status] || "";
     const isDone = t.status === "완료";
     const isRunning = t.status === "수집중";
@@ -3147,6 +3158,23 @@ function renderTaskList() {
       <td style="padding:6px;">${btnHtml}</td>
     </tr>`;
   }).join("");
+
+  // 페이저
+  const pager = document.getElementById("task-pager");
+  if (totalPages <= 1) { pager.innerHTML = ""; return; }
+  let ph = `<div style="display:flex;justify-content:center;gap:4px;margin-top:10px;">`;
+  ph += `<button onclick="taskPage=1;renderTaskList()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:4px;cursor:pointer;font-size:0.72rem;" ${taskPage<=1?'disabled':''}>«</button>`;
+  ph += `<button onclick="taskPage--;renderTaskList()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:4px;cursor:pointer;font-size:0.72rem;" ${taskPage<=1?'disabled':''}>‹</button>`;
+  const ps = Math.max(1, taskPage-3), pe = Math.min(totalPages, taskPage+3);
+  for (let p = ps; p <= pe; p++) {
+    const active = p===taskPage ? "background:var(--accent);color:#000;font-weight:700;border-color:var(--accent);" : "background:var(--bg);color:var(--muted);";
+    ph += `<button onclick="taskPage=${p};renderTaskList()" style="padding:4px 10px;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:0.72rem;${active}">${p}</button>`;
+  }
+  ph += `<button onclick="taskPage++;renderTaskList()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:4px;cursor:pointer;font-size:0.72rem;" ${taskPage>=totalPages?'disabled':''}>›</button>`;
+  ph += `<button onclick="taskPage=${totalPages};renderTaskList()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:4px;cursor:pointer;font-size:0.72rem;" ${taskPage>=totalPages?'disabled':''}>»</button>`;
+  ph += `<span style="font-size:0.72rem;color:var(--muted);margin-left:8px;align-self:center;">${taskPage}/${totalPages} (총 ${scrapeTaskList.length}개)</span>`;
+  ph += `</div>`;
+  pager.innerHTML = ph;
 }
 
 function toggleAllTaskChk(checked) {
