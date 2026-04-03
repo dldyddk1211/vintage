@@ -475,6 +475,7 @@
       <button class="modal-order-btn primary" onclick="orderProduct()">주문하기</button>
       <button class="modal-order-btn" onclick="addToCart()">&#x1f6d2; 장바구니</button>
       <button class="modal-order-btn" onclick="inquiryProduct()">카카오 문의</button>
+      <button class="modal-order-btn" onclick="shareProduct()" style="flex:0.5;">&#x1f517;</button>
     </div>
     <button class="modal-close" onclick="closeModal()">&#x2190; 목록화면</button>
   </div>
@@ -982,6 +983,17 @@ function inquiryProduct() {
     body: JSON.stringify({type:"inquiry", brand:p.brand, name:name, code:code, price:price, price_jpy:p.price_jpy})
   }).catch(()=>{});
   window.open(KAKAO_CHAT_URL, "_blank");
+}
+
+function shareProduct() {
+  const p = allProducts[currentModalIdx];
+  if (!p) return;
+  const url = location.origin + PREFIX + "/shop?code=" + encodeURIComponent(p.product_code);
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => alert("상품 링크가 복사되었습니다!\n\n" + url));
+  } else {
+    prompt("상품 링크를 복사하세요:", url);
+  }
 }
 
 function navModal(dir) {
