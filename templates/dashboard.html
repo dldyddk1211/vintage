@@ -662,6 +662,7 @@
                 <th>상태</th>
                 <th>레벨</th>
                 <th>가입일</th>
+                <th>마지막 접속</th>
                 <th style="width:120px">관리</th>
               </tr>
             </thead>
@@ -4159,16 +4160,8 @@ async function loadMembers() {
           ` : ''}
           ${st === 'approved' ? `
             <div style="display:flex;align-items:center;gap:4px;margin-top:3px;">
-              <span style="font-size:0.62rem;color:var(--muted);">${m.expires_at ? '~'+m.expires_at : '무제한'}</span>
-              ${m.expires_at ? `
-                <select id="ext-${m.username}" style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:1px 3px;border-radius:3px;font-size:0.58rem;">
-                  <option value="1m">+1개월</option>
-                  <option value="3m" selected>+3개월</option>
-                  <option value="6m">+6개월</option>
-                  <option value="12m">+12개월</option>
-                </select>
-                <button onclick="extendMember('${m.username}')" class="btn b-blue" style="padding:1px 5px;font-size:0.58rem;">연장</button>
-              ` : ''}
+              <input type="date" value="${m.expires_at||''}" onchange="changeExpiry('${m.username}',this.value)" style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:1px 4px;border-radius:3px;font-size:0.62rem;width:110px;">
+              <button onclick="changeExpiry('${m.username}','')" style="background:none;border:none;color:var(--muted);font-size:0.6rem;cursor:pointer;" title="무제한">&#x221e;</button>
             </div>
           ` : ''}
         </td>
@@ -4178,7 +4171,8 @@ async function loadMembers() {
             <option value="b2b" ${lvl==='b2b'?'selected':''}>B2B</option>
           </select>
         </td>
-        <td style="color:var(--muted);font-size:0.75rem">${m.created_at || ''}</td>
+        <td style="color:var(--muted);font-size:0.72rem">${m.created_at || ''}</td>
+        <td style="font-size:0.72rem;${m.last_login?'color:var(--green)':'color:var(--dim)'}">${m.last_login || '없음'}</td>
         <td>
           <button onclick="openMemberDetail('${m.username}')" class="btn b-blue" style="padding:3px 8px;font-size:0.7rem;">상세</button>
           <button onclick="deleteMember('${m.username}')" class="btn b-red" style="padding:3px 8px;font-size:0.7rem;">삭제</button>
@@ -4515,6 +4509,18 @@ async function rejectMember(username) {
     if (d.ok) loadMembers();
     else alert(d.message || "거절 실패");
   } catch(e) { alert("거절 실패: " + e); }
+}
+
+async function changeExpiry(username, date) {
+  try {
+    const res = await fetch(PREFIX + "/members/" + encodeURIComponent(username) + "/expiry", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({expires_at: date})
+    });
+    const d = await res.json();
+    if (d.ok) { addLog("\u2705 " + d.message, "ok"); loadMembers(); }
+    else addLog("\u274C " + (d.message||"변경 실패"), "err");
+  } catch(e) { addLog("\u274C 만료일 변경 실패", "err"); }
 }
 
 async function extendMember(username) {

@@ -52,6 +52,8 @@ def init_db():
             ("customs_id", "''"),
             ("business_number", "''"),
             ("business_cert_file", "''"),
+            # 마지막 접속
+            ("last_login", "''"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}")

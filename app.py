@@ -131,6 +131,15 @@ def login():
                 session["role"] = "customer"
                 session["level"] = customer["level"] if "level" in customer.keys() else "b2c"
                 session["name"] = customer["name"] if "name" in customer.keys() else ""
+                # 마지막 접속 시간 업데이트
+                try:
+                    from user_db import _conn as _uc
+                    uc = _uc()
+                    uc.execute("UPDATE users SET last_login=datetime('now','localtime') WHERE username=?", (username,))
+                    uc.commit()
+                    uc.close()
+                except Exception:
+                    pass
                 logger.info(f"고객 로그인: {username} (level={session['level']})")
                 return redirect(f"{URL_PREFIX}/shop")
         elif customer:
@@ -899,6 +908,7 @@ def get_members():
                      "role": r["role"], "level": r["level"] if "level" in r.keys() else "b2c",
                      "status": r["status"] if "status" in r.keys() else "approved",
                      "expires_at": r["expires_at"] if "expires_at" in r.keys() else "",
+                     "last_login": r["last_login"] if "last_login" in r.keys() else "",
                      "created_at": r["created_at"]} for r in rows]
         return jsonify({"members": members, "total": len(members)})
     finally:
@@ -956,6 +966,24 @@ def change_member_status(username):
         exp_msg = f" (만료: {expires_at})" if expires_at else " (무제한)"
         logger.info(f"회원 {label}: {username}{exp_msg}")
         return jsonify({"ok": True, "message": f"{username} → {label}{exp_msg}"})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/members/<path:username>/expiry", methods=["POST"])
+@admin_required
+def change_member_expiry(username):
+    """회원 만료일 직접 변경"""
+    data = request.json or {}
+    expires_at = data.get("expires_at", "")
+    from user_db import _conn
+    conn = _conn()
+    try:
+        conn.execute("UPDATE users SET expires_at=? WHERE username=?", (expires_at, username))
+        conn.commit()
+        msg = f"{username} → {'무제한' if not expires_at else expires_at + '까지'}"
+        logger.info(f"만료일 변경: {msg}")
+        return jsonify({"ok": True, "message": msg})
     finally:
         conn.close()
 
