@@ -260,14 +260,19 @@
       padding:10px 0;
     }
 
-    .modal-order-btn {
-      display:block; width:100%;
-      padding:14px; border-radius:10px; border:none;
-      background:linear-gradient(135deg, #d4a54a, #b8842e); color:#000; font-weight:800;
-      font-size:0.95rem; text-align:center; cursor:pointer; transition:all .2s;
-      letter-spacing:.03em;
+    .modal-actions {
+      display:flex; gap:8px; padding:14px 20px;
+      background:var(--card); border-top:1px solid var(--border);
+      position:sticky; bottom:40px; z-index:5;
     }
-    .modal-order-btn:hover { opacity:0.88; transform:translateY(-1px); box-shadow:0 4px 12px rgba(212,165,74,0.3); }
+    .modal-order-btn {
+      flex:1; padding:12px 8px; border-radius:8px; border:1px solid var(--border);
+      background:var(--bg); color:var(--text); font-weight:700;
+      font-size:0.82rem; text-align:center; cursor:pointer; transition:all .2s;
+    }
+    .modal-order-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .modal-order-btn.primary { background:var(--accent); color:#000; border-color:var(--accent); }
+    .modal-order-btn.primary:hover { opacity:0.88; }
     .modal-link {
       display:inline-block; margin-top:10px;
       padding:10px 24px; border-radius:8px;
@@ -463,13 +468,13 @@
         <div class="modal-price" id="modal-price"></div>
         <div class="modal-detail-table" id="modal-detail-table"></div>
         <div class="modal-desc" id="modal-desc"></div>
-        <div style="display:flex;gap:8px;margin-top:14px;">
-          <button class="modal-order-btn" onclick="orderProduct()" style="flex:1;">주문하기</button>
-          <button class="modal-order-btn" onclick="addToCart()" style="flex:1;background:linear-gradient(135deg,#555,#333);color:#fff;">&#x1f6d2; 장바구니</button>
-          <button class="modal-order-btn" onclick="inquiryProduct()" style="flex:0.8;background:linear-gradient(135deg,#FAE100,#3C1E1E);color:#3C1E1E;font-size:0.82rem;">카카오 문의</button>
-        </div>
         {% if is_admin %}<a class="modal-link" id="modal-link" href="#" target="_blank">상품 상세보기</a>{% endif %}
       </div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-order-btn primary" onclick="orderProduct()">주문하기</button>
+      <button class="modal-order-btn" onclick="addToCart()">&#x1f6d2; 장바구니</button>
+      <button class="modal-order-btn" onclick="inquiryProduct()">카카오 문의</button>
     </div>
     <button class="modal-close" onclick="closeModal()">&#x2190; 목록화면</button>
   </div>
