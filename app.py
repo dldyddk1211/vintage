@@ -2489,6 +2489,110 @@ def clear_scrape_tasks():
         conn.close()
 
 
+# ── 수집 큐 (예약 실행) ──────────────────────────
+import queue as _queue_mod
+_scrape_queue = _queue_mod.Queue()
+_queue_worker_started = False
+
+def _start_queue_worker():
+    """큐 워커: 큐에 작업이 들어오면 순차 실행"""
+    global _queue_worker_started
+    if _queue_worker_started:
+        return
+    _queue_worker_started = True
+
+    def _worker():
+        while True:
+            task_id = _scrape_queue.get()
+            try:
+                import sqlite3
+                db_path = os.path.join(get_path("db"), "users.db")
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                r = conn.execute("SELECT * FROM scrape_tasks WHERE id=?", (task_id,)).fetchone()
+                conn.close()
+                if not r:
+                    continue
+
+                push_log(f"📋 큐 실행: {r['brand_name'] or '전체'} / {r['cat_name'] or '전체'} (p.{r['pages'] or '전체'})")
+
+                # 상태 → 수집중
+                conn = sqlite3.connect(db_path)
+                conn.execute("UPDATE scrape_tasks SET status='수집중' WHERE id=?", (task_id,))
+                conn.commit()
+                conn.close()
+
+                status["stop_requested"] = False
+                status["paused"] = False
+                status["scraping"] = True
+
+                import asyncio
+                from secondst_crawler import scrape_2ndstreet, set_app_status as set_2nd_status
+                set_2nd_status(status)
+                result = asyncio.run(scrape_2ndstreet(
+                    status_callback=push_log,
+                    category=r["cat"],
+                    pages=r["pages"] or "",
+                    brand_code=r["brand"],
+                ))
+                count = result.get("total_saved", 0) if isinstance(result, dict) else 0
+
+                conn = sqlite3.connect(db_path)
+                conn.execute("UPDATE scrape_tasks SET status='완료', count=? WHERE id=?", (count, task_id))
+                conn.commit()
+                conn.close()
+
+                push_log(f"✅ 큐 완료: {r['brand_name'] or '전체'} — {count}개")
+            except Exception as e:
+                conn = sqlite3.connect(db_path)
+                conn.execute("UPDATE scrape_tasks SET status='오류' WHERE id=?", (task_id,))
+                conn.commit()
+                conn.close()
+                push_log(f"❌ 큐 오류: {e}")
+            finally:
+                status["scraping"] = False
+                _scrape_queue.task_done()
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+@app.route(f"{URL_PREFIX}/scrape/queue", methods=["POST"])
+@admin_required
+def enqueue_tasks():
+    """선택한 작업을 큐에 추가"""
+    _start_queue_worker()
+    data = request.json or {}
+    task_ids = data.get("ids", [])
+    if not task_ids:
+        return jsonify({"ok": False, "message": "작업을 선택해주세요"})
+
+    import sqlite3
+    db_path = os.path.join(get_path("db"), "users.db")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    added = 0
+    for tid in task_ids:
+        r = conn.execute("SELECT status FROM scrape_tasks WHERE id=?", (tid,)).fetchone()
+        if r and r["status"] == "대기":
+            conn.execute("UPDATE scrape_tasks SET status='예약' WHERE id=?", (tid,))
+            _scrape_queue.put(tid)
+            added += 1
+    conn.commit()
+    conn.close()
+
+    queue_size = _scrape_queue.qsize()
+    push_log(f"⏰ {added}개 작업 큐에 예약됨 (대기 {queue_size}개)")
+    return jsonify({"ok": True, "message": f"{added}개 예약 완료 (큐 {queue_size}개)", "queue_size": queue_size})
+
+
+@app.route(f"{URL_PREFIX}/scrape/queue/status")
+@admin_required
+def queue_status():
+    """큐 상태 조회"""
+    return jsonify({"ok": True, "queue_size": _scrape_queue.qsize()})
+
+
 @app.route(f"{URL_PREFIX}/scrape/check-count")
 @admin_required
 def scrape_check_count():

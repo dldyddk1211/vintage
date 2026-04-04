@@ -1454,6 +1454,7 @@
           <div style="display:flex;gap:8px;">
             <button class="btn b-blue" onclick="runCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x25b6; 선택 실행</button>
             <button class="btn b-purple" onclick="runAllTasks()" id="btn-run-all" style="padding:5px 12px;font-size:0.78rem">&#x25b6; 전체 순차 실행</button>
+            <button class="btn b-yellow" onclick="scheduleCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x23F0; 예약 실행</button>
             <button class="btn b-red" onclick="deleteCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x1f5d1; 선택 삭제</button>
             <button class="btn b-gray" onclick="clearScrapeTasks()" style="padding:5px 12px;font-size:0.78rem">전체 삭제</button>
           </div>
@@ -1469,6 +1470,7 @@
           <select id="task-filter-status" onchange="taskPage=1;renderTaskList()" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:0.75rem;">
             <option value="">전체 상태</option>
             <option value="대기">대기</option>
+            <option value="예약">예약</option>
             <option value="수집중">수집중</option>
             <option value="완료">완료</option>
             <option value="오류">오류</option>
@@ -1524,6 +1526,10 @@
           <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:12px 18px;text-align:center;min-width:100px;">
             <div style="font-size:0.7rem;color:var(--muted);">총 수집</div>
             <div style="font-size:1.3rem;font-weight:800;color:var(--accent);" id="st-items">0</div>
+          </div>
+          <div style="background:#0d0d0a;border:1px solid var(--border);border-radius:8px;padding:12px 18px;text-align:center;min-width:100px;">
+            <div style="font-size:0.7rem;color:var(--muted);">예약 큐</div>
+            <div style="font-size:1.3rem;font-weight:800;color:var(--yellow);" id="st-queue">0</div>
           </div>
         </div>
         <!-- 프로그레스 바 -->
@@ -3043,7 +3049,9 @@ function updateTaskStats() {
   if (el("st-pending")) el("st-pending").textContent = pending;
   if (el("st-running")) el("st-running").textContent = running;
   if (el("st-done")) el("st-done").textContent = done;
+  const queued = scrapeTaskList.filter(t => t.status === "예약").length;
   if (el("st-items")) el("st-items").textContent = items.toLocaleString();
+  if (el("st-queue")) el("st-queue").textContent = queued;
   if (el("st-progress")) el("st-progress").style.width = pct + "%";
   if (el("st-pct")) el("st-pct").textContent = `${done}/${total} (${pct}%)`;
 }
@@ -3211,7 +3219,7 @@ function renderTaskList() {
   const start = (taskPage - 1) * TASK_PER_PAGE;
   const pageItems = filtered.slice(start, start + TASK_PER_PAGE);
 
-  const statusStyle = {"대기":"color:var(--muted)","수집중":"color:var(--accent);font-weight:700","완료":"color:var(--green);font-weight:700","오류":"color:var(--red);font-weight:700"};
+  const statusStyle = {"대기":"color:var(--muted)","예약":"color:var(--yellow);font-weight:700","수집중":"color:var(--accent);font-weight:700","완료":"color:var(--green);font-weight:700","오류":"color:var(--red);font-weight:700"};
   tbody.innerHTML = pageItems.map((t, idx) => {
     const i = start + idx;
     const ss = statusStyle[t.status] || "";
@@ -3243,6 +3251,7 @@ function renderTaskList() {
       <td style="padding:6px;">
         <select onchange="changeTaskStatus(${t.id},this.value)" style="background:#0d0d0a;border:1px solid var(--border);padding:2px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;${ss}">
           <option value="대기" ${t.status==='대기'?'selected':''}>대기</option>
+          <option value="예약" ${t.status==='예약'?'selected':''}>예약</option>
           <option value="수집중" ${t.status==='수집중'?'selected':''}>수집중</option>
           <option value="완료" ${t.status==='완료'?'selected':''}>완료</option>
           <option value="오류" ${t.status==='오류'?'selected':''}>오류</option>
@@ -3333,6 +3342,27 @@ async function runSingleTask(taskId) {
     addLog("\u274C 수집 실패: " + e, "err");
   }
   loadScrapeTasks();
+}
+
+async function scheduleCheckedTasks() {
+  const ids = [...checkedTaskIds];
+  if (!ids.length) { alert("예약할 작업을 선택해주세요"); return; }
+  const tasks = ids.map(id => scrapeTaskList.find(t => t.id === id)).filter(t => t && t.status === "대기");
+  if (!tasks.length) { alert("대기 상태인 작업이 없습니다"); return; }
+  let summary = tasks.map((t,i) => `${i+1}. ${t.brand_name||t.brandName||'전체'} / ${t.cat_name||t.catName||'전체'} (p.${t.pages||'전체'})`).join("\n");
+  if (!confirm(`${tasks.length}개 작업을 큐에 예약하시겠습니까?\n(현재 수집 중이면 완료 후 자동 시작)\n\n${summary}`)) return;
+  try {
+    const res = await fetch(PREFIX + "/scrape/queue", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ids: tasks.map(t => t.id)})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      addLog(`\u23F0 ${d.message}`, "ok");
+      checkedTaskIds.clear();
+      loadScrapeTasks();
+    } else addLog(`\u274C ${d.message}`, "err");
+  } catch(e) { addLog("\u274C 예약 실패: " + e, "err"); }
 }
 
 async function runCheckedTasks() {
