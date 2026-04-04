@@ -176,6 +176,10 @@ _AI_COMMANDS = {
     "/status": "server_status",
     "/help": "help",
     "/도움": "help",
+    "/리스트": "task_list",
+    "/list": "task_list",
+    "/수집": "run_task",
+    "/중지": "stop_task",
 }
 
 def _process_ai_chat(message: dict, log_callback=None):
@@ -193,7 +197,10 @@ def _process_ai_chat(message: dict, log_callback=None):
     logger.info(f"💬 텔레그램 메시지 수신: {text[:50]}")
 
     # 특수 명령어 처리
-    cmd = _AI_COMMANDS.get(text.lower().split()[0] if text.startswith("/") else "")
+    parts = text.split()
+    cmd_word = parts[0].lower() if text.startswith("/") else ""
+    cmd = _AI_COMMANDS.get(cmd_word)
+
     if cmd == "server_status":
         _send_server_status()
         return
@@ -201,11 +208,24 @@ def _process_ai_chat(message: dict, log_callback=None):
         send_telegram(
             "🤖 <b>AI 어시스턴트 명령어</b>\n\n"
             "/상태 — 서버 상태 확인\n"
+            "/리스트 — 수집 작업 리스트 보기\n"
+            "/수집 번호 — 해당 번호 작업 수집 시작\n"
+            "  예: /수집 3\n"
+            "  예: /수집 3-5 (3~5번 순차 실행)\n"
+            "/중지 — 수집 강제 중지\n"
             "/도움 — 도움말\n\n"
-            "그 외 자유롭게 질문하면 AI가 답변합니다.\n"
-            "예: 오늘 수집 현황 알려줘\n"
-            "예: PRADA 가방 시세 분석해줘"
+            "그 외 자유롭게 질문하면 AI가 답변합니다."
         )
+        return
+    if cmd == "task_list":
+        _send_task_list()
+        return
+    if cmd == "run_task":
+        arg = parts[1] if len(parts) > 1 else ""
+        _run_task_by_number(arg, log_callback)
+        return
+    if cmd == "stop_task":
+        _stop_scraping()
         return
 
     # AI에게 전달
@@ -266,6 +286,163 @@ def _process_ai_chat(message: dict, log_callback=None):
     except Exception as e:
         logger.warning(f"AI 채팅 오류: {e}")
         send_telegram(f"❌ AI 응답 오류: {str(e)[:200]}")
+
+
+def _send_task_list():
+    """수집 작업 리스트를 텔레그램으로 전송"""
+    try:
+        import sqlite3
+        from data_manager import get_path
+        db_path = os.path.join(get_path("db"), "users.db")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM scrape_tasks ORDER BY id").fetchall()
+        conn.close()
+
+        if not rows:
+            send_telegram("📋 수집 작업 리스트가 비어있습니다.")
+            return
+
+        status_icons = {"대기": "⏳", "수집중": "🔄", "완료": "✅", "오류": "❌"}
+        lines = ["📋 <b>수집 작업 리스트</b>\n"]
+        for i, r in enumerate(rows):
+            icon = status_icons.get(r["status"], "⏳")
+            brand = r["brand_name"] or "전체"
+            cat = r["cat_name"] or "전체"
+            pages = r["pages"] or "전체"
+            count = r["count"] or 0
+            line = f"{i+1}. {icon} {brand} / {cat} (p.{pages})"
+            if r["status"] == "완료" and count:
+                line += f" — {count}개"
+            lines.append(line)
+
+        # 요약
+        total = len(rows)
+        done = sum(1 for r in rows if r["status"] == "완료")
+        pending = sum(1 for r in rows if r["status"] == "대기")
+        lines.append(f"\n총 {total}개 | 완료 {done} | 대기 {pending}")
+        lines.append("\n<code>/수집 번호</code> 로 실행")
+
+        msg = "\n".join(lines)
+        # 텔레그램 4096자 제한
+        if len(msg) > 4000:
+            msg = msg[:4000] + "\n... (더 보기: 대시보드)"
+        send_telegram(msg)
+    except Exception as e:
+        send_telegram(f"❌ 리스트 조회 실패: {e}")
+
+
+def _run_task_by_number(arg: str, log_callback=None):
+    """번호로 수집 작업 실행"""
+    if not arg:
+        send_telegram("⚠️ 번호를 입력해주세요.\n예: <code>/수집 3</code> 또는 <code>/수집 3-5</code>")
+        return
+
+    try:
+        import sqlite3
+        from data_manager import get_path
+        db_path = os.path.join(get_path("db"), "users.db")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM scrape_tasks ORDER BY id").fetchall()
+        conn.close()
+
+        # 범위 파싱 (3 또는 3-5)
+        if "-" in arg:
+            start, end = arg.split("-", 1)
+            nums = list(range(int(start), int(end) + 1))
+        else:
+            nums = [int(arg)]
+
+        tasks = []
+        for n in nums:
+            if 1 <= n <= len(rows):
+                r = rows[n - 1]
+                if r["status"] == "대기":
+                    tasks.append(r)
+                else:
+                    send_telegram(f"⚠️ {n}번 작업은 '{r['status']}' 상태입니다.")
+
+        if not tasks:
+            send_telegram("⚠️ 실행할 대기 상태 작업이 없습니다.")
+            return
+
+        task_names = "\n".join(f"  {r['brand_name'] or '전체'} / {r['cat_name'] or '전체'} (p.{r['pages'] or '전체'})" for r in tasks)
+        send_telegram(f"🚀 <b>{len(tasks)}개 작업 수집 시작</b>\n{task_names}")
+
+        # 백그라운드에서 실행
+        import threading
+        def _run():
+            import asyncio
+            for r in tasks:
+                task_id = r["id"]
+                try:
+                    # 상태 → 수집중
+                    c = sqlite3.connect(db_path)
+                    c.execute("UPDATE scrape_tasks SET status='수집중' WHERE id=?", (task_id,))
+                    c.commit()
+                    c.close()
+
+                    from secondst_crawler import scrape_2ndstreet, set_app_status
+                    # stop_requested 리셋
+                    try:
+                        import app as _app
+                        _app.status["stop_requested"] = False
+                        _app.status["scraping"] = True
+                        set_app_status(_app.status)
+                    except Exception:
+                        pass
+
+                    result = asyncio.run(scrape_2ndstreet(
+                        status_callback=log_callback,
+                        category=r["cat"],
+                        pages=r["pages"] or "",
+                        brand_code=r["brand"],
+                    ))
+                    count = result.get("total_saved", 0) if isinstance(result, dict) else len(result) if result else 0
+
+                    c = sqlite3.connect(db_path)
+                    c.execute("UPDATE scrape_tasks SET status='완료', count=? WHERE id=?", (count, task_id))
+                    c.commit()
+                    c.close()
+
+                    try:
+                        _app.status["scraping"] = False
+                    except Exception:
+                        pass
+
+                    send_telegram(f"✅ 수집 완료: {r['brand_name'] or '전체'} / {r['cat_name'] or '전체'} — {count}개")
+                except Exception as e:
+                    c = sqlite3.connect(db_path)
+                    c.execute("UPDATE scrape_tasks SET status='오류' WHERE id=?", (task_id,))
+                    c.commit()
+                    c.close()
+                    try:
+                        _app.status["scraping"] = False
+                    except Exception:
+                        pass
+                    send_telegram(f"❌ 수집 오류: {r['brand_name'] or '전체'} — {str(e)[:100]}")
+
+            send_telegram(f"🏪 전체 {len(tasks)}개 작업 완료!")
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    except Exception as e:
+        send_telegram(f"❌ 실행 오류: {e}")
+
+
+def _stop_scraping():
+    """수집 강제 중지"""
+    try:
+        import app as _app
+        _app.status["scraping"] = False
+        _app.status["stop_requested"] = True
+        import asyncio
+        from xebio_search import force_close_browser
+        asyncio.run(force_close_browser())
+        send_telegram("⛔ 수집 강제 중지 완료")
+    except Exception as e:
+        send_telegram(f"❌ 중지 실패: {e}")
 
 
 def _get_server_context() -> str:
