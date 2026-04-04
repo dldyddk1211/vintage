@@ -3030,11 +3030,18 @@ const brandNames = {"":"전체","001235":"PRADA","000931":"LOUIS VUITTON","00062
 async function loadScrapeTasks() {
   try {
     const res = await fetch(PREFIX + "/scrape/tasks");
+    if (res.status === 401) { location.href = PREFIX + "/login"; return; }
+    if (!res.ok) { console.warn("작업리스트 로드 실패:", res.status); return; }
     const d = await res.json();
+    if (d.ok === false) return;
     scrapeTaskList = d.tasks || [];
     renderTaskList();
     updateTaskStats();
-  } catch(e) {}
+  } catch(e) {
+    console.warn("작업리스트 로드 오류:", e);
+    const tbody = document.getElementById("scrape-task-body");
+    if (tbody) tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--red);padding:20px;">로드 실패 — 새로고침 해주세요</td></tr>';
+  }
 }
 
 function updateTaskStats() {
