@@ -721,21 +721,43 @@ def shop_ai_analyze():
             return jsonify({"ok": False, "message": "AI가 설정되지 않았습니다"})
 
         grade_labels = {"NS":"신품/미사용","S":"최상급","A":"양호","B":"사용감 있음","C":"사용감 많음","D":"난있음"}
-        prompt = f"""다음 중고 명품 상품을 분석해주세요.
+        from exchange import get_cached_rate
+        rate = get_cached_rate() or 9.5
+        krw_price = int(price_jpy * rate)
 
-브랜드: {brand}
-상품명: {name}
-상태: {grade_labels.get(condition, condition)}
-일본 판매가: ¥{price_jpy:,}
-상품 설명: {desc[:500] if desc else '없음'}
+        prompt = f"""당신은 명품 중고 구매대행/리셀 전문 분석가입니다.
+아래 상품을 분석해주세요.
 
-다음 항목을 간결하게 분석해주세요:
-1. 상품 가치 평가 (시세 대비 가격 적정성)
-2. 컨디션 분석 (등급 기준 설명)
-3. 추천 포인트 (이 상품의 장점)
-4. 주의 사항 (구매 시 확인할 점)
+[상품 정보]
+- 브랜드: {brand}
+- 상품명: {name}
+- 상태: {grade_labels.get(condition, condition)}
+- 일본 판매가: ¥{price_jpy:,} (약 {krw_price:,}원)
+- 상품 설명: {desc[:500] if desc else '없음'}
 
-각 항목 2~3줄로 간결하게 작성하세요."""
+[분석 요청 항목]
+
+1. 📋 상품 식별
+   - 정확한 모델명, 품번, 시즌 추정
+
+2. 📊 국내 시세 분석
+   - 국내 중고 플랫폼(크림/포이즌/번개장터) 기준 거래 시세
+   - 상태별 예상 판매가 (양호/좋음/미사용급)
+
+3. 📈 트렌드 & 수요
+   - 이 모델의 시장 수요 (높음/보통/낮음)
+   - 리셀 회전 속도 (빠름/보통/느림)
+   - 시즌성/한정성 여부
+
+4. 💰 매입 판단 (구매대행 기준)
+   - 현재 가격 대비 마진 분석
+   - 매입 추천 여부 (추천/보류/비추천)
+   - 이유 설명
+
+5. ⚠️ 주의사항
+   - 구매 시 체크포인트
+
+각 항목을 간결하게 작성하세요."""
 
         if provider == "gemini" and config.get("gemini_key"):
             result = _call_gemini(prompt)
