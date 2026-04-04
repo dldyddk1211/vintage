@@ -362,16 +362,16 @@ def _run_task_by_number(arg: str, log_callback=None, force=False):
         for n in nums:
             if 1 <= n <= len(rows):
                 r = rows[n - 1]
-                if r["status"] == "대기" or force:
-                    # 강제 실행 시 상태 리셋
-                    if force and r["status"] != "대기":
+                if r["status"] == "수집중":
+                    send_telegram(f"⚠️ {n}번은 현재 수집 진행 중입니다.")
+                else:
+                    # 대기/완료/오류/예약 → 모두 실행 가능
+                    if r["status"] != "대기":
                         c = sqlite3.connect(db_path)
                         c.execute("UPDATE scrape_tasks SET status='대기', count=0 WHERE id=?", (r["id"],))
                         c.commit()
                         c.close()
                     tasks.append(r)
-                else:
-                    send_telegram(f"⚠️ {n}번은 '{r['status']}' 상태입니다.\n강제 실행: <code>/수집 {n} 강제</code>")
             else:
                 send_telegram(f"⚠️ {n}번은 범위 밖입니다 (1~{len(rows)})")
 
