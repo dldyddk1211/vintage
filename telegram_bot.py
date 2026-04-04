@@ -180,6 +180,7 @@ _AI_COMMANDS = {
     "/list": "task_list",
     "/수집": "run_task",
     "/중지": "stop_task",
+    "/브랜드수집": "run_per_brand",
 }
 
 def _process_ai_chat(message: dict, log_callback=None):
@@ -212,6 +213,8 @@ def _process_ai_chat(message: dict, log_callback=None):
             "/수집 번호 — 해당 번호 작업 수집 시작\n"
             "  예: /수집 3\n"
             "  예: /수집 3-5 (3~5번 순차 실행)\n"
+            "/수집 3,7,15 — 개별 번호 선택 실행\n"
+            "/브랜드수집 — 브랜드별 대기 1개씩 실행\n"
             "/중지 — 수집 강제 중지\n"
             "/도움 — 도움말\n\n"
             "그 외 자유롭게 질문하면 AI가 답변합니다."
@@ -221,15 +224,23 @@ def _process_ai_chat(message: dict, log_callback=None):
         _send_task_list()
         return
     if cmd == "run_task":
-        # "/수집 9", "/수집 9번", "/수집 9번 실행" 모두 처리
+        # "/수집 9", "/수집 9번", "/수집 3,7,15", "/수집 9-12" 모두 처리
         import re as _re_cmd
         arg_text = text[len(parts[0]):].strip()
-        nums_match = _re_cmd.findall(r'\d+', arg_text)
-        arg = "-".join(nums_match[:2]) if len(nums_match) == 2 else (nums_match[0] if nums_match else "")
-        _run_task_by_number(arg, log_callback, force="강제" in arg_text or "재실행" in arg_text or "force" in arg_text.lower())
+        # 쉼표 구분이면 개별 번호
+        if "," in arg_text:
+            nums = _re_cmd.findall(r'\d+', arg_text)
+            arg = ",".join(nums)
+        else:
+            nums_match = _re_cmd.findall(r'\d+', arg_text)
+            arg = "-".join(nums_match[:2]) if len(nums_match) == 2 else (nums_match[0] if nums_match else "")
+        _run_task_by_number(arg, log_callback)
         return
     if cmd == "stop_task":
         _stop_scraping()
+        return
+    if cmd == "run_per_brand":
+        _run_per_brand(log_callback)
         return
 
     # AI에게 전달
@@ -351,8 +362,10 @@ def _run_task_by_number(arg: str, log_callback=None, force=False):
         rows = conn.execute("SELECT * FROM scrape_tasks ORDER BY id").fetchall()
         conn.close()
 
-        # 범위 파싱 (3 또는 3-5)
-        if "-" in arg:
+        # 파싱: 3 / 3-5 / 3,7,15
+        if "," in arg:
+            nums = [int(n) for n in arg.split(",") if n.strip().isdigit()]
+        elif "-" in arg:
             start_s, end_s = arg.split("-", 1)
             nums = list(range(int(start_s), int(end_s) + 1))
         else:
@@ -399,6 +412,60 @@ def _run_task_by_number(arg: str, log_callback=None, force=False):
 
     except Exception as e:
         send_telegram(f"❌ 실행 오류: {e}")
+
+
+def _run_per_brand(log_callback=None):
+    """브랜드별 대기 상태 첫 번째 작업 1개씩 실행"""
+    try:
+        import sqlite3
+        from data_manager import get_path
+        db_path = os.path.join(get_path("db"), "users.db")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM scrape_tasks WHERE status='대기' ORDER BY id").fetchall()
+        conn.close()
+
+        if not rows:
+            send_telegram("⚠️ 대기 상태 작업이 없습니다.")
+            return
+
+        # 브랜드별 첫 번째 대기 작업 선택
+        seen_brands = set()
+        selected = []
+        for r in rows:
+            brand = r["brand_name"] or r["brand"] or "전체"
+            if brand not in seen_brands:
+                seen_brands.add(brand)
+                selected.append(r)
+
+        if not selected:
+            send_telegram("⚠️ 선택할 작업이 없습니다.")
+            return
+
+        task_names = "\n".join(f"  {r['brand_name'] or '전체'} / {r['cat_name'] or '전체'} (p.{r['pages'] or '전체'})" for r in selected)
+
+        # 큐에 예약
+        try:
+            import app as _app
+            _app._start_queue_worker()
+            for r in selected:
+                c = sqlite3.connect(db_path)
+                c.execute("UPDATE scrape_tasks SET status='예약' WHERE id=?", (r["id"],))
+                c.commit()
+                c.close()
+                _app._scrape_queue.put(r["id"])
+
+            queue_size = _app._scrape_queue.qsize()
+            send_telegram(
+                f"🚀 <b>브랜드별 1개씩 수집 ({len(selected)}개)</b>\n\n"
+                f"{task_names}\n\n"
+                f"큐 대기: {queue_size}개"
+            )
+        except Exception as e:
+            send_telegram(f"❌ 큐 등록 실패: {str(e)[:100]}")
+
+    except Exception as e:
+        send_telegram(f"❌ 브랜드수집 오류: {e}")
 
 
 def _stop_scraping():
