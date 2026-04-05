@@ -2729,6 +2729,7 @@ def api_scrape_sync():
     category_id = request.args.get("category", "")
     brand_code = request.args.get("brand", "")
     pages = request.args.get("pages", "")
+    max_items = request.args.get("max_items", 0, type=int)
 
     if status["scraping"]:
         return jsonify({"ok": False, "message": "이미 수집 진행 중", "count": 0})
@@ -2743,12 +2744,15 @@ def api_scrape_sync():
         import asyncio
         from secondst_crawler import scrape_2ndstreet, set_app_status as set_2nd_status
         set_2nd_status(status)
-        result = asyncio.run(scrape_2ndstreet(
+        kwargs = dict(
             status_callback=push_log,
             category=category_id,
             pages=pages,
             brand_code=brand_code,
-        ))
+        )
+        if max_items > 0:
+            kwargs["max_items"] = max_items
+        result = asyncio.run(scrape_2ndstreet(**kwargs))
         if isinstance(result, dict):
             count = result.get("total_saved", 0)
         else:

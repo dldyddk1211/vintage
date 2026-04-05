@@ -118,6 +118,7 @@ async def scrape_2ndstreet(
     brand_code="",
     batch_size=10,
     batch_rest=120,
+    max_items=0,
 ):
     """
     2ndstreet.jp에서 빈티지 상품 수집 (대량 안전 수집)
@@ -401,6 +402,9 @@ async def scrape_2ndstreet(
 
             for i in range(cnt):
                 if _check_stop():
+                    break
+                if max_items > 0 and (len(products) + len(page_products)) >= max_items:
+                    log(f"   ✅ 테스트 제한: {max_items}개 도달")
                     break
                 try:
                     el = items.nth(i)
