@@ -479,7 +479,10 @@
       {{ '운영 서버' if env == 'production' else '테스트 서버' }}
     </div>
     <div style="font-size:0.65rem;color:var(--muted);opacity:0.6;">{{ version }}</div>
-    <a href="{{ url_prefix }}/logout" class="logout-btn" style="text-decoration:none">
+    <button onclick="showAdminPwChange()" class="logout-btn" style="background:rgba(79,142,247,0.1);border-color:rgba(79,142,247,0.2);color:#4f8ef7;margin-bottom:6px;width:100%;border:1px solid rgba(79,142,247,0.2);cursor:pointer;">
+      &#x1f512; <span>비밀번호 변경</span>
+    </button>
+    <a href="{{ url_prefix }}/logout" class="logout-btn" style="text-decoration:none;width:100%;">
       &#x1f6aa; <span>&#xb85c;&#xadf8;&#xc544;&#xc6c3;</span>
     </a>
   </div>
@@ -4579,6 +4582,23 @@ async function deleteBoardPost(id) {
   if (!confirm("이 글을 삭제하시겠습니까?")) return;
   await fetch(PREFIX + "/shop/api/board/" + id, {method: "DELETE"});
   loadBoardAdmin();
+}
+
+function showAdminPwChange() {
+  const current = prompt("현재 비밀번호:");
+  if (!current) return;
+  const newPw = prompt("새 비밀번호 (4자 이상):");
+  if (!newPw) return;
+  if (newPw.length < 4) { alert("4자 이상 입력해주세요"); return; }
+  const confirm2 = prompt("새 비밀번호 확인:");
+  if (newPw !== confirm2) { alert("비밀번호가 일치하지 않습니다"); return; }
+  fetch(PREFIX + "/admin/change-password", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({current, new_password: newPw})
+  }).then(r => r.json()).then(d => {
+    alert(d.message);
+    if (d.ok) addLog("\u2705 관리자 비밀번호 변경 완료", "ok");
+  }).catch(e => alert("오류: " + e));
 }
 
 function searchPostcode() {

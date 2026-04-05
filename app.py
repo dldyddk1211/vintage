@@ -1210,6 +1210,28 @@ def serve_cert(filename):
     return send_from_directory(cert_dir, filename)
 
 
+@app.route(f"{URL_PREFIX}/admin/change-password", methods=["POST"])
+@admin_required
+def admin_change_password():
+    """관리자 비밀번호 변경"""
+    data = request.json or {}
+    current = data.get("current", "")
+    new_pw = data.get("new_password", "")
+    if not current or not new_pw:
+        return jsonify({"ok": False, "message": "현재 비밀번호와 새 비밀번호를 입력하세요"})
+    if len(new_pw) < 4:
+        return jsonify({"ok": False, "message": "새 비밀번호는 4자 이상이어야 합니다"})
+    if LOGIN_USERS.get("admin") != current:
+        return jsonify({"ok": False, "message": "현재 비밀번호가 틀립니다"})
+    # 비밀번호 변경
+    LOGIN_USERS["admin"] = new_pw
+    # .env 파일에 영구 저장
+    from notifier import _save_to_env
+    _save_to_env("ADMIN_PASSWORD", new_pw)
+    logger.info("🔑 관리자 비밀번호 변경 완료")
+    return jsonify({"ok": True, "message": "비밀번호가 변경되었습니다"})
+
+
 @app.route(f"{URL_PREFIX}/vintage/translate", methods=["POST"])
 @admin_required
 def translate_vintage_products():
