@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import os
+import requests
 import threading
 from datetime import datetime
 
@@ -540,6 +541,101 @@ def _calc_vintage_price(jpy: int, margin_type="b2c") -> int:
     if margin_type == "b2b":
         return int(math.ceil(b2c_price * 0.95 / 100) * 100)  # B2C의 5% 할인
     return b2c_price
+
+
+# ── 토스페이먼츠 결제 ──────────────────────────
+TOSS_CLIENT_KEY = "test_ck_Poxy1XQL8R96wqlAw7GNr7nO5Wml"
+TOSS_SECRET_KEY = "test_sk_DpexMgkW36wOYALjW94JVGbR5ozO"
+
+
+@app.route(f"{URL_PREFIX}/shop/payment")
+@login_required
+def payment_page():
+    """결제 페이지"""
+    return render_template("payment.html",
+                           url_prefix=URL_PREFIX,
+                           toss_client_key=TOSS_CLIENT_KEY,
+                           username=session.get("username", ""))
+
+
+@app.route(f"{URL_PREFIX}/shop/payment/success")
+@login_required
+def payment_success():
+    """결제 성공 콜백 → 결제 확인 + 주문 저장"""
+    payment_key = request.args.get("paymentKey", "")
+    order_id = request.args.get("orderId", "")
+    amount = request.args.get("amount", 0, type=int)
+
+    if not payment_key or not order_id:
+        return redirect(f"{URL_PREFIX}/shop")
+
+    # 토스 결제 확인 API
+    import base64
+    auth = base64.b64encode(f"{TOSS_SECRET_KEY}:".encode()).decode()
+    try:
+        resp = requests.post(
+            "https://api.tosspayments.com/v1/payments/confirm",
+            json={"paymentKey": payment_key, "orderId": order_id, "amount": amount},
+            headers={"Authorization": f"Basic {auth}", "Content-Type": "application/json"},
+            timeout=10
+        )
+        result = resp.json()
+
+        if resp.status_code == 200 and result.get("status") == "DONE":
+            # 결제 성공 → 주문 저장
+            _init_orders_db()
+            username = session.get("username", "")
+            customer_name = session.get("name", "")
+            if not customer_name:
+                try:
+                    user_row = get_customer(username)
+                    if user_row and "name" in user_row.keys():
+                        customer_name = user_row["name"] or ""
+                except Exception:
+                    pass
+
+            # orderId에서 상품 정보 추출 (orderId = "ORD-코드-타임스탬프")
+            meta = result.get("orderName", "")
+            from user_db import _conn as user_conn
+            conn = user_conn()
+            try:
+                conn.execute("""INSERT INTO orders (type, username, customer_name, brand, product_name, product_code, price, price_jpy, status, memo)
+                                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                             ("order", username, customer_name, "", meta, "", f"{amount:,}원", 0, "confirmed",
+                              f"토스결제 {result.get('method','')} {payment_key[:20]}"))
+                conn.commit()
+            finally:
+                conn.close()
+
+            # 텔레그램 알림
+            try:
+                from notifier import send_telegram
+                send_telegram(
+                    f"💳 <b>결제 완료!</b>\n"
+                    f"👤 {username}" + (f" ({customer_name})" if customer_name else "") + f"\n"
+                    f"📦 {meta}\n"
+                    f"💰 {amount:,}원 ({result.get('method','')})\n"
+                    f"🔖 {order_id}"
+                )
+            except Exception:
+                pass
+
+            return redirect(f"{URL_PREFIX}/shop/mypage#orders")
+        else:
+            error_msg = result.get("message", "결제 확인 실패")
+            logger.warning(f"결제 확인 실패: {error_msg}")
+            return redirect(f"{URL_PREFIX}/shop/payment/fail?message={error_msg}")
+    except Exception as e:
+        logger.error(f"결제 확인 오류: {e}")
+        return redirect(f"{URL_PREFIX}/shop/payment/fail?message={str(e)[:100]}")
+
+
+@app.route(f"{URL_PREFIX}/shop/payment/fail")
+def payment_fail():
+    """결제 실패"""
+    message = request.args.get("message", "결제가 취소되었습니다")
+    return render_template("payment_fail.html",
+                           url_prefix=URL_PREFIX, message=message)
 
 
 @app.route(f"{URL_PREFIX}/shop/api/notify", methods=["POST"])

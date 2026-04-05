@@ -978,14 +978,18 @@ async function orderProduct() {
   if (!p) return;
   const name = transJa(p.name);
   const code = p.product_code || '';
-  const price = p.price_krw ? p.price_krw.toLocaleString() + '원' : '¥' + p.price_jpy.toLocaleString();
-  if (confirm(`아래 상품을 주문하시겠습니까?\n\n${p.brand} ${name}\n${price}`)) {
+  const amount = p.price_krw || 0;
+  if (!amount) { alert("가격 정보가 없습니다"); return; }
+  if (confirm(`아래 상품을 결제하시겠습니까?\n\n${p.brand} ${name}\n${amount.toLocaleString()}원`)) {
+    // 텔레그램 알림
     await fetch(PREFIX + "/shop/api/notify", {
       method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({type:"order", brand:p.brand, name:name, code:code, price:price, price_jpy:p.price_jpy})
+      body: JSON.stringify({type:"order", brand:p.brand, name:name, code:code, price:amount.toLocaleString()+"원", price_jpy:p.price_jpy})
     }).catch(()=>{});
     closeModal();
-    location.href = PREFIX + "/shop/my-orders";
+    // 결제 페이지로 이동
+    const params = new URLSearchParams({brand:p.brand, name:name, code:code, amount:amount});
+    location.href = PREFIX + "/shop/payment?" + params;
   }
 }
 
