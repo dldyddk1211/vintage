@@ -980,17 +980,16 @@ async function orderProduct() {
   const code = p.product_code || '';
   const amount = p.price_krw || 0;
   if (!amount) { alert("가격 정보가 없습니다"); return; }
-  if (confirm(`아래 상품을 결제하시겠습니까?\n\n${p.brand} ${name}\n${amount.toLocaleString()}원`)) {
-    // 텔레그램 알림
-    await fetch(PREFIX + "/shop/api/notify", {
+  // 주문 리스트에 추가
+  try {
+    const res = await fetch(PREFIX + "/shop/api/notify", {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({type:"order", brand:p.brand, name:name, code:code, price:amount.toLocaleString()+"원", price_jpy:p.price_jpy})
-    }).catch(()=>{});
+    });
+    alert("주문이 추가되었습니다.\n주문내역에서 결제를 진행해주세요.");
     closeModal();
-    // 결제 페이지로 이동
-    const params = new URLSearchParams({brand:p.brand, name:name, code:code, amount:amount});
-    location.href = PREFIX + "/shop/payment?" + params;
-  }
+    location.href = PREFIX + "/shop/mypage#orders";
+  } catch(e) { alert("주문 추가 실패"); }
 }
 
 function inquiryProduct() {

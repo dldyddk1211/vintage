@@ -105,10 +105,16 @@
     <!-- 주문내역 -->
     <div class="tab-content" id="tc-orders">
       <div class="panel">
-        <div class="section-title">주문/문의 내역</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div class="section-title" style="margin-bottom:0;">주문/문의 내역</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:0.78rem;color:var(--muted);">선택: <b id="order-pay-cnt" style="color:var(--accent);">0</b>건 <b id="order-pay-total" style="color:var(--green);margin-left:4px;">0원</b></span>
+            <button onclick="paySelectedOrders()" class="btn btn-accent" style="padding:8px 18px;font-size:0.85rem;">선택 결제</button>
+          </div>
+        </div>
         <table>
-          <thead><tr><th>#</th><th>일시</th><th>유형</th><th>상품</th><th>가격</th><th>상태</th><th></th></tr></thead>
-          <tbody id="my-orders-body"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr></tbody>
+          <thead><tr><th style="width:30px"><input type="checkbox" onchange="toggleAllMyOrderChk(this.checked)"></th><th>#</th><th>일시</th><th>유형</th><th>상품</th><th>가격</th><th>상태</th><th></th></tr></thead>
+          <tbody id="my-orders-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -234,20 +240,23 @@ async function loadMyOrders() {
     const res = await fetch(PREFIX + "/shop/api/my-orders");
     const d = await res.json();
     if (!d.orders || !d.orders.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:30px;">내역이 없습니다</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">내역이 없습니다</td></tr>';
       return;
     }
     tbody.innerHTML = d.orders.map((o, i) => {
       const [sl, sc] = statusMap[o.status] || [o.status, ""];
       const canCancel = o.status === "new" || o.status === "confirmed";
+      const canPay = o.status === "new" && o.type === "order";
+      const priceNum = parseInt((o.price||'0').replace(/[^0-9]/g,'')) || 0;
       return `<tr>
+        <td style="text-align:center;">${canPay ? `<input type="checkbox" class="my-order-chk" data-id="${o.id}" data-price="${priceNum}" onchange="updateMyOrderPayInfo()">` : ''}</td>
         <td style="color:var(--dim)">${i+1}</td>
         <td style="font-size:0.78rem;">${o.created_at||''}</td>
         <td>${o.type==='order'?'🛒 주문':'💬 문의'}</td>
         <td>${o.brand} ${o.product_name||''}</td>
         <td style="font-weight:700;color:var(--accent);">${o.price||''}</td>
         <td class="${sc}" style="font-weight:600;">${sl}</td>
-        <td>${canCancel ? `<button onclick="cancelMyOrder(${o.id})" class="btn btn-red" style="padding:4px 10px;font-size:0.72rem;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer;">취소</button>` : ''}</td>
+        <td>${canCancel ? `<button onclick="cancelMyOrder(${o.id})" style="padding:4px 10px;font-size:0.72rem;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer;">취소</button>` : ''}</td>
       </tr>`;
     }).join("");
   } catch(e) { tbody.innerHTML = `<tr><td colspan="6" style="color:var(--red);text-align:center;">로드 실패</td></tr>`; }
@@ -359,6 +368,35 @@ async function submitPost() {
       loadBoard();
     }
   } catch(e) { msg.className = "msg err"; msg.textContent = "오류: " + e; }
+}
+
+function toggleAllMyOrderChk(checked) {
+  document.querySelectorAll(".my-order-chk").forEach(c => c.checked = checked);
+  updateMyOrderPayInfo();
+}
+
+function updateMyOrderPayInfo() {
+  const checked = document.querySelectorAll(".my-order-chk:checked");
+  let total = 0;
+  checked.forEach(c => total += parseInt(c.dataset.price) || 0);
+  document.getElementById("order-pay-cnt").textContent = checked.length;
+  document.getElementById("order-pay-total").textContent = total.toLocaleString() + "원";
+}
+
+function paySelectedOrders() {
+  const checked = document.querySelectorAll(".my-order-chk:checked");
+  if (!checked.length) { alert("결제할 주문을 선택해주세요"); return; }
+  let total = 0;
+  const ids = [];
+  checked.forEach(c => { total += parseInt(c.dataset.price) || 0; ids.push(c.dataset.id); });
+  if (!confirm(`${checked.length}건 총 ${total.toLocaleString()}원을 결제하시겠습니까?`)) return;
+  const params = new URLSearchParams({
+    brand: "일괄결제",
+    name: `${checked.length}건 주문`,
+    code: ids.join(","),
+    amount: total,
+  });
+  location.href = PREFIX + "/shop/payment?" + params;
 }
 
 async function cancelMyOrder(id) {
