@@ -1709,6 +1709,37 @@ def change_member_level(username):
         conn.close()
 
 
+@app.route(f"{URL_PREFIX}/members/<path:username>/orders")
+@admin_required
+def get_member_orders(username):
+    """특정 회원의 주문 내역 조회"""
+    _init_orders_db()
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        rows = conn.execute("SELECT * FROM orders WHERE username=? ORDER BY created_at DESC LIMIT 100", (username,)).fetchall()
+        orders = []
+        for r in rows:
+            o = {c: r[c] for c in r.keys()}
+            # 상품 이미지 조회
+            code = o.get("product_code", "")
+            if code:
+                try:
+                    from product_db import _conn as prod_conn
+                    pconn = prod_conn()
+                    pr = pconn.execute("SELECT img_url FROM products WHERE internal_code=? LIMIT 1", (code,)).fetchone()
+                    o["product_img"] = pr["img_url"] if pr else ""
+                    pconn.close()
+                except Exception:
+                    o["product_img"] = ""
+            else:
+                o["product_img"] = ""
+            orders.append(o)
+        return jsonify({"ok": True, "orders": orders})
+    finally:
+        conn.close()
+
+
 @app.route(f"{URL_PREFIX}/members/<path:username>/info", methods=["GET"])
 @admin_required
 def get_member_info(username):

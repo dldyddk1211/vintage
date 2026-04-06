@@ -4757,11 +4757,59 @@ async function openMemberDetail(username) {
 
         <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
           <button onclick="saveMemberDetail('${username}')" class="btn b-green" style="padding:8px 20px;font-size:0.82rem;">저장</button>
+          <button onclick="showMemberOrders('${username}')" class="btn b-blue" style="padding:8px 16px;font-size:0.82rem;">주문내역</button>
           <button onclick="document.getElementById('member-modal').style.display='none'" class="btn b-gray" style="padding:8px 16px;font-size:0.82rem;">닫기</button>
         </div>
+        <div id="mm-orders" style="display:none;margin-top:16px;"></div>
       </div>
     `;
   } catch(e) { content.innerHTML = "오류: " + e; }
+}
+
+async function showMemberOrders(username) {
+  const el = document.getElementById("mm-orders");
+  if (el.style.display !== "none" && el.dataset.user === username) {
+    el.style.display = "none"; return;
+  }
+  el.dataset.user = username;
+  el.style.display = "";
+  el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:0.8rem;">로딩 중...</div>';
+  try {
+    const res = await fetch(PREFIX + "/members/" + encodeURIComponent(username) + "/orders");
+    const d = await res.json();
+    if (!d.ok || !d.orders || !d.orders.length) {
+      el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:0.8rem;">주문 내역이 없습니다</div>';
+      return;
+    }
+    const statusLabels = {"new":"신규","confirmed":"확인","processing":"처리중","shipped":"배송중","completed":"완료","cancelled":"취소"};
+    const statusColors = {"new":"var(--yellow)","confirmed":"var(--blue)","processing":"var(--accent)","shipped":"#6cf","completed":"var(--green)","cancelled":"var(--red)"};
+    el.innerHTML = `
+      <div style="font-size:0.78rem;color:var(--accent);font-weight:700;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:10px;">
+        주문내역 (${d.orders.length}건)
+      </div>
+      <div style="max-height:300px;overflow-y:auto;">
+        ${d.orders.map(o => {
+          const sc = statusColors[o.status] || "var(--muted)";
+          const sl = statusLabels[o.status] || o.status;
+          return `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(42,45,58,0.3);font-size:0.78rem;">
+            ${o.product_img ? `<img src="${o.product_img}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;flex-shrink:0;" onerror="this.style.display='none'">` : '<div style="width:40px;height:40px;background:var(--bg);border-radius:4px;flex-shrink:0;"></div>'}
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-family:monospace;font-size:0.68rem;color:var(--accent);">${o.order_number||''}</span>
+                <span style="color:${sc};font-weight:600;font-size:0.72rem;">${sl}</span>
+              </div>
+              <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);">${o.brand||''} ${o.product_name||''}</div>
+              <div style="display:flex;justify-content:space-between;color:var(--dim);font-size:0.72rem;">
+                <span>${(o.created_at||'').slice(0,16)}</span>
+                <span style="font-weight:700;color:var(--accent);">${o.price||''}</span>
+              </div>
+              ${o.memo ? `<div style="font-size:0.68rem;color:var(--dim);margin-top:2px;">${o.memo}</div>` : ''}
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
+    `;
+  } catch(e) { el.innerHTML = `<div style="color:var(--red);padding:10px;">로드 실패: ${e}</div>`; }
 }
 
 async function saveMemberDetail(username) {
