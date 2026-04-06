@@ -1082,6 +1082,30 @@ def shop_ai_analyze():
         return jsonify({"ok": False, "message": str(e)})
 
 
+@app.route(f"{URL_PREFIX}/shop/api/product-by-code")
+def shop_api_product_by_code():
+    """internal_code(고유번호)로 상품 1건 정확 조회"""
+    code = request.args.get("code", "").strip()
+    if not code:
+        return jsonify({"ok": False})
+    from product_db import _conn
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT * FROM products WHERE internal_code=? AND source_type='vintage' LIMIT 1", (code,)).fetchone()
+        if not row:
+            return jsonify({"ok": False})
+        import json as _json
+        p = {c: row[c] for c in row.keys()}
+        p["detail_images"] = _json.loads(p.get("detail_images") or "[]") if isinstance(p.get("detail_images"), str) else p.get("detail_images", [])
+        user_level = session.get("level", "b2c")
+        p["price_krw"] = _calc_vintage_price(p.get("price_jpy", 0), "b2b" if user_level == "b2b" else "b2c")
+        p["price_b2c"] = _calc_vintage_price(p.get("price_jpy", 0), "b2c")
+        p["product_code"] = p.get("internal_code") or p.get("product_code", "")
+        return jsonify({"ok": True, "product": p})
+    finally:
+        conn.close()
+
+
 @app.route(f"{URL_PREFIX}/shop/api/products")
 def shop_api_products():
     """고객용 빈티지 상품 API"""
