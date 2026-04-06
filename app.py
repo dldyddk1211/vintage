@@ -97,7 +97,7 @@ def login():
     """로그인 페이지"""
     if session.get("logged_in"):
         if session.get("role", "admin") == "admin":
-            return redirect(f"{URL_PREFIX}/")
+            return redirect(f"{URL_PREFIX}/dashboard")
         return redirect(f"{URL_PREFIX}/shop")
 
     error = None
@@ -112,7 +112,7 @@ def login():
             session["role"] = "admin"
             session["level"] = "b2b"
             logger.info(f"관리자 로그인: {username}")
-            return redirect(f"{URL_PREFIX}/")
+            return redirect(f"{URL_PREFIX}/dashboard")
         # 2) 고객 확인
         customer = get_customer(username)
         if customer and check_customer_pw(customer, password):
@@ -159,7 +159,7 @@ def signup():
     """회원가입 페이지"""
     if session.get("logged_in"):
         if session.get("role", "admin") == "admin":
-            return redirect(f"{URL_PREFIX}/")
+            return redirect(f"{URL_PREFIX}/dashboard")
         return redirect(f"{URL_PREFIX}/shop")
 
     error = None
@@ -2194,8 +2194,18 @@ except Exception as e:
 # =============================================
 
 @app.route(f"{URL_PREFIX}/")
+def root_redirect():
+    """루트: 비로그인/일반회원 → 쇼핑몰, 관리자 → 대시보드"""
+    if not session.get("logged_in"):
+        return redirect(f"{URL_PREFIX}/shop")
+    if session.get("role", "admin") == "admin":
+        return dashboard_page()
+    return redirect(f"{URL_PREFIX}/shop")
+
+
+@app.route(f"{URL_PREFIX}/dashboard")
 @admin_required
-def dashboard():
+def dashboard_page():
     """메인 대시보드 페이지"""
     products = load_latest_products()
     rate = get_jpy_to_krw_rate()
