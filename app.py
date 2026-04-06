@@ -767,6 +767,37 @@ def get_reviews():
         conn.close()
 
 
+@app.route(f"{URL_PREFIX}/shop/api/review-upload", methods=["POST"])
+@login_required
+def upload_review_image():
+    """후기 이미지 업로드 (최대 3장)"""
+    from data_manager import get_path
+    upload_dir = os.path.join(get_path("db"), "review_images")
+    os.makedirs(upload_dir, exist_ok=True)
+    files = request.files.getlist("images")
+    if not files:
+        return jsonify({"ok": False, "message": "이미지를 선택해주세요"})
+    urls = []
+    for f in files[:3]:
+        if f and f.filename:
+            import uuid
+            ext = os.path.splitext(f.filename)[1].lower() or ".jpg"
+            if ext not in (".jpg", ".jpeg", ".png", ".webp"):
+                continue
+            fname = f"{uuid.uuid4().hex[:12]}{ext}"
+            f.save(os.path.join(upload_dir, fname))
+            urls.append(f"{URL_PREFIX}/shop/review-img/{fname}")
+    return jsonify({"ok": True, "urls": urls})
+
+
+@app.route(f"{URL_PREFIX}/shop/review-img/<filename>")
+def serve_review_image(filename):
+    """후기 이미지 서빙"""
+    from data_manager import get_path
+    upload_dir = os.path.join(get_path("db"), "review_images")
+    return send_from_directory(upload_dir, filename)
+
+
 @app.route(f"{URL_PREFIX}/shop/api/reviews", methods=["POST"])
 @login_required
 def create_review():
@@ -777,6 +808,7 @@ def create_review():
     title = (data.get("title") or "").strip()
     content = (data.get("content") or "").strip()
     rating = int(data.get("rating") or 5)
+    img_url = data.get("img_url", "")  # 쉼표 구분 다중 이미지
     if not title:
         return jsonify({"ok": False, "message": "제목을 입력해주세요"})
     if rating < 1 or rating > 5:
@@ -787,7 +819,7 @@ def create_review():
         conn.execute("""INSERT INTO reviews (username, product_code, product_name, brand, rating, title, content, img_url)
                         VALUES (?,?,?,?,?,?,?,?)""",
                      (username, data.get("product_code",""), data.get("product_name",""),
-                      data.get("brand",""), rating, title, content, data.get("img_url","")))
+                      data.get("brand",""), rating, title, content, img_url))
         conn.commit()
         return jsonify({"ok": True, "message": "후기 등록 완료"})
     finally:

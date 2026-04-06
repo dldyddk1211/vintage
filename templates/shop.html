@@ -779,6 +779,14 @@
       <input id="review-product" placeholder="브랜드 / 상품명 / 고유번호">
       <label>후기 내용</label>
       <textarea id="review-content" placeholder="구매 경험을 공유해주세요"></textarea>
+      <label>사진 첨부 <span style="font-size:0.68rem;color:var(--dim);font-weight:400;">(최대 3장)</span></label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+        <label style="display:flex;align-items:center;justify-content:center;width:72px;height:72px;border:2px dashed var(--border);border-radius:8px;cursor:pointer;color:var(--dim);font-size:1.4rem;transition:border-color .2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          +
+          <input type="file" id="review-images" accept="image/*" multiple style="display:none;" onchange="previewReviewImages(this)">
+        </label>
+        <div id="review-img-preview" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      </div>
       <button onclick="submitReview()" class="review-submit-btn">후기 등록</button>
     </div>
     {% else %}
@@ -1612,6 +1620,7 @@ async function loadReviews() {
         <div class="review-title">${r.title}</div>
         ${r.brand || r.product_name ? `<div class="review-product">${r.brand || ''} ${r.product_name || ''}</div>` : ''}
         <div class="review-content">${(r.content || '').replace(/</g,'&lt;')}</div>
+        ${r.img_url ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">${r.img_url.split(',').filter(u=>u.trim()).map(u => `<img src="${u.trim()}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:pointer;" onclick="window.open('${u.trim()}','_blank')" onerror="this.style.display='none'">`).join('')}</div>` : ''}
         ${(IS_ADMIN || r.username === currentUser) ? `<div style="margin-top:8px;text-align:right;">
           <button onclick="deleteReview(${r.id})" style="padding:4px 10px;font-size:0.7rem;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer;">삭제</button>
         </div>` : ''}
@@ -1620,16 +1629,54 @@ async function loadReviews() {
   } catch(e) { el.innerHTML = `<div style="color:var(--red);">로드 실패: ${e}</div>`; }
 }
 
+function previewReviewImages(input) {
+  const preview = document.getElementById("review-img-preview");
+  preview.innerHTML = "";
+  const files = [...input.files].slice(0, 3);
+  files.forEach((f, i) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      preview.innerHTML += `<div style="position:relative;display:inline-block;">
+        <img src="${e.target.result}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
+        <span onclick="removeReviewImg(${i})" style="position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.65rem;cursor:pointer;">×</span>
+      </div>`;
+    };
+    reader.readAsDataURL(f);
+  });
+}
+
+function removeReviewImg(idx) {
+  const input = document.getElementById("review-images");
+  const dt = new DataTransfer();
+  [...input.files].forEach((f, i) => { if (i !== idx) dt.items.add(f); });
+  input.files = dt.files;
+  previewReviewImages(input);
+}
+
 async function submitReview() {
   const title = document.getElementById("review-title").value.trim();
   const content = document.getElementById("review-content").value.trim();
   const rating = parseInt(document.getElementById("review-rating").value) || 5;
   const product = document.getElementById("review-product").value.trim();
   if (!title) { alert("제목을 입력해주세요"); return; }
+
+  // 이미지 업로드
+  let imgUrls = "";
+  const fileInput = document.getElementById("review-images");
+  if (fileInput && fileInput.files.length > 0) {
+    const fd = new FormData();
+    [...fileInput.files].slice(0, 3).forEach(f => fd.append("images", f));
+    try {
+      const upRes = await fetch(PREFIX + "/shop/api/review-upload", {method: "POST", body: fd});
+      const upD = await upRes.json();
+      if (upD.ok && upD.urls) imgUrls = upD.urls.join(",");
+    } catch(e) {}
+  }
+
   try {
     const res = await fetch(PREFIX + "/shop/api/reviews", {
       method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({title, content, rating, product_name: product})
+      body: JSON.stringify({title, content, rating, product_name: product, img_url: imgUrls})
     });
     const d = await res.json();
     if (d.ok) {
@@ -1637,6 +1684,8 @@ async function submitReview() {
       document.getElementById("review-content").value = "";
       document.getElementById("review-product").value = "";
       document.getElementById("review-rating").value = "5";
+      fileInput.value = "";
+      document.getElementById("review-img-preview").innerHTML = "";
       loadReviews();
     } else { alert(d.message); }
   } catch(e) { alert("등록 실패: " + e); }
