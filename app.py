@@ -1330,6 +1330,9 @@ def shop_api_product_by_code():
         p["price_krw"] = _calc_vintage_price(p.get("price_jpy", 0), "b2b" if user_level == "b2b" else "b2c")
         p["price_b2c"] = _calc_vintage_price(p.get("price_jpy", 0), "b2c")
         p["product_code"] = p.get("internal_code") or p.get("product_code", "")
+        # shop API와 동일한 필드 매핑
+        p["size_info"] = p.get("color", "")
+        p["color_raw"] = p.get("color", "")
         return jsonify({"ok": True, "product": p})
     finally:
         conn.close()

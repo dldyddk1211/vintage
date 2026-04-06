@@ -781,23 +781,48 @@ async function openCartDetail(code) {
     const p = d.product;
     const imgs = (p.detail_images && p.detail_images.length) ? p.detail_images : (p.img_url ? [p.img_url] : []);
     const gradeLabels = {"NS":"신품/미사용","S":"중고S (최상)","A":"중고A (양호)","B":"중고B (사용감 있음)","C":"중고C (사용감 많음)","D":"중고D (난있음)"};
+    const gradeText = gradeLabels[p.condition_grade] || p.condition_grade || "";
+    const icode = p.internal_code || p.product_code || "";
+
+    // 상세 테이블 (shop.html openModal과 동일 구조)
+    let rows = [];
+    if (icode && icode.startsWith("No.")) rows.push(["고유번호", icode]);
+    if (gradeText) rows.push(["상태", gradeText]);
+    if (p.size_info) rows.push(["컬러", transJa(p.size_info)]);
+    if (p.material) rows.push(["소재", transJa(p.material)]);
+    if (p.color_raw) rows.push(["사이즈(cm)", transJa(p.color_raw)]);
+
+    const tableHtml = rows.length ? `<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+      ${rows.map(([label, val]) => `<tr>
+        <th style="text-align:left;padding:9px 14px;background:rgba(212,165,74,0.08);color:var(--muted);font-weight:500;width:90px;border-bottom:1px solid var(--border);white-space:nowrap;">${label}</th>
+        <td style="padding:9px 14px;color:var(--text);border-bottom:1px solid var(--border);">${val}</td>
+      </tr>`).join("")}
+    </table>` : "";
+
+    // 가격 표시 (B2B/B2C 구분)
+    let priceHtml = "";
+    if (p.price_krw) {
+      if (p.price_b2c && p.price_b2c !== p.price_krw) {
+        priceHtml = `<div style="font-size:0.82rem;color:var(--dim);text-decoration:line-through;">B2C ${p.price_b2c.toLocaleString()}원</div>
+          <div style="font-size:1.3rem;font-weight:800;color:#4f8ef7;">B2B ${p.price_krw.toLocaleString()}원</div>`;
+      } else {
+        priceHtml = `<div style="font-size:1.3rem;font-weight:800;color:var(--green);">${p.price_krw.toLocaleString()}원</div>`;
+      }
+    }
+
     body.innerHTML = `
-      <div style="display:flex;gap:16px;flex-wrap:wrap;">
-        <div style="flex:0 0 200px;">
-          <img src="${imgs[0]||''}" style="width:100%;border-radius:8px;aspect-ratio:1;object-fit:cover;" onerror="this.style.display='none'">
-          ${imgs.length > 1 ? `<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;">${imgs.slice(1,5).map(i => `<img src="${i}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;border:1px solid var(--border);" onerror="this.style.display='none'">`).join("")}</div>` : ""}
+      <div style="display:flex;gap:20px;flex-wrap:wrap;">
+        <div style="flex:0 0 220px;">
+          <img id="cart-detail-main-img" src="${imgs[0]||''}" style="width:100%;border-radius:8px;aspect-ratio:1;object-fit:cover;cursor:pointer;" onerror="this.style.display='none'">
+          ${imgs.length > 1 ? `<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;">${imgs.map((img, i) => `<img src="${img}" onclick="document.getElementById('cart-detail-main-img').src='${img}'" style="width:48px;height:48px;object-fit:cover;border-radius:5px;cursor:pointer;border:2px solid ${i===0?'var(--accent)':'transparent'};opacity:${i===0?'1':'0.5'};transition:all .2s;" onmouseover="this.style.opacity='1';this.style.borderColor='var(--accent)'" onmouseout="this.style.opacity='${i===0?'1':'0.5'}'" onerror="this.style.display='none'">`).join("")}</div>` : ""}
         </div>
         <div style="flex:1;min-width:200px;">
-          <div style="font-size:0.78rem;color:var(--accent);font-weight:600;margin-bottom:4px;">${p.brand}</div>
-          <div style="font-size:1rem;font-weight:600;margin-bottom:10px;line-height:1.5;">${transJa(p.name)}</div>
-          <div style="font-size:1.2rem;font-weight:800;color:var(--green);margin-bottom:12px;">${p.price_krw ? p.price_krw.toLocaleString() + '원' : ''}</div>
-          <table style="width:100%;font-size:0.8rem;border-collapse:collapse;">
-            ${p.product_code ? `<tr><td style="padding:6px 0;color:var(--muted);width:80px;">고유번호</td><td style="padding:6px 0;">${p.product_code}</td></tr>` : ''}
-            ${p.condition_grade ? `<tr><td style="padding:6px 0;color:var(--muted);">상태</td><td style="padding:6px 0;">${gradeLabels[p.condition_grade]||p.condition_grade}</td></tr>` : ''}
-            ${p.color_raw ? `<tr><td style="padding:6px 0;color:var(--muted);">사이즈</td><td style="padding:6px 0;">${transJa(p.color_raw)}</td></tr>` : ''}
-            ${p.material ? `<tr><td style="padding:6px 0;color:var(--muted);">소재</td><td style="padding:6px 0;">${transJa(p.material)}</td></tr>` : ''}
-          </table>
-          ${p.description ? `<div style="margin-top:10px;padding:10px;background:rgba(212,165,74,0.06);border:1px solid var(--border);border-radius:6px;font-size:0.78rem;color:var(--muted);line-height:1.6;">${transJa(p.description).replace(/\\n/g,'<br>')}</div>` : ''}
+          <div style="font-size:0.82rem;color:var(--accent);font-weight:600;margin-bottom:4px;">${p.brand}</div>
+          <div style="font-size:1.05rem;font-weight:600;margin-bottom:10px;line-height:1.5;">${transJa(p.name)}</div>
+          ${priceHtml}
+          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:14px;">(관부가세,해외배송비 미포함)</div>
+          ${tableHtml}
+          ${p.description ? `<div style="margin-top:12px;padding:12px;background:rgba(212,165,74,0.06);border:1px solid var(--border);border-radius:8px;font-size:0.8rem;color:var(--text);line-height:1.7;">${transJa(p.description).replace(/\n/g,'<br>')}</div>` : ''}
         </div>
       </div>
     `;
