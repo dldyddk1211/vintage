@@ -217,7 +217,7 @@ def _process_ai_chat(message: dict, log_callback=None):
             "  예: /수집 3\n"
             "  예: /수집 3-5 (3~5번 순차 실행)\n"
             "/수집 3,7,15 — 개별 번호 선택 실행\n"
-            "/브랜드수집 — 브랜드별 대기 1개씩 실행\n"
+            "/브랜드수집 — 브랜드별 순환수집 (라운드로빈)\n"
             "/중지 — 수집 강제 중지\n"
             "/도움 — 도움말\n\n"
             "그 외 자유롭게 질문하면 AI가 답변합니다."
@@ -421,7 +421,7 @@ def _run_task_by_number(arg: str, log_callback=None, force=False):
 
 
 def _run_per_brand(log_callback=None):
-    """브랜드별 대기 상태 첫 번째 작업 1개씩 실행"""
+    """브랜드별 순환수집 (라운드로빈): 모든 대기 작업을 브랜드별 교차 순서로 큐에 등록"""
     try:
         import sqlite3
         from data_manager import get_path
@@ -435,26 +435,37 @@ def _run_per_brand(log_callback=None):
             send_telegram("⚠️ 대기 상태 작업이 없습니다.")
             return
 
-        # 브랜드별 첫 번째 대기 작업 선택
-        seen_brands = set()
-        selected = []
+        # 브랜드별 그룹핑
+        brand_map = {}
         for r in rows:
             brand = r["brand_name"] or r["brand"] or "전체"
-            if brand not in seen_brands:
-                seen_brands.add(brand)
-                selected.append(r)
+            if brand not in brand_map:
+                brand_map[brand] = []
+            brand_map[brand].append(r)
 
-        if not selected:
+        brands = list(brand_map.keys())
+
+        # 라운드로빈 순서 생성
+        round_robin = []
+        max_len = max(len(v) for v in brand_map.values())
+        for i in range(max_len):
+            for brand in brands:
+                if i < len(brand_map[brand]):
+                    round_robin.append(brand_map[brand][i])
+
+        if not round_robin:
             send_telegram("⚠️ 선택할 작업이 없습니다.")
             return
 
-        task_names = "\n".join(f"  {r['brand_name'] or '전체'} / {r['cat_name'] or '전체'} (p.{r['pages'] or '전체'})" for r in selected)
+        # 브랜드별 개수 요약
+        summary = "\n".join(f"  {b}: {len(ts)}개" for b, ts in brand_map.items())
+        order_preview = " → ".join(brands)
 
         # 큐에 예약
         try:
             import app as _app
             _app._start_queue_worker()
-            for r in selected:
+            for r in round_robin:
                 c = sqlite3.connect(db_path)
                 c.execute("UPDATE scrape_tasks SET status='예약' WHERE id=?", (r["id"],))
                 c.commit()
@@ -463,8 +474,9 @@ def _run_per_brand(log_callback=None):
 
             queue_size = _app._scrape_queue.qsize()
             send_telegram(
-                f"🚀 <b>브랜드별 1개씩 수집 ({len(selected)}개)</b>\n\n"
-                f"{task_names}\n\n"
+                f"🔄 <b>브랜드별 순환수집 시작 ({len(round_robin)}개)</b>\n\n"
+                f"{summary}\n\n"
+                f"순서: {order_preview} → 반복\n"
                 f"큐 대기: {queue_size}개"
             )
         except Exception as e:
