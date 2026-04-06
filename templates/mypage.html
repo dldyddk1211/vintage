@@ -559,7 +559,7 @@ async function loadMyOrders() {
       const canPay = o.status === "new" && o.type === "order";
       const priceNum = parseInt((o.price||'0').replace(/[^0-9]/g,'')) || 0;
       return `<tr>
-        <td style="text-align:center;">${canPay ? `<input type="checkbox" class="my-order-chk" data-id="${o.id}" data-price="${priceNum}" onchange="updateMyOrderPayInfo()">` : ''}</td>
+        <td style="text-align:center;">${canPay ? `<input type="checkbox" class="my-order-chk" data-id="${o.id}" data-price="${priceNum}" data-name="${(o.brand||'')+' '+(o.product_name||'')}" onchange="updateMyOrderPayInfo()">` : ''}</td>
         <td style="color:var(--dim)">${i+1}</td>
         <td style="font-size:0.78rem;">${o.created_at||''}</td>
         <td>${o.type==='order'?'🛒 주문':'💬 문의'}</td>
@@ -577,7 +577,7 @@ async function loadMyOrders() {
       const priceNum = parseInt((o.price||'0').replace(/[^0-9]/g,'')) || 0;
       return `<div class="order-card">
         <div class="order-card-top">
-          ${canPay ? `<input type="checkbox" class="my-order-chk" data-id="${o.id}" data-price="${priceNum}" onchange="updateMyOrderPayInfo()">` : '<div style="width:18px;"></div>'}
+          ${canPay ? `<input type="checkbox" class="my-order-chk" data-id="${o.id}" data-price="${priceNum}" data-name="${(o.brand||'')+' '+(o.product_name||'')}" onchange="updateMyOrderPayInfo()">` : '<div style="width:18px;"></div>'}
           <div class="order-card-name">${o.brand} ${o.product_name||''}</div>
         </div>
         <div class="order-card-meta">
@@ -729,11 +729,27 @@ function toggleAllMyOrderChk(checked) {
   updateMyOrderPayInfo();
 }
 
+// 체크박스 동기화 (같은 data-id를 가진 desktop/mobile 체크박스)
+document.addEventListener("change", e => {
+  if (!e.target.classList.contains("my-order-chk")) return;
+  const id = e.target.dataset.id;
+  const isChecked = e.target.checked;
+  document.querySelectorAll(`.my-order-chk[data-id="${id}"]`).forEach(c => c.checked = isChecked);
+});
+
 function updateMyOrderPayInfo() {
   const checked = document.querySelectorAll(".my-order-chk:checked");
   let total = 0;
-  checked.forEach(c => total += parseInt(c.dataset.price) || 0);
-  document.getElementById("order-pay-cnt").textContent = checked.length;
+  const seenIds = new Set();
+  let count = 0;
+  checked.forEach(c => {
+    const id = c.dataset.id;
+    if (seenIds.has(id)) return;
+    seenIds.add(id);
+    total += parseInt(c.dataset.price) || 0;
+    count++;
+  });
+  document.getElementById("order-pay-cnt").textContent = count;
   document.getElementById("order-pay-total").textContent = total.toLocaleString() + "원";
 }
 
@@ -747,14 +763,18 @@ function paySelectedOrders() {
   const checked = document.querySelectorAll(".my-order-chk:checked");
   if (!checked.length) { alert("결제할 주문을 선택해주세요"); return; }
   paySubtotal = 0; payDiscount = 0; payOrderIds = []; payOrderItems = [];
+  // 중복 ID 방지 (데스크톱+모바일 양쪽에 체크박스 존재)
+  const seenIds = new Set();
   checked.forEach(c => {
+    const id = c.dataset.id;
+    if (seenIds.has(id)) return;
+    seenIds.add(id);
     const price = parseInt(c.dataset.price) || 0;
     paySubtotal += price;
-    payOrderIds.push(c.dataset.id);
-    const row = c.closest("tr");
-    const cells = row.querySelectorAll("td");
+    payOrderIds.push(id);
+    // 상품명: data-name 속성에서 가져옴
     payOrderItems.push({
-      name: cells[4]?.textContent?.trim() || '',
+      name: c.dataset.name || '',
       price: price
     });
   });
