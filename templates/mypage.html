@@ -315,7 +315,17 @@
 
     <!-- Step 1: 배송지 확인 -->
     <div class="pay-step-panel" id="pay-step-1">
-      <div class="pay-section-title">배송지 정보</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div class="pay-section-title" style="margin-bottom:0;">배송지 정보</div>
+        <button onclick="openAddrPicker()" style="padding:6px 14px;border-radius:6px;background:rgba(212,165,74,0.12);border:1px solid rgba(212,165,74,0.3);color:var(--accent);font-size:0.78rem;font-weight:600;cursor:pointer;white-space:nowrap;">배송지 불러오기</button>
+      </div>
+      <!-- 저장된 배송지 선택 패널 -->
+      <div id="addr-picker" style="display:none;margin-bottom:14px;">
+        <div id="addr-picker-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <div style="text-align:center;margin-top:8px;">
+          <button onclick="document.getElementById('addr-picker').style.display='none'" style="padding:5px 14px;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--muted);font-size:0.75rem;cursor:pointer;">닫기</button>
+        </div>
+      </div>
       <div class="pay-form">
         <div class="pay-field">
           <label>수령인</label>
@@ -355,9 +365,12 @@
           <input id="pay-memo" placeholder="부재시 문 앞에 놓아주세요">
         </div>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:0.8rem;color:var(--muted);cursor:pointer;">
-        <input type="checkbox" id="pay-save-addr" style="accent-color:var(--accent);width:16px;height:16px;" checked> 기본 배송지로 저장
-      </label>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:var(--muted);cursor:pointer;">
+          <input type="checkbox" id="pay-save-addr" style="accent-color:var(--accent);width:16px;height:16px;" checked> 배송지 저장
+        </label>
+        <input id="pay-addr-label" placeholder="배송지 이름 (예: 집, 회사)" style="flex:1;min-width:120px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.78rem;">
+      </div>
       <button class="pay-next-btn" onclick="goPayStep(2)">다음: 쿠폰/할인 확인 →</button>
     </div>
 
@@ -495,6 +508,29 @@
   .pay-order-item .brand { color:var(--accent); font-weight:600; margin-right:6px; }
   .pay-order-item .name { color:var(--muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pay-order-item .price { color:var(--text); font-weight:700; white-space:nowrap; margin-left:8px; }
+
+  /* 배송지 선택 카드 */
+  .addr-card {
+    background:var(--bg); border:1px solid var(--border); border-radius:8px;
+    padding:12px 14px; cursor:pointer; transition:all .2s; position:relative;
+  }
+  .addr-card:hover { border-color:rgba(212,165,74,0.4); }
+  .addr-card.default { border-color:var(--accent); }
+  .addr-card-label {
+    font-size:0.78rem; font-weight:700; color:var(--accent); margin-bottom:4px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .addr-card-label .badge {
+    font-size:0.6rem; padding:1px 6px; border-radius:3px;
+    background:rgba(212,165,74,0.15); color:var(--accent);
+  }
+  .addr-card-info { font-size:0.78rem; color:var(--muted); line-height:1.5; }
+  .addr-card-actions {
+    position:absolute; top:10px; right:10px; display:flex; gap:4px;
+  }
+  .addr-card-actions button {
+    padding:3px 8px; font-size:0.65rem; border-radius:4px; border:none; cursor:pointer;
+  }
 </style>
 
 <script>
@@ -954,6 +990,65 @@ function updateMyOrderPayInfo() {
   document.getElementById("order-pay-total").textContent = total.toLocaleString() + "원";
 }
 
+// ── 배송지 불러오기 ──
+async function openAddrPicker() {
+  const picker = document.getElementById("addr-picker");
+  const list = document.getElementById("addr-picker-list");
+  picker.style.display = "";
+  list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:12px;font-size:0.8rem;">로딩 중...</div>';
+  try {
+    const res = await fetch(PREFIX + "/shop/api/addresses");
+    const d = await res.json();
+    const addrs = d.addresses || [];
+    if (!addrs.length) {
+      list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:0.8rem;">저장된 배송지가 없습니다</div>';
+      return;
+    }
+    list.innerHTML = addrs.map(a => `
+      <div class="addr-card ${a.is_default ? 'default' : ''}" onclick="selectAddr(${a.id})">
+        <div class="addr-card-actions">
+          <button onclick="event.stopPropagation();deleteAddr(${a.id})" style="background:var(--red);color:#fff;">삭제</button>
+        </div>
+        <div class="addr-card-label">
+          ${a.label || '배송지'} ${a.is_default ? '<span class="badge">기본</span>' : ''}
+        </div>
+        <div class="addr-card-info">
+          <div>${a.name} · ${a.phone}</div>
+          <div>[${a.postal_code}] ${a.address} ${a.address_detail||''}</div>
+          ${a.customs_id ? `<div style="font-size:0.72rem;color:var(--dim);">통관: ${a.customs_id}</div>` : ''}
+          ${a.business_number ? `<div style="font-size:0.72rem;color:var(--dim);">사업자: ${a.business_number}</div>` : ''}
+        </div>
+      </div>
+    `).join("");
+  } catch(e) {
+    list.innerHTML = `<div style="color:var(--red);text-align:center;padding:12px;">로드 실패</div>`;
+  }
+}
+
+async function selectAddr(id) {
+  try {
+    const res = await fetch(PREFIX + "/shop/api/addresses");
+    const d = await res.json();
+    const a = (d.addresses || []).find(x => x.id === id);
+    if (!a) return;
+    document.getElementById("pay-name").value = a.name || "";
+    document.getElementById("pay-phone").value = a.phone || "";
+    document.getElementById("pay-postal").value = a.postal_code || "";
+    document.getElementById("pay-address").value = a.address || "";
+    document.getElementById("pay-address2").value = a.address_detail || "";
+    document.getElementById("pay-customs").value = a.customs_id || "";
+    document.getElementById("pay-biznum").value = a.business_number || "";
+    document.getElementById("pay-addr-label").value = a.label || "";
+    document.getElementById("addr-picker").style.display = "none";
+  } catch(e) {}
+}
+
+async function deleteAddr(id) {
+  if (!confirm("이 배송지를 삭제하시겠습니까?")) return;
+  await fetch(PREFIX + "/shop/api/addresses/" + id, {method: "DELETE"});
+  openAddrPicker();
+}
+
 // ── 결제 모달 ──
 let payOrderIds = [];
 let paySubtotal = 0;
@@ -1030,16 +1125,19 @@ function goPayStep(step) {
     if (!phone) { alert("연락처를 입력해주세요"); return; }
     if (!postal || !addr) { alert("배송지 주소를 입력해주세요"); return; }
     if (!customs && !biznum) { alert("통관고유번호 또는 사업자번호 중\n하나는 반드시 입력해주세요."); return; }
-    // 기본 배송지 저장
+    // 배송지 저장
     if (document.getElementById("pay-save-addr").checked) {
+      const addrLabel = document.getElementById("pay-addr-label").value.trim() || "기본 배송지";
+      const addrDetail = document.getElementById("pay-address2").value.trim();
+      // 회원정보도 업데이트
       fetch(PREFIX + "/shop/api/myinfo", {
         method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-          name, phone, postal_code: postal,
-          address: addr,
-          address_detail: document.getElementById("pay-address2").value.trim(),
-          customs_id: customs, business_number: biznum
-        })
+        body: JSON.stringify({ name, phone, postal_code: postal, address: addr, address_detail: addrDetail, customs_id: customs, business_number: biznum })
+      }).catch(()=>{});
+      // 배송지 저장
+      fetch(PREFIX + "/shop/api/addresses", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ label: addrLabel, name, phone, postal_code: postal, address: addr, address_detail: addrDetail, customs_id: customs, business_number: biznum, is_default: true })
       }).catch(()=>{});
     }
     // 주문 요약 렌더링

@@ -302,6 +302,103 @@ def order_detail_api(order_number):
         conn.close()
 
 
+# ── 배송지 관리 API ──────────────────────────
+def _init_address_db():
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS addresses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            label TEXT DEFAULT '',
+            name TEXT DEFAULT '',
+            phone TEXT DEFAULT '',
+            postal_code TEXT DEFAULT '',
+            address TEXT DEFAULT '',
+            address_detail TEXT DEFAULT '',
+            customs_id TEXT DEFAULT '',
+            business_number TEXT DEFAULT '',
+            is_default INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        )""")
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/addresses")
+@login_required
+def get_addresses():
+    """저장된 배송지 목록 (최대 2개)"""
+    _init_address_db()
+    username = session.get("username", "")
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        rows = conn.execute("SELECT * FROM addresses WHERE username=? ORDER BY is_default DESC, id DESC LIMIT 2", (username,)).fetchall()
+        return jsonify({"ok": True, "addresses": [{c: r[c] for c in r.keys()} for r in rows]})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/addresses", methods=["POST"])
+@login_required
+def save_address():
+    """배송지 저장 (최대 2개)"""
+    _init_address_db()
+    data = request.json or {}
+    username = session.get("username", "")
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        count = conn.execute("SELECT count(*) FROM addresses WHERE username=?", (username,)).fetchone()[0]
+        addr_id = data.get("id")
+        if addr_id:
+            # 기존 배송지 수정
+            conn.execute("""UPDATE addresses SET label=?, name=?, phone=?, postal_code=?, address=?,
+                            address_detail=?, customs_id=?, business_number=?, is_default=? WHERE id=? AND username=?""",
+                         (data.get("label",""), data.get("name",""), data.get("phone",""),
+                          data.get("postal_code",""), data.get("address",""), data.get("address_detail",""),
+                          data.get("customs_id",""), data.get("business_number",""),
+                          1 if data.get("is_default") else 0, addr_id, username))
+        elif count >= 2:
+            return jsonify({"ok": False, "message": "배송지는 최대 2개까지 저장 가능합니다"})
+        else:
+            is_default = 1 if (count == 0 or data.get("is_default")) else 0
+            conn.execute("""INSERT INTO addresses (username, label, name, phone, postal_code, address,
+                            address_detail, customs_id, business_number, is_default)
+                            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                         (username, data.get("label",""), data.get("name",""), data.get("phone",""),
+                          data.get("postal_code",""), data.get("address",""), data.get("address_detail",""),
+                          data.get("customs_id",""), data.get("business_number",""), is_default))
+        # is_default 설정 시 나머지 해제
+        if data.get("is_default"):
+            new_id = addr_id or conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute("UPDATE addresses SET is_default=0 WHERE username=? AND id!=?", (username, new_id))
+        conn.commit()
+        return jsonify({"ok": True, "message": "배송지 저장 완료"})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/addresses/<int:addr_id>", methods=["DELETE"])
+@login_required
+def delete_address(addr_id):
+    """배송지 삭제"""
+    _init_address_db()
+    username = session.get("username", "")
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("DELETE FROM addresses WHERE id=? AND username=?", (addr_id, username))
+        conn.commit()
+        return jsonify({"ok": True, "message": "삭제 완료"})
+    finally:
+        conn.close()
+
+
 # ── 장바구니 API ──────────────────────────
 def _init_cart_db():
     from user_db import _conn as user_conn
