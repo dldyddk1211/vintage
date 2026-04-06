@@ -245,6 +245,19 @@
       </div>
     </div>
 
+    <!-- 장바구니 상품 상세 모달 -->
+    <div class="pay-modal-overlay" id="cart-detail-modal" onclick="if(event.target===this)closeCartDetail()">
+      <div class="pay-modal" style="max-width:600px;">
+        <div class="pay-modal-header">
+          <span>상품 상세</span>
+          <button onclick="closeCartDetail()" style="background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;">&times;</button>
+        </div>
+        <div style="padding:20px;" id="cart-detail-body">
+          <div style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</div>
+        </div>
+      </div>
+    </div>
+
     <!-- 요청/문의 게시판 -->
     <div class="tab-content" id="tc-board">
       <div class="panel">
@@ -614,23 +627,29 @@ async function loadMyCart() {
     }
     // Desktop table
     tbody.innerHTML = d.items.map(c => `<tr>
-      <td><img class="cart-img" src="${c.img_url||''}" onerror="this.style.display='none'"></td>
-      <td>${c.product_name||''}</td>
+      <td><img class="cart-img" src="${c.img_url||''}" onerror="this.style.display='none'" style="cursor:pointer;" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}')"></td>
+      <td><a href="#" onclick="event.preventDefault();openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}');" style="color:var(--text);text-decoration:underline;text-underline-offset:3px;cursor:pointer;">${c.product_name||''}</a></td>
       <td style="font-weight:600;">${c.brand||''}</td>
       <td style="font-family:monospace;font-size:0.75rem;">${c.product_code||''}</td>
       <td style="font-weight:700;color:var(--accent);">${c.price||''}</td>
-      <td><button onclick="removeCart(${c.id})" class="btn btn-red" style="padding:4px 10px;font-size:0.72rem;">삭제</button></td>
+      <td style="white-space:nowrap;">
+        <button onclick="orderFromCart(${c.id},'${(c.brand||'').replace(/'/g,"\\'")}','${(c.product_name||'').replace(/'/g,"\\'")}','${(c.price||'').replace(/'/g,"\\'")}',${c.price_jpy||0},'${(c.product_code||'').replace(/'/g,"\\'")}');" class="btn btn-accent" style="padding:4px 10px;font-size:0.72rem;margin-right:4px;">주문</button>
+        <button onclick="removeCart(${c.id})" class="btn btn-red" style="padding:4px 10px;font-size:0.72rem;">삭제</button>
+      </td>
     </tr>`).join("");
     // Mobile cards
     mobileEl.innerHTML = d.items.map(c => `<div class="cart-card">
-      <img src="${c.img_url||''}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22><rect fill=%22%23181a22%22 width=%221%22 height=%221%22/></svg>'">
-      <div class="cart-card-info">
+      <img src="${c.img_url||''}" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}');" style="cursor:pointer;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22><rect fill=%22%23181a22%22 width=%221%22 height=%221%22/></svg>'">
+      <div class="cart-card-info" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}');" style="cursor:pointer;">
         <div class="brand">${c.brand||''}</div>
-        <div class="name">${c.product_name||''}</div>
+        <div class="name" style="text-decoration:underline;text-underline-offset:3px;">${c.product_name||''}</div>
         <div class="code">${c.product_code||''}</div>
         <div class="price">${c.price||''}</div>
       </div>
-      <button onclick="removeCart(${c.id})" style="padding:6px 12px;font-size:0.72rem;background:var(--red);color:#fff;border:none;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;">삭제</button>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <button onclick="orderFromCart(${c.id},'${(c.brand||'').replace(/'/g,"\\'")}','${(c.product_name||'').replace(/'/g,"\\'")}','${(c.price||'').replace(/'/g,"\\'")}',${c.price_jpy||0},'${(c.product_code||'').replace(/'/g,"\\'")}');" style="padding:6px 12px;font-size:0.72rem;background:var(--accent);color:#000;border:none;border-radius:6px;cursor:pointer;white-space:nowrap;font-weight:700;">주문</button>
+        <button onclick="removeCart(${c.id})" style="padding:6px 12px;font-size:0.72rem;background:var(--red);color:#fff;border:none;border-radius:6px;cursor:pointer;white-space:nowrap;">삭제</button>
+      </div>
     </div>`).join("");
   } catch(e) {
     tbody.innerHTML = `<tr><td colspan="6" style="color:var(--red);text-align:center;">로드 실패</td></tr>`;
@@ -641,6 +660,66 @@ async function loadMyCart() {
 async function removeCart(id) {
   await fetch(PREFIX + "/shop/api/cart/" + id, {method: "DELETE"});
   loadMyCart();
+}
+
+async function orderFromCart(cartId, brand, name, price, priceJpy, code) {
+  try {
+    const res = await fetch(PREFIX + "/shop/api/notify", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({type:"order", brand, name, code, price, price_jpy: priceJpy})
+    });
+    // 장바구니에서 삭제
+    await fetch(PREFIX + "/shop/api/cart/" + cartId, {method: "DELETE"});
+    alert("주문이 추가되었습니다.\n주문내역에서 결제를 진행해주세요.");
+    loadMyCart();
+    switchTab("orders");
+  } catch(e) { alert("주문 추가 실패: " + e); }
+}
+
+async function openCartDetail(code) {
+  const modal = document.getElementById("cart-detail-modal");
+  const body = document.getElementById("cart-detail-body");
+  body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</div>';
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+  try {
+    const res = await fetch(PREFIX + "/shop/api/products?keyword=" + encodeURIComponent(code) + "&per_page=1");
+    const d = await res.json();
+    if (!d.products || !d.products.length) {
+      body.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px;">상품 정보를 찾을 수 없습니다</div>';
+      return;
+    }
+    const p = d.products[0];
+    const imgs = (p.detail_images && p.detail_images.length) ? p.detail_images : (p.img_url ? [p.img_url] : []);
+    const gradeLabels = {"NS":"신품/미사용","S":"중고S (최상)","A":"중고A (양호)","B":"중고B (사용감 있음)","C":"중고C (사용감 많음)","D":"중고D (난있음)"};
+    body.innerHTML = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div style="flex:0 0 200px;">
+          <img src="${imgs[0]||''}" style="width:100%;border-radius:8px;aspect-ratio:1;object-fit:cover;" onerror="this.style.display='none'">
+          ${imgs.length > 1 ? `<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;">${imgs.slice(1,5).map(i => `<img src="${i}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;border:1px solid var(--border);" onerror="this.style.display='none'">`).join("")}</div>` : ""}
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:0.78rem;color:var(--accent);font-weight:600;margin-bottom:4px;">${p.brand}</div>
+          <div style="font-size:1rem;font-weight:600;margin-bottom:10px;line-height:1.5;">${p.name}</div>
+          <div style="font-size:1.2rem;font-weight:800;color:var(--green);margin-bottom:12px;">${p.price_krw ? p.price_krw.toLocaleString() + '원' : ''}</div>
+          <table style="width:100%;font-size:0.8rem;border-collapse:collapse;">
+            ${p.product_code ? `<tr><td style="padding:6px 0;color:var(--muted);width:80px;">고유번호</td><td style="padding:6px 0;">${p.product_code}</td></tr>` : ''}
+            ${p.condition_grade ? `<tr><td style="padding:6px 0;color:var(--muted);">상태</td><td style="padding:6px 0;">${gradeLabels[p.condition_grade]||p.condition_grade}</td></tr>` : ''}
+            ${p.color_raw ? `<tr><td style="padding:6px 0;color:var(--muted);">사이즈</td><td style="padding:6px 0;">${p.color_raw}</td></tr>` : ''}
+            ${p.material ? `<tr><td style="padding:6px 0;color:var(--muted);">소재</td><td style="padding:6px 0;">${p.material}</td></tr>` : ''}
+          </table>
+          ${p.description ? `<div style="margin-top:10px;padding:10px;background:rgba(212,165,74,0.06);border:1px solid var(--border);border-radius:6px;font-size:0.78rem;color:var(--muted);line-height:1.6;">${p.description.replace(/\\n/g,'<br>')}</div>` : ''}
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    body.innerHTML = `<div style="color:var(--red);text-align:center;padding:30px;">로드 실패: ${e}</div>`;
+  }
+}
+
+function closeCartDetail() {
+  document.getElementById("cart-detail-modal").classList.remove("show");
+  document.body.style.overflow = "";
 }
 
 // 비밀번호 변경
