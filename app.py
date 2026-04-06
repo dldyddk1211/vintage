@@ -664,6 +664,37 @@ def cancel_my_order(order_id):
         conn.close()
 
 
+@app.route(f"{URL_PREFIX}/shop/api/coupon-check", methods=["POST"])
+@login_required
+def coupon_check():
+    """쿠폰 코드 확인 (향후 DB 연동 가능)"""
+    data = request.get_json() or {}
+    code = (data.get("code") or "").strip().upper()
+    subtotal = int(data.get("subtotal") or 0)
+    if not code:
+        return jsonify({"ok": False, "message": "쿠폰 코드를 입력해주세요"})
+
+    # 쿠폰 정의 (향후 DB 테이블로 이동 가능)
+    coupons = {
+        "WELCOME10": {"type": "percent", "value": 10, "max_discount": 50000, "desc": "신규회원 10% 할인"},
+        "THEONE5000": {"type": "fixed", "value": 5000, "desc": "5,000원 할인"},
+    }
+
+    coupon = coupons.get(code)
+    if not coupon:
+        return jsonify({"ok": False, "message": "유효하지 않은 쿠폰 코드입니다"})
+
+    if coupon["type"] == "percent":
+        discount = int(subtotal * coupon["value"] / 100)
+        max_d = coupon.get("max_discount", 999999999)
+        discount = min(discount, max_d)
+    else:
+        discount = coupon["value"]
+
+    discount = min(discount, subtotal)  # 상품금액 초과 방지
+    return jsonify({"ok": True, "discount": discount, "message": coupon["desc"]})
+
+
 @app.route(f"{URL_PREFIX}/shop/api/notify", methods=["POST"])
 @login_required
 def shop_notify():

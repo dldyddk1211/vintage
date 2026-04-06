@@ -168,6 +168,198 @@
     </div>
   </div>
 
+<!-- 결제 확인 모달 -->
+<div class="pay-modal-overlay" id="pay-modal" onclick="if(event.target===this)closePayModal()">
+  <div class="pay-modal">
+    <div class="pay-modal-header">
+      <span>주문 결제</span>
+      <button onclick="closePayModal()" style="background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;">&times;</button>
+    </div>
+
+    <!-- Step Indicator -->
+    <div class="pay-steps">
+      <div class="pay-step active" id="step-ind-1"><span>1</span> 배송지 확인</div>
+      <div class="pay-step-arrow">→</div>
+      <div class="pay-step" id="step-ind-2"><span>2</span> 쿠폰/할인</div>
+      <div class="pay-step-arrow">→</div>
+      <div class="pay-step" id="step-ind-3"><span>3</span> 결제</div>
+    </div>
+
+    <!-- Step 1: 배송지 확인 -->
+    <div class="pay-step-panel" id="pay-step-1">
+      <div class="pay-section-title">배송지 정보</div>
+      <div class="pay-form">
+        <div class="pay-field">
+          <label>수령인</label>
+          <input id="pay-name" placeholder="이름">
+        </div>
+        <div class="pay-field">
+          <label>연락처</label>
+          <input id="pay-phone" placeholder="010-0000-0000">
+        </div>
+        <div class="pay-field">
+          <label>우편번호</label>
+          <div style="display:flex;gap:6px;">
+            <input id="pay-postal" placeholder="12345" readonly style="width:120px;">
+            <button onclick="paySearchPostcode()" class="btn btn-accent" style="padding:6px 14px;font-size:0.78rem;">주소 검색</button>
+          </div>
+        </div>
+        <div class="pay-field">
+          <label>주소</label>
+          <input id="pay-address" placeholder="주소 검색 버튼을 눌러주세요" readonly>
+        </div>
+        <div class="pay-field">
+          <label>상세주소</label>
+          <input id="pay-address2" placeholder="상세주소 (동/호수)">
+        </div>
+        <div class="pay-field">
+          <label>통관고유번호</label>
+          <input id="pay-customs" placeholder="P000-0000-000000">
+        </div>
+        <div class="pay-field">
+          <label>배송 메모</label>
+          <input id="pay-memo" placeholder="부재시 문 앞에 놓아주세요">
+        </div>
+      </div>
+      <button class="pay-next-btn" onclick="goPayStep(2)">다음: 쿠폰/할인 확인 →</button>
+    </div>
+
+    <!-- Step 2: 쿠폰/할인 -->
+    <div class="pay-step-panel" id="pay-step-2" style="display:none;">
+      <div class="pay-section-title">쿠폰 / 할인</div>
+      <div class="pay-form">
+        <div class="pay-field">
+          <label>쿠폰 코드</label>
+          <div style="display:flex;gap:6px;">
+            <input id="pay-coupon" placeholder="쿠폰 코드 입력" style="flex:1;">
+            <button onclick="applyCoupon()" class="btn btn-accent" style="padding:6px 14px;font-size:0.78rem;">적용</button>
+          </div>
+        </div>
+        <div id="coupon-result" style="display:none;padding:10px 14px;border-radius:8px;font-size:0.82rem;margin-top:8px;"></div>
+      </div>
+
+      <!-- 주문 요약 -->
+      <div class="pay-summary">
+        <div class="pay-section-title" style="margin-top:16px;">주문 요약</div>
+        <div id="pay-order-list" style="max-height:180px;overflow-y:auto;margin-bottom:12px;"></div>
+        <div class="pay-summary-row">
+          <span>상품금액</span>
+          <span id="pay-subtotal" style="font-weight:700;">0원</span>
+        </div>
+        <div class="pay-summary-row" id="pay-discount-row" style="display:none;">
+          <span>쿠폰 할인</span>
+          <span id="pay-discount" style="color:var(--red);font-weight:700;">-0원</span>
+        </div>
+        <div class="pay-summary-row" style="font-size:0.78rem;color:var(--muted);">
+          <span>관부가세 / 해외배송비</span>
+          <span>별도</span>
+        </div>
+        <div class="pay-summary-total">
+          <span>결제 금액</span>
+          <span id="pay-final-total">0원</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="pay-back-btn" onclick="goPayStep(1)">← 배송지 수정</button>
+        <button class="pay-next-btn" onclick="goPayStep(3)" style="flex:2;">결제하기</button>
+      </div>
+    </div>
+
+    <!-- Step 3: 결제 진행 (즉시 토스로 이동) -->
+    <div class="pay-step-panel" id="pay-step-3" style="display:none;">
+      <div style="text-align:center;padding:40px 0;">
+        <div style="font-size:2rem;margin-bottom:12px;">💳</div>
+        <div style="font-size:0.95rem;font-weight:700;margin-bottom:8px;">결제 페이지로 이동 중...</div>
+        <div style="font-size:0.8rem;color:var(--muted);">잠시만 기다려주세요</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .pay-modal-overlay {
+    display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,0.7); z-index:1000;
+    justify-content:center; align-items:center; backdrop-filter:blur(4px);
+  }
+  .pay-modal-overlay.show { display:flex; }
+  .pay-modal {
+    background:var(--card); border:1px solid var(--border); border-radius:16px;
+    max-width:520px; width:95%; max-height:90vh; overflow-y:auto;
+    box-shadow:0 20px 60px rgba(0,0,0,0.5);
+  }
+  .pay-modal-header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:18px 24px; border-bottom:1px solid var(--border);
+    font-size:1rem; font-weight:700; color:var(--accent);
+  }
+  .pay-steps {
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:16px 24px; border-bottom:1px solid var(--border);
+    background:rgba(15,17,23,0.5);
+  }
+  .pay-step {
+    font-size:0.75rem; color:var(--dim); font-weight:500;
+    display:flex; align-items:center; gap:5px;
+  }
+  .pay-step span {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:20px; height:20px; border-radius:50%; font-size:0.65rem; font-weight:700;
+    background:var(--border); color:var(--dim);
+  }
+  .pay-step.active { color:var(--accent); }
+  .pay-step.active span { background:var(--accent); color:#000; }
+  .pay-step.done { color:var(--green); }
+  .pay-step.done span { background:var(--green); color:#fff; }
+  .pay-step-arrow { color:var(--dim); font-size:0.7rem; }
+  .pay-step-panel { padding:20px 24px; }
+  .pay-section-title {
+    font-size:0.82rem; font-weight:700; color:var(--accent);
+    margin-bottom:14px; padding-bottom:6px;
+    border-bottom:1px solid var(--border);
+  }
+  .pay-form { display:flex; flex-direction:column; gap:12px; }
+  .pay-field label {
+    display:block; font-size:0.75rem; color:var(--muted);
+    margin-bottom:4px; font-weight:600;
+  }
+  .pay-field input {
+    width:100%; background:var(--bg); border:1px solid var(--border);
+    color:var(--text); padding:9px 12px; border-radius:8px; font-size:0.85rem;
+  }
+  .pay-field input:focus { border-color:var(--accent); outline:none; }
+  .pay-next-btn {
+    width:100%; padding:13px; border:none; border-radius:10px;
+    background:var(--accent); color:#000; font-size:0.9rem; font-weight:700;
+    cursor:pointer; transition:opacity .2s; margin-top:20px;
+  }
+  .pay-next-btn:hover { opacity:0.88; }
+  .pay-back-btn {
+    flex:1; padding:13px; border:1px solid var(--border); border-radius:10px;
+    background:transparent; color:var(--muted); font-size:0.85rem; font-weight:600;
+    cursor:pointer; transition:all .2s; margin-top:20px;
+  }
+  .pay-back-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .pay-summary { margin-top:8px; }
+  .pay-summary-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 0; font-size:0.84rem; color:var(--text);
+    border-bottom:1px solid rgba(42,45,58,0.3);
+  }
+  .pay-summary-total {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 0 4px; font-size:1.1rem; font-weight:800;
+    color:var(--green); border-top:2px solid var(--accent); margin-top:4px;
+  }
+  .pay-order-item {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:6px 0; font-size:0.78rem; border-bottom:1px solid rgba(42,45,58,0.2);
+  }
+  .pay-order-item .brand { color:var(--accent); font-weight:600; margin-right:6px; }
+  .pay-order-item .name { color:var(--muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pay-order-item .price { color:var(--text); font-weight:700; white-space:nowrap; margin-left:8px; }
+</style>
+
 <script>
 const PREFIX = "{{ url_prefix }}";
 const statusMap = {"new":["신규","st-new"],"confirmed":["확인","st-confirmed"],"processing":["처리중","st-processing"],"shipped":["배송중","st-shipped"],"completed":["완료","st-completed"],"cancelled":["취소","st-cancelled"]};
@@ -383,20 +575,180 @@ function updateMyOrderPayInfo() {
   document.getElementById("order-pay-total").textContent = total.toLocaleString() + "원";
 }
 
+// ── 결제 모달 ──
+let payOrderIds = [];
+let paySubtotal = 0;
+let payDiscount = 0;
+let payOrderItems = [];
+
 function paySelectedOrders() {
   const checked = document.querySelectorAll(".my-order-chk:checked");
   if (!checked.length) { alert("결제할 주문을 선택해주세요"); return; }
-  let total = 0;
-  const ids = [];
-  checked.forEach(c => { total += parseInt(c.dataset.price) || 0; ids.push(c.dataset.id); });
-  if (!confirm(`${checked.length}건 총 ${total.toLocaleString()}원을 결제하시겠습니까?`)) return;
+  paySubtotal = 0; payDiscount = 0; payOrderIds = []; payOrderItems = [];
+  checked.forEach(c => {
+    const price = parseInt(c.dataset.price) || 0;
+    paySubtotal += price;
+    payOrderIds.push(c.dataset.id);
+    const row = c.closest("tr");
+    const cells = row.querySelectorAll("td");
+    payOrderItems.push({
+      name: cells[4]?.textContent?.trim() || '',
+      price: price
+    });
+  });
+  // 회원정보에서 배송지 자동 채우기
+  fillPayFromMyInfo();
+  goPayStep(1);
+  document.getElementById("pay-modal").classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+
+function closePayModal() {
+  document.getElementById("pay-modal").classList.remove("show");
+  document.body.style.overflow = "";
+}
+
+async function fillPayFromMyInfo() {
+  try {
+    const res = await fetch(PREFIX + "/shop/api/myinfo");
+    const d = await res.json();
+    if (!d.ok) return;
+    const u = d.user;
+    document.getElementById("pay-name").value = u.name || "";
+    document.getElementById("pay-phone").value = u.phone || "";
+    document.getElementById("pay-postal").value = u.postal_code || "";
+    document.getElementById("pay-address").value = u.address || "";
+    document.getElementById("pay-address2").value = u.address_detail || "";
+    document.getElementById("pay-customs").value = u.customs_id || "";
+  } catch(e) {}
+}
+
+function paySearchPostcode() {
+  new daum.Postcode({
+    oncomplete: function(data) {
+      document.getElementById("pay-postal").value = data.zonecode;
+      document.getElementById("pay-address").value = data.roadAddress || data.jibunAddress;
+      document.getElementById("pay-address2").focus();
+    }
+  }).open();
+}
+
+function goPayStep(step) {
+  // 유효성 검사
+  if (step === 2) {
+    const name = document.getElementById("pay-name").value.trim();
+    const phone = document.getElementById("pay-phone").value.trim();
+    const postal = document.getElementById("pay-postal").value.trim();
+    const addr = document.getElementById("pay-address").value.trim();
+    const customs = document.getElementById("pay-customs").value.trim();
+    if (!name) { alert("수령인 이름을 입력해주세요"); return; }
+    if (!phone) { alert("연락처를 입력해주세요"); return; }
+    if (!postal || !addr) { alert("배송지 주소를 입력해주세요"); return; }
+    if (!customs) { alert("통관고유번호를 입력해주세요.\n해외 구매대행 상품은 통관고유번호가 필수입니다."); return; }
+    // 주문 요약 렌더링
+    renderPaySummary();
+  }
+  if (step === 3) {
+    // 결제 실행
+    submitPayment();
+    return;
+  }
+  // 스텝 전환
+  [1,2,3].forEach(i => {
+    document.getElementById("pay-step-" + i).style.display = i === step ? "" : "none";
+    const ind = document.getElementById("step-ind-" + i);
+    ind.classList.remove("active","done");
+    if (i < step) ind.classList.add("done");
+    if (i === step) ind.classList.add("active");
+  });
+}
+
+function renderPaySummary() {
+  const listEl = document.getElementById("pay-order-list");
+  listEl.innerHTML = payOrderItems.map(o =>
+    `<div class="pay-order-item">
+      <span class="name">${o.name}</span>
+      <span class="price">${o.price.toLocaleString()}원</span>
+    </div>`
+  ).join("");
+  document.getElementById("pay-subtotal").textContent = paySubtotal.toLocaleString() + "원";
+  updatePayTotal();
+}
+
+function updatePayTotal() {
+  const final = Math.max(0, paySubtotal - payDiscount);
+  document.getElementById("pay-final-total").textContent = final.toLocaleString() + "원";
+  const discRow = document.getElementById("pay-discount-row");
+  if (payDiscount > 0) {
+    discRow.style.display = "";
+    document.getElementById("pay-discount").textContent = "-" + payDiscount.toLocaleString() + "원";
+  } else {
+    discRow.style.display = "none";
+  }
+}
+
+function applyCoupon() {
+  const code = document.getElementById("pay-coupon").value.trim();
+  const result = document.getElementById("coupon-result");
+  if (!code) { result.style.display = "none"; return; }
+  // 쿠폰 서버 확인
+  fetch(PREFIX + "/shop/api/coupon-check", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({code: code, subtotal: paySubtotal})
+  }).then(r => r.json()).then(d => {
+    result.style.display = "block";
+    if (d.ok) {
+      payDiscount = d.discount || 0;
+      result.style.background = "rgba(46,204,113,0.1)";
+      result.style.border = "1px solid rgba(46,204,113,0.3)";
+      result.style.color = "var(--green)";
+      result.innerHTML = `✅ ${d.message || '쿠폰 적용 완료'} <b>-${payDiscount.toLocaleString()}원</b>`;
+    } else {
+      payDiscount = 0;
+      result.style.background = "rgba(231,76,60,0.1)";
+      result.style.border = "1px solid rgba(231,76,60,0.3)";
+      result.style.color = "var(--red)";
+      result.textContent = "❌ " + (d.message || "유효하지 않은 쿠폰입니다");
+    }
+    updatePayTotal();
+  }).catch(() => {
+    result.style.display = "block";
+    result.style.background = "rgba(231,76,60,0.1)";
+    result.style.border = "1px solid rgba(231,76,60,0.3)";
+    result.style.color = "var(--red)";
+    result.textContent = "❌ 쿠폰 확인 실패";
+    payDiscount = 0;
+    updatePayTotal();
+  });
+}
+
+function submitPayment() {
+  const final = Math.max(0, paySubtotal - payDiscount);
   const params = new URLSearchParams({
     brand: "일괄결제",
-    name: `${checked.length}건 주문`,
-    code: ids.join(","),
-    amount: total,
+    name: `${payOrderIds.length}건 주문`,
+    code: payOrderIds.join(","),
+    amount: final,
+    receiver: document.getElementById("pay-name").value.trim(),
+    phone: document.getElementById("pay-phone").value.trim(),
+    postal: document.getElementById("pay-postal").value.trim(),
+    address: document.getElementById("pay-address").value.trim() + " " + document.getElementById("pay-address2").value.trim(),
+    customs: document.getElementById("pay-customs").value.trim(),
+    memo: document.getElementById("pay-memo").value.trim(),
+    coupon: document.getElementById("pay-coupon").value.trim(),
+    discount: payDiscount,
   });
-  location.href = PREFIX + "/shop/payment?" + params;
+  // Step 3 표시 후 이동
+  [1,2,3].forEach(i => {
+    document.getElementById("pay-step-" + i).style.display = i === 3 ? "" : "none";
+    const ind = document.getElementById("step-ind-" + i);
+    ind.classList.remove("active","done");
+    if (i < 3) ind.classList.add("done");
+    if (i === 3) ind.classList.add("active");
+  });
+  setTimeout(() => {
+    location.href = PREFIX + "/shop/payment?" + params;
+  }, 600);
 }
 
 async function cancelMyOrder(id) {
