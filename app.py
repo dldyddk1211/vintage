@@ -521,6 +521,164 @@ def delete_post(post_id):
         conn.close()
 
 
+# ── 공지사항 / 후기 게시판 ──────────────────────────
+def _init_community_db():
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS notices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            pinned INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            updated_at TEXT DEFAULT (datetime('now','localtime'))
+        )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            product_code TEXT DEFAULT '',
+            product_name TEXT DEFAULT '',
+            brand TEXT DEFAULT '',
+            rating INTEGER DEFAULT 5,
+            title TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            img_url TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now','localtime'))
+        )""")
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/notices")
+def get_notices():
+    """공지사항 목록 (비로그인도 가능)"""
+    _init_community_db()
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        rows = conn.execute("SELECT * FROM notices ORDER BY pinned DESC, created_at DESC LIMIT 50").fetchall()
+        return jsonify({"ok": True, "notices": [{c: r[c] for c in r.keys()} for r in rows]})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/notices", methods=["POST"])
+@admin_required
+def create_notice():
+    """공지 작성 (관리자)"""
+    _init_community_db()
+    data = request.json or {}
+    title = (data.get("title") or "").strip()
+    content = (data.get("content") or "").strip()
+    pinned = 1 if data.get("pinned") else 0
+    if not title:
+        return jsonify({"ok": False, "message": "제목을 입력해주세요"})
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("INSERT INTO notices (title, content, pinned) VALUES (?,?,?)", (title, content, pinned))
+        conn.commit()
+        return jsonify({"ok": True, "message": "공지 등록 완료"})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/notices/<int:nid>", methods=["PUT"])
+@admin_required
+def update_notice(nid):
+    """공지 수정 (관리자)"""
+    _init_community_db()
+    data = request.json or {}
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("UPDATE notices SET title=?, content=?, pinned=?, updated_at=datetime('now','localtime') WHERE id=?",
+                     (data.get("title",""), data.get("content",""), 1 if data.get("pinned") else 0, nid))
+        conn.commit()
+        return jsonify({"ok": True, "message": "수정 완료"})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/notices/<int:nid>", methods=["DELETE"])
+@admin_required
+def delete_notice(nid):
+    """공지 삭제 (관리자)"""
+    _init_community_db()
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("DELETE FROM notices WHERE id=?", (nid,))
+        conn.commit()
+        return jsonify({"ok": True, "message": "삭제 완료"})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/reviews")
+def get_reviews():
+    """후기 목록 (비로그인도 가능)"""
+    _init_community_db()
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        rows = conn.execute("SELECT * FROM reviews ORDER BY created_at DESC LIMIT 100").fetchall()
+        return jsonify({"ok": True, "reviews": [{c: r[c] for c in r.keys()} for r in rows]})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/reviews", methods=["POST"])
+@login_required
+def create_review():
+    """후기 작성 (로그인 필요)"""
+    _init_community_db()
+    data = request.json or {}
+    username = session.get("username", "")
+    title = (data.get("title") or "").strip()
+    content = (data.get("content") or "").strip()
+    rating = int(data.get("rating") or 5)
+    if not title:
+        return jsonify({"ok": False, "message": "제목을 입력해주세요"})
+    if rating < 1 or rating > 5:
+        rating = 5
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("""INSERT INTO reviews (username, product_code, product_name, brand, rating, title, content, img_url)
+                        VALUES (?,?,?,?,?,?,?,?)""",
+                     (username, data.get("product_code",""), data.get("product_name",""),
+                      data.get("brand",""), rating, title, content, data.get("img_url","")))
+        conn.commit()
+        return jsonify({"ok": True, "message": "후기 등록 완료"})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/shop/api/reviews/<int:rid>", methods=["DELETE"])
+@login_required
+def delete_review(rid):
+    """후기 삭제 (본인 또는 관리자)"""
+    _init_community_db()
+    username = session.get("username", "")
+    role = session.get("role", "customer")
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        if role == "admin":
+            conn.execute("DELETE FROM reviews WHERE id=?", (rid,))
+        else:
+            conn.execute("DELETE FROM reviews WHERE id=? AND username=?", (rid, username))
+        conn.commit()
+        return jsonify({"ok": True, "message": "삭제 완료"})
+    finally:
+        conn.close()
+
+
 def _calc_vintage_price(jpy: int, margin_type="b2c") -> int:
     """빈티지 상품 한국 판매가 계산
     B2C: 일본가 기반 정상 계산

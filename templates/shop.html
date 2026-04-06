@@ -444,7 +444,95 @@
       .hero-visual { display:none; }
       .hero-cta { padding:9px 22px; font-size:0.78rem; }
       .brand-strip { gap:18px; padding:12px 0; font-size:0.78rem; }
+      .shop-nav { gap:12px; font-size:0.75rem; }
+      .shop-nav-item { padding:6px 10px; }
     }
+
+    /* ── Shop Navigation Tabs ── */
+    .shop-nav {
+      display:flex; gap:16px; align-items:center;
+    }
+    .shop-nav-item {
+      padding:6px 14px; font-size:0.82rem; color:var(--muted);
+      cursor:pointer; transition:all .2s; border-bottom:2px solid transparent;
+      font-weight:500; white-space:nowrap;
+    }
+    .shop-nav-item:hover { color:var(--text); }
+    .shop-nav-item.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
+
+    /* ── Notice / Review panels ── */
+    .community-panel { display:none; }
+    .community-panel.active { display:block; }
+    .notice-card {
+      background:var(--card); border:1px solid var(--border); border-radius:10px;
+      padding:18px 20px; margin-bottom:10px; cursor:pointer; transition:all .2s;
+    }
+    .notice-card:hover { border-color:rgba(212,165,74,0.3); }
+    .notice-card.pinned { border-left:3px solid var(--accent); }
+    .notice-card-title {
+      font-size:0.9rem; font-weight:600; color:var(--text); margin-bottom:6px;
+      display:flex; align-items:center; gap:8px;
+    }
+    .notice-pin-badge {
+      font-size:0.65rem; padding:2px 8px; border-radius:3px;
+      background:rgba(212,165,74,0.15); color:var(--accent); font-weight:700;
+    }
+    .notice-card-date { font-size:0.72rem; color:var(--dim); }
+    .notice-card-content {
+      display:none; margin-top:12px; padding-top:12px;
+      border-top:1px solid var(--border); font-size:0.84rem;
+      color:var(--muted); line-height:1.7; white-space:pre-wrap;
+    }
+    .notice-card.open .notice-card-content { display:block; }
+
+    .review-card {
+      background:var(--card); border:1px solid var(--border); border-radius:10px;
+      padding:18px 20px; margin-bottom:10px;
+    }
+    .review-card-top {
+      display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;
+    }
+    .review-stars { color:var(--accent); font-size:0.85rem; letter-spacing:1px; }
+    .review-user { font-size:0.75rem; color:var(--dim); }
+    .review-title { font-size:0.88rem; font-weight:600; color:var(--text); margin-bottom:6px; }
+    .review-content { font-size:0.82rem; color:var(--muted); line-height:1.6; white-space:pre-wrap; }
+    .review-meta { display:flex; gap:12px; align-items:center; margin-top:8px; font-size:0.72rem; color:var(--dim); }
+    .review-product {
+      display:inline-flex; align-items:center; gap:4px; padding:3px 10px;
+      background:rgba(212,165,74,0.08); border-radius:4px;
+      font-size:0.72rem; color:var(--accent);
+    }
+    .review-form {
+      background:var(--card); border:1px solid var(--border); border-radius:10px;
+      padding:20px; margin-bottom:16px;
+    }
+    .review-form input, .review-form textarea, .review-form select {
+      width:100%; background:var(--bg); border:1px solid var(--border);
+      color:var(--text); padding:9px 12px; border-radius:8px; font-size:0.85rem;
+      margin-bottom:10px;
+    }
+    .review-form input:focus, .review-form textarea:focus { border-color:var(--accent); outline:none; }
+    .review-form textarea { resize:vertical; min-height:80px; }
+    .review-form label { font-size:0.78rem; color:var(--muted); font-weight:600; display:block; margin-bottom:4px; }
+    .review-submit-btn {
+      width:100%; padding:11px; border:none; border-radius:8px;
+      background:var(--accent); color:#000; font-size:0.88rem; font-weight:700;
+      cursor:pointer; transition:opacity .2s;
+    }
+    .review-submit-btn:hover { opacity:0.88; }
+
+    /* 관리자 공지 작성 폼 */
+    .notice-form {
+      background:var(--card); border:1px solid var(--border); border-radius:10px;
+      padding:20px; margin-bottom:16px;
+    }
+    .notice-form input, .notice-form textarea {
+      width:100%; background:var(--bg); border:1px solid var(--border);
+      color:var(--text); padding:9px 12px; border-radius:8px; font-size:0.85rem;
+      margin-bottom:10px;
+    }
+    .notice-form input:focus, .notice-form textarea:focus { border-color:var(--accent); outline:none; }
+    .notice-form textarea { resize:vertical; min-height:100px; }
   </style>
 </head>
 <body>
@@ -465,6 +553,11 @@
 
 <div class="topbar">
   <div class="topbar-logo">TheOne<span>Vintage</span></div>
+  <div class="shop-nav">
+    <span class="shop-nav-item active" onclick="switchShopTab('products')">SHOP</span>
+    <span class="shop-nav-item" onclick="switchShopTab('notices')">공지사항</span>
+    <span class="shop-nav-item" onclick="switchShopTab('reviews')">구매후기</span>
+  </div>
   <div class="topbar-right">
     {% if logged_in %}
     <a href="{{ url_prefix }}/shop/mypage#cart" class="topbar-btn" style="position:relative;">
@@ -638,7 +731,7 @@
     <!-- Brand Strip -->
     <div class="brand-strip" id="brand-strip"></div>
 
-    <div class="content-header">
+    <div class="content-header" id="content-header">
       <div class="result-info" id="result-info">상품을 불러오는 중...</div>
       <div class="active-filters" id="active-filters"></div>
     </div>
@@ -646,6 +739,53 @@
       <div class="loading"><div class="spinner"></div>상품을 불러오는 중...</div>
     </div>
     <div class="pagination" id="pagination"></div>
+  </div>
+
+  <!-- 공지사항 패널 -->
+  <div class="community-panel" id="panel-notices" style="flex:1;padding:28px;overflow-y:auto;">
+    {% if is_admin %}
+    <div class="notice-form" id="notice-form">
+      <div style="font-size:0.88rem;font-weight:700;color:var(--accent);margin-bottom:12px;">공지 작성</div>
+      <input id="notice-title" placeholder="공지 제목">
+      <textarea id="notice-content" placeholder="공지 내용을 입력하세요"></textarea>
+      <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+        <input type="checkbox" id="notice-pinned" style="accent-color:var(--accent);"> 상단 고정
+      </label>
+      <button onclick="submitNotice()" class="review-submit-btn">공지 등록</button>
+    </div>
+    {% endif %}
+    <div id="notice-list" style="font-size:0.82rem;color:var(--muted);text-align:center;padding:40px;">로딩 중...</div>
+  </div>
+
+  <!-- 후기 패널 -->
+  <div class="community-panel" id="panel-reviews" style="flex:1;padding:28px;overflow-y:auto;">
+    {% if logged_in %}
+    <div class="review-form" id="review-form">
+      <div style="font-size:0.88rem;font-weight:700;color:var(--accent);margin-bottom:12px;">후기 작성</div>
+      <label>제목</label>
+      <input id="review-title" placeholder="후기 제목">
+      <label>별점</label>
+      <select id="review-rating" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:8px;font-size:0.85rem;margin-bottom:10px;">
+        <option value="5">★★★★★ 매우 만족</option>
+        <option value="4">★★★★☆ 만족</option>
+        <option value="3">★★★☆☆ 보통</option>
+        <option value="2">★★☆☆☆ 불만족</option>
+        <option value="1">★☆☆☆☆ 매우 불만족</option>
+      </select>
+      <label>구매 상품 (선택)</label>
+      <input id="review-product" placeholder="브랜드 / 상품명 / 고유번호">
+      <label>후기 내용</label>
+      <textarea id="review-content" placeholder="구매 경험을 공유해주세요"></textarea>
+      <button onclick="submitReview()" class="review-submit-btn">후기 등록</button>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:16px;margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
+      <span style="font-size:0.84rem;color:var(--muted);">후기를 작성하려면 </span>
+      <a href="{{ url_prefix }}/login" style="color:var(--accent);font-weight:700;">로그인</a>
+      <span style="font-size:0.84rem;color:var(--muted);">해주세요</span>
+    </div>
+    {% endif %}
+    <div id="review-list" style="font-size:0.82rem;color:var(--muted);text-align:center;padding:40px;">로딩 중...</div>
   </div>
 </div>
 
@@ -1345,6 +1485,144 @@ function startAutoRefresh() {
   }, 30000);
 }
 startAutoRefresh();
+
+// ── Shop Tab 전환 ──
+function switchShopTab(tab) {
+  document.querySelectorAll(".shop-nav-item").forEach(el => el.classList.remove("active"));
+  document.querySelector(`.shop-nav-item[onclick*="${tab}"]`).classList.add("active");
+
+  // products 관련 요소
+  const productEls = ["hero-banner","brand-strip","content-header","product-grid","pagination"];
+  const sidebarEl = document.getElementById("sidebar");
+  const sidebarToggle = document.getElementById("sidebar-toggle");
+
+  if (tab === "products") {
+    productEls.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = ""; });
+    if(sidebarEl) sidebarEl.style.display = "";
+    if(sidebarToggle) sidebarToggle.style.display = "";
+    document.getElementById("panel-notices").classList.remove("active");
+    document.getElementById("panel-reviews").classList.remove("active");
+  } else {
+    productEls.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = "none"; });
+    if(sidebarEl) sidebarEl.style.display = "none";
+    if(sidebarToggle) sidebarToggle.style.display = "none";
+    document.getElementById("panel-notices").classList.toggle("active", tab === "notices");
+    document.getElementById("panel-reviews").classList.toggle("active", tab === "reviews");
+    if (tab === "notices") loadNotices();
+    if (tab === "reviews") loadReviews();
+  }
+}
+
+// ── 공지사항 ──
+async function loadNotices() {
+  const el = document.getElementById("notice-list");
+  try {
+    const res = await fetch(PREFIX + "/shop/api/notices");
+    const d = await res.json();
+    if (!d.notices || !d.notices.length) {
+      el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">등록된 공지가 없습니다</div>';
+      return;
+    }
+    el.innerHTML = d.notices.map(n => `
+      <div class="notice-card ${n.pinned ? 'pinned' : ''}" onclick="this.classList.toggle('open')">
+        <div class="notice-card-title">
+          ${n.pinned ? '<span class="notice-pin-badge">고정</span>' : ''}
+          ${n.title}
+        </div>
+        <div class="notice-card-date">${n.created_at || ''}</div>
+        <div class="notice-card-content">${(n.content || '').replace(/</g,'&lt;')}</div>
+        ${IS_ADMIN ? `<div style="margin-top:8px;text-align:right;">
+          <button onclick="event.stopPropagation();deleteNotice(${n.id})" style="padding:4px 10px;font-size:0.7rem;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer;">삭제</button>
+        </div>` : ''}
+      </div>
+    `).join("");
+  } catch(e) { el.innerHTML = `<div style="color:var(--red);">로드 실패: ${e}</div>`; }
+}
+
+async function submitNotice() {
+  const title = document.getElementById("notice-title").value.trim();
+  const content = document.getElementById("notice-content").value.trim();
+  const pinned = document.getElementById("notice-pinned").checked;
+  if (!title) { alert("제목을 입력해주세요"); return; }
+  try {
+    const res = await fetch(PREFIX + "/shop/api/notices", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({title, content, pinned})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      document.getElementById("notice-title").value = "";
+      document.getElementById("notice-content").value = "";
+      document.getElementById("notice-pinned").checked = false;
+      loadNotices();
+    } else { alert(d.message); }
+  } catch(e) { alert("등록 실패: " + e); }
+}
+
+async function deleteNotice(id) {
+  if (!confirm("이 공지를 삭제하시겠습니까?")) return;
+  await fetch(PREFIX + "/shop/api/notices/" + id, {method: "DELETE"});
+  loadNotices();
+}
+
+// ── 후기 ──
+async function loadReviews() {
+  const el = document.getElementById("review-list");
+  try {
+    const res = await fetch(PREFIX + "/shop/api/reviews");
+    const d = await res.json();
+    if (!d.reviews || !d.reviews.length) {
+      el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:40px;">등록된 후기가 없습니다</div>';
+      return;
+    }
+    const currentUser = "{{ username }}";
+    el.innerHTML = d.reviews.map(r => {
+      const stars = "★".repeat(r.rating) + "☆".repeat(5 - r.rating);
+      const maskedUser = r.username.length > 2 ? r.username[0] + '*'.repeat(r.username.length - 2) + r.username.slice(-1) : r.username;
+      return `
+      <div class="review-card">
+        <div class="review-card-top">
+          <div class="review-stars">${stars}</div>
+          <div class="review-user">${maskedUser} · ${r.created_at || ''}</div>
+        </div>
+        <div class="review-title">${r.title}</div>
+        ${r.brand || r.product_name ? `<div class="review-product">${r.brand || ''} ${r.product_name || ''}</div>` : ''}
+        <div class="review-content">${(r.content || '').replace(/</g,'&lt;')}</div>
+        ${(IS_ADMIN || r.username === currentUser) ? `<div style="margin-top:8px;text-align:right;">
+          <button onclick="deleteReview(${r.id})" style="padding:4px 10px;font-size:0.7rem;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer;">삭제</button>
+        </div>` : ''}
+      </div>`;
+    }).join("");
+  } catch(e) { el.innerHTML = `<div style="color:var(--red);">로드 실패: ${e}</div>`; }
+}
+
+async function submitReview() {
+  const title = document.getElementById("review-title").value.trim();
+  const content = document.getElementById("review-content").value.trim();
+  const rating = parseInt(document.getElementById("review-rating").value) || 5;
+  const product = document.getElementById("review-product").value.trim();
+  if (!title) { alert("제목을 입력해주세요"); return; }
+  try {
+    const res = await fetch(PREFIX + "/shop/api/reviews", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({title, content, rating, product_name: product})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      document.getElementById("review-title").value = "";
+      document.getElementById("review-content").value = "";
+      document.getElementById("review-product").value = "";
+      document.getElementById("review-rating").value = "5";
+      loadReviews();
+    } else { alert(d.message); }
+  } catch(e) { alert("등록 실패: " + e); }
+}
+
+async function deleteReview(id) {
+  if (!confirm("이 후기를 삭제하시겠습니까?")) return;
+  await fetch(PREFIX + "/shop/api/reviews/" + id, {method: "DELETE"});
+  loadReviews();
+}
 </script>
 </body>
 </html>
