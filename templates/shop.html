@@ -1532,14 +1532,16 @@ function switchShopTab(tab) {
   const sidebarEl = document.getElementById("sidebar");
   const sidebarToggle = document.getElementById("sidebar-toggle");
 
+  const contentEl = document.querySelector(".content");
+
   if (tab === "products") {
-    productEls.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = ""; });
+    if(contentEl) contentEl.style.display = "";
     if(sidebarEl) sidebarEl.style.display = "";
     if(sidebarToggle) sidebarToggle.style.display = "";
     document.getElementById("panel-notices").classList.remove("active");
     document.getElementById("panel-reviews").classList.remove("active");
   } else {
-    productEls.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = "none"; });
+    if(contentEl) contentEl.style.display = "none";
     if(sidebarEl) sidebarEl.style.display = "none";
     if(sidebarToggle) sidebarToggle.style.display = "none";
     document.getElementById("panel-notices").classList.toggle("active", tab === "notices");
