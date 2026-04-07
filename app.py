@@ -1485,6 +1485,17 @@ def shop_api_product_by_code():
             p["description"] = desc_ko
         elif desc_ja and desc_ja.strip() and desc_ja == "商品のお問い合わせ":
             p["description"] = ""
+        # 남은 일본어 AI 번역 (color, material, description, name)
+        import re as _re
+        _ja_pattern = re.compile(r'[\u3040-\u30FF\u4E00-\u9FFF]')
+        try:
+            from translator import translate_ja_ko
+            for field in ["color", "size_info", "color_raw", "material", "description", "name"]:
+                val = p.get(field, "")
+                if val and _ja_pattern.search(val):
+                    p[field] = translate_ja_ko(val)
+        except Exception:
+            pass
         return jsonify({"ok": True, "product": p})
     finally:
         conn.close()
@@ -1655,10 +1666,28 @@ def shop_api_products():
             elif desc_ja and desc_ja.strip() and desc_ja != "商品のお問い合わせ":
                 desc = desc_ja
 
+            # 일본어 잔존 필드 번역
+            _color = r["color"] if "color" in r.keys() else ""
+            _material = r["material"] if "material" in r.keys() else ""
+            _name = r["name_ko"] if r["name_ko"] and r["name_ko"] != r["name"] else r["name"]
+            _ja_check = re.compile(r'[\u3040-\u30FF\u4E00-\u9FFF]')
+            try:
+                from translator import translate_ja_ko as _tja
+                if _color and _ja_check.search(_color):
+                    _color = _tja(_color)
+                if _material and _ja_check.search(_material):
+                    _material = _tja(_material)
+                if desc and _ja_check.search(desc):
+                    desc = _tja(desc)
+                if _name and _ja_check.search(_name):
+                    _name = _tja(_name)
+            except Exception:
+                pass
+
             products.append({
                 "id": r["id"],
                 "site_id": r["site_id"],
-                "name": r["name_ko"] if r["name_ko"] and r["name_ko"] != r["name"] else r["name"],
+                "name": _name,
                 "name_ja": r["name"],
                 "brand": r["brand"],
                 "price_jpy": r["price_jpy"],
@@ -1670,9 +1699,9 @@ def shop_api_products():
                 "link": r["link"],
                 "condition_grade": r["condition_grade"] if "condition_grade" in r.keys() else "",
                 "product_code": r["internal_code"] if "internal_code" in r.keys() and r["internal_code"] else r["product_code"] or "",
-                "size_info": r["color"] if "color" in r.keys() else "",
-                "material": r["material"] if "material" in r.keys() else "",
-                "color_raw": r["color"] if "color" in r.keys() else "",
+                "size_info": _color,
+                "material": _material,
+                "color_raw": _color,
                 "description": desc,
                 "detail_images": detail_imgs[:12],
             })
