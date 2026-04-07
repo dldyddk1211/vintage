@@ -461,7 +461,7 @@
     .shop-nav-item.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
 
     /* ── Notice / Review panels ── */
-    .community-panel { display:none; }
+    .community-panel { display:none; width:100%; }
     .community-panel.active { display:block; }
     .notice-card {
       background:var(--card); border:1px solid var(--border); border-radius:10px;
@@ -745,7 +745,8 @@
   </div>
 
   <!-- 공지사항 패널 -->
-  <div class="community-panel" id="panel-notices" style="flex:1;padding:28px;overflow-y:auto;max-width:800px;margin:0 auto;">
+  <div class="community-panel" id="panel-notices" style="padding:28px 16px;overflow-y:auto;">
+   <div style="max-width:800px;margin:0 auto;width:100%;">
     {% if is_admin %}
     <div class="notice-form" id="notice-form">
       <div style="font-size:0.88rem;font-weight:700;color:var(--accent);margin-bottom:12px;">공지 작성</div>
@@ -758,10 +759,12 @@
     </div>
     {% endif %}
     <div id="notice-list" style="font-size:0.82rem;color:var(--muted);text-align:center;padding:40px;">로딩 중...</div>
+   </div>
   </div>
 
   <!-- 후기 패널 -->
-  <div class="community-panel" id="panel-reviews" style="flex:1;padding:28px;overflow-y:auto;max-width:800px;margin:0 auto;">
+  <div class="community-panel" id="panel-reviews" style="padding:28px 16px;overflow-y:auto;">
+   <div style="max-width:800px;margin:0 auto;width:100%;">
     {% if logged_in %}
     <div class="review-form" id="review-form">
       <div style="font-size:0.88rem;font-weight:700;color:var(--accent);margin-bottom:12px;">후기 작성</div>
@@ -797,6 +800,7 @@
     </div>
     {% endif %}
     <div id="review-list" style="font-size:0.82rem;color:var(--muted);text-align:center;padding:40px;">로딩 중...</div>
+   </div>
   </div>
 </div>
 
