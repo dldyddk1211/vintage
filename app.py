@@ -1256,8 +1256,23 @@ def get_orders():
             o["product_link"] = extras.get("link", "")
             o["product_img"] = extras.get("img", "")
             # 원가/마진 계산
+            pname = o.get("product_name", "") or ""
             pjpy = o.get("price_jpy", 0) or 0
-            if pjpy > 0:
+            if "일괄결제" in pname:
+                # 일괄결제: 개별 주문들의 합계
+                batch_cost = 0
+                batch_ids_str = o.get("product_code", "")
+                if batch_ids_str:
+                    for bid in batch_ids_str.split(","):
+                        bid = bid.strip()
+                        if bid.isdigit():
+                            br = conn.execute("SELECT price_jpy FROM orders WHERE id=?", (int(bid),)).fetchone()
+                            if br and br["price_jpy"]:
+                                batch_cost += _calc_vintage_cost(br["price_jpy"])
+                o["cost_krw"] = batch_cost
+                sell_price = int(str(o.get("price", "0")).replace(",", "").replace("원", "").strip() or 0)
+                o["margin_krw"] = sell_price - batch_cost if sell_price > 0 and batch_cost > 0 else 0
+            elif pjpy > 0:
                 o["cost_krw"] = _calc_vintage_cost(pjpy)
                 sell_price = int(str(o.get("price", "0")).replace(",", "").replace("원", "").strip() or 0)
                 o["margin_krw"] = sell_price - o["cost_krw"] if sell_price > 0 else 0
@@ -1294,15 +1309,23 @@ def get_related_orders(order_id):
             return jsonify({"ok": False})
         username = order["username"]
         memo = order["memo"] or ""
-        # 같은 사용자 + 같은 결제 메모(토스결제 키)를 가진 개별 주문 조회
+        product_code = order["product_code"] or ""
         related = []
-        if memo and "토스결제" in memo:
+        # 1) product_code에 개별 주문 ID들이 저장된 경우 (예: "18,19,20,21")
+        if product_code and all(p.strip().isdigit() for p in product_code.split(",") if p.strip()):
+            ids = [int(p.strip()) for p in product_code.split(",") if p.strip()]
+            if ids:
+                placeholders = ",".join(["?"] * len(ids))
+                rows = conn.execute(f"SELECT * FROM orders WHERE id IN ({placeholders}) ORDER BY created_at", ids).fetchall()
+                related = [{c: r[c] for c in r.keys()} for r in rows]
+        # 2) 같은 결제 메모로 조회
+        if not related and memo and "토스결제" in memo:
             rows = conn.execute(
                 "SELECT * FROM orders WHERE username=? AND memo=? AND id!=? ORDER BY created_at",
                 (username, memo, order_id)
             ).fetchall()
             related = [{c: r[c] for c in r.keys()} for r in rows]
-        # 메모가 없으면 같은 사용자의 비슷한 시간대(±5분) 주문 조회
+        # 3) 비슷한 시간대(±5분) 주문
         if not related:
             rows = conn.execute("""
                 SELECT * FROM orders WHERE username=? AND id!=? AND type='order'
