@@ -213,9 +213,27 @@ async def scrape_2ndstreet(
 
             log(f"📄 페이지 {page_num} 로딩: {url}")
 
+            # 페이지 간 랜덤 대기 (봇 감지 방지)
+            if page_num > 1:
+                hover_sec = _random.uniform(2, 5)
+                log(f"   ⏸️ {hover_sec:.1f}초 대기 중...")
+                await asyncio.sleep(hover_sec)
+
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(5)
+                # Bad Gateway 재시도 로직 (최대 3회)
+                for _retry in range(3):
+                    resp = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    # 502/503 체크
+                    if resp and resp.status in (502, 503, 520, 521, 522, 523, 524):
+                        wait_sec = 15 + _retry * 15  # 15초, 30초, 45초
+                        log(f"   ⚠️ 서버 오류 {resp.status} — {wait_sec}초 대기 후 재시도 ({_retry+1}/3)")
+                        await asyncio.sleep(wait_sec)
+                        continue
+                    break
+                else:
+                    log(f"   ❌ 페이지 {page_num} 서버 오류 3회 연속 — 건너뜀")
+                    continue
+                await asyncio.sleep(3 + _random.uniform(1, 3))
 
                 # 1) WorldShopping body-lock 해제 + 오버레이 제거 (클릭 차단 원인)
                 try:
@@ -314,7 +332,16 @@ async def scrape_2ndstreet(
                         log(f"   ⚠️ 총 수량 확인 실패: {e} → 기본 5페이지")
 
             except PlaywrightTimeout:
-                log(f"   ⚠️ 페이지 {page_num} 타임아웃")
+                log(f"   ⚠️ 페이지 {page_num} 타임아웃 — 15초 대기 후 계속")
+                await asyncio.sleep(15)
+                continue
+            except Exception as e:
+                err_msg = str(e)[:80]
+                if "net::ERR" in err_msg or "502" in err_msg or "503" in err_msg:
+                    log(f"   ⚠️ 페이지 {page_num} 네트워크 오류: {err_msg} — 20초 대기 후 계속")
+                    await asyncio.sleep(20)
+                else:
+                    log(f"   ⚠️ 페이지 {page_num} 오류: {err_msg}")
                 continue
 
             # ── 상품 카드 탐색 ──
@@ -529,8 +556,24 @@ async def _process_detail_pages(page, products, log, _random, category=""):
             continue
         try:
             log(f"   📄 [{idx+1}/{len(products)}] {prod.get('brand','')} {(prod.get('name') or '')[:35]} ¥{prod.get('price_jpy',0):,}")
-            await page.goto(link, wait_until="domcontentloaded", timeout=20000)
-            await asyncio.sleep(2)
+            # 상세 페이지 간 랜덤 대기
+            await asyncio.sleep(_random.uniform(1.5, 3.5))
+            # Bad Gateway 재시도
+            detail_ok = False
+            for _dr in range(3):
+                resp = await page.goto(link, wait_until="domcontentloaded", timeout=25000)
+                if resp and resp.status in (502, 503, 520, 521, 522, 523, 524):
+                    wait_s = 10 + _dr * 10
+                    log(f"   ⚠️ 상세 페이지 {resp.status} — {wait_s}초 대기 후 재시도 ({_dr+1}/3)")
+                    await asyncio.sleep(wait_s)
+                    continue
+                detail_ok = True
+                break
+            if not detail_ok:
+                log(f"   ❌ 상세 페이지 서버 오류 — 건너뜀")
+                _translate_and_save(prod, log)
+                continue
+            await asyncio.sleep(1.5)
 
             # WorldShopping body-lock 해제 + 쿠키 배너 JS 클릭
             try:
