@@ -874,14 +874,20 @@ async def rescrape_details(log=None):
 def _translate_and_save(product: dict, log_func=None):
     """상품 1건 즉시 번역 + DB 저장 (AI 번역 우선)"""
     try:
+        import re as _re
         from translator import translate_ja_ko, translate_brand
+        _ja = _re.compile(r'[\u3040-\u30FF\u4E00-\u9FFF]')
         if product.get("name") and not product.get("name_ko"):
-            # AI가 최우선으로 번역 (translate_ja_ko 내부에서 처리)
             product["name_ko"] = translate_ja_ko(product["name"])
         if product.get("description") and not product.get("description_ko"):
             product["description_ko"] = translate_ja_ko(product["description"])
         if product.get("brand") and not product.get("brand_ko"):
             product["brand_ko"] = translate_brand(product["brand"])
+        # color(사이즈/컬러), material(소재)도 번역
+        if product.get("color") and _ja.search(product["color"]):
+            product["color"] = translate_ja_ko(product["color"])
+        if product.get("material") and _ja.search(product["material"]):
+            product["material"] = translate_ja_ko(product["material"])
     except Exception as e:
         if log_func:
             log_func(f"      ⚠️ 번역 오류: {e}")
