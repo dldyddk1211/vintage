@@ -4631,7 +4631,7 @@ async function loadOrders() {
         <td style="padding:6px;">${o.brand||''}</td>
         <td style="padding:6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${o.product_name||''}</td>
         <td style="padding:6px;font-family:monospace;font-size:0.72rem;"><a href="${o.product_link || ('{{ url_prefix }}/shop?code='+encodeURIComponent(o.product_code||''))}" target="_blank" style="color:var(--accent);text-decoration:underline;cursor:pointer;" title="${o.product_link?'원본 상품 페이지':'쇼핑몰에서 보기'}">${o.product_code||''}</a></td>
-        <td style="padding:6px;font-weight:700;color:var(--accent);">${o.price|''}${currentRate ? `<br><span style="font-size:0.6rem;color:var(--dim);font-weight:400;">@${currentRate}</span>` : ''}</td>
+        <td style="padding:6px;font-weight:700;color:var(--accent);">${o.price||''}${currentRate ? `<br><span style="font-size:0.6rem;color:var(--dim);font-weight:400;">@${currentRate}</span>` : ''}</td>
         <td style="padding:6px;font-size:0.75rem;color:var(--muted);">${o.cost_krw ? o.cost_krw.toLocaleString()+'원' : ''}<br><span style="font-size:0.65rem;color:var(--dim);">${o.price_jpy ? '¥'+o.price_jpy.toLocaleString() : ''}${currentRate ? ' @'+currentRate : ''}</span></td>
         <td style="padding:6px;font-size:0.75rem;font-weight:700;color:${o.margin_krw > 0 ? 'var(--green)' : 'var(--red)'};">${o.margin_krw ? o.margin_krw.toLocaleString()+'원' : ''}</td>
         <td style="padding:6px;">
