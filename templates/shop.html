@@ -545,6 +545,46 @@
     }
     .notice-form input:focus, .notice-form textarea:focus { border-color:var(--accent); outline:none; }
     .notice-form textarea { resize:vertical; min-height:100px; }
+    /* ── Footer ── */
+    .site-footer {
+      background:#0a0b0f; border-top:1px solid var(--border);
+      padding:32px 24px 24px; color:var(--dim); font-size:0.75rem; line-height:1.8;
+    }
+    .footer-inner { max-width:900px; margin:0 auto; }
+    .footer-nav {
+      display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px;
+      padding-bottom:14px; border-bottom:1px solid var(--border);
+    }
+    .footer-nav a {
+      color:var(--muted); font-size:0.78rem; font-weight:600;
+      text-decoration:none; transition:color .2s;
+    }
+    .footer-nav a:hover { color:var(--accent); }
+    .footer-biz { color:var(--dim); font-size:0.72rem; line-height:1.9; }
+    .footer-biz b { color:var(--muted); font-weight:600; }
+    .footer-notice {
+      margin-top:14px; padding:12px 14px; border-radius:6px;
+      background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06);
+      font-size:0.7rem; color:var(--dim); line-height:1.7;
+    }
+    .footer-copy { margin-top:16px; font-size:0.68rem; color:var(--dim); }
+
+    /* Footer modal */
+    .footer-modal-overlay {
+      display:none; position:fixed; inset:0; z-index:10000;
+      background:rgba(0,0,0,0.75); align-items:center; justify-content:center;
+    }
+    .footer-modal-overlay.show { display:flex; }
+    .footer-modal {
+      background:var(--card); border:1px solid var(--border); border-radius:14px;
+      max-width:640px; width:95%; max-height:80vh; overflow-y:auto; padding:28px;
+    }
+    .footer-modal h2 { font-size:1rem; color:var(--accent); margin-bottom:16px; }
+    .footer-modal-close {
+      position:absolute; top:14px; right:18px; background:none; border:none;
+      color:var(--muted); font-size:1.3rem; cursor:pointer;
+    }
+    .footer-modal p { font-size:0.82rem; color:var(--muted); line-height:1.8; margin-bottom:12px; }
   </style>
 </head>
 <body>
@@ -1771,6 +1811,76 @@ async function deleteReview(id) {
   if (!confirm("이 후기를 삭제하시겠습니까?")) return;
   await fetch(PREFIX + "/shop/api/reviews/" + id, {method: "DELETE"});
   loadReviews();
+}
+</script>
+
+<!-- Footer -->
+<footer class="site-footer" id="site-footer">
+  <div class="footer-inner">
+    <div class="footer-nav">
+      <a href="#" onclick="event.preventDefault();openFooterModal('terms')">이용약관</a>
+      <a href="#" onclick="event.preventDefault();openFooterModal('privacy')" style="color:var(--accent);">개인정보처리방침</a>
+      <a href="#" onclick="event.preventDefault();openFooterModal('guide')">이용안내</a>
+      <a href="http://pf.kakao.com/_geJHxj/chat" target="_blank">고객센터</a>
+    </div>
+    <div class="footer-biz">
+      <b>TheOne Vintage</b> | 대표: 박수현<br>
+      사업자등록번호: 000-00-00000 | 통신판매업신고: 제0000-서울강남-0000호<br>
+      주소: 서울특별시 강남구 테헤란로 000, 0층<br>
+      이메일: support@theone-biz.com | 고객센터: 카카오톡 채널 "TheOne Vintage"
+    </div>
+    <div class="footer-notice">
+      TheOne Vintage는 일본 현지 빈티지 명품의 구매를 대행하는 서비스를 제공하며, 상품의 이미지 및 등록내용에 대하여는 책임지지 않습니다.
+      TheOne Vintage는 관세법 등 관련규정을 준수하고 불법물건을 취급하지 않으며, 분할배송 및 가격허위신고 등 고객의 불법사항 요청에는 협조하지 않습니다.
+      또한 자가사용목적을 제외한 판매용 및 사업용도 등으로 구입한 상품은 사업자 명의로 배송신청을 해야하며, 허위신고로 인해 발생하는 불이익에 대해서 책임지지 않습니다.
+    </div>
+    <div class="footer-copy">
+      &copy; 2026 TheOne Vintage. All rights reserved.
+    </div>
+  </div>
+</footer>
+
+<!-- Footer Modals -->
+<div class="footer-modal-overlay" id="footer-modal" onclick="if(event.target===this)this.classList.remove('show')">
+  <div class="footer-modal" style="position:relative;">
+    <button class="footer-modal-close" onclick="document.getElementById('footer-modal').classList.remove('show')">&times;</button>
+    <div id="footer-modal-content"></div>
+  </div>
+</div>
+
+<script>
+function openFooterModal(type) {
+  const el = document.getElementById("footer-modal-content");
+  const modal = document.getElementById("footer-modal");
+  if (type === 'terms') {
+    el.innerHTML = `
+      <h2>이용약관</h2>
+      <p><b>제1조 (목적)</b><br>이 약관은 TheOne Vintage(이하 "회사")가 제공하는 구매대행 서비스의 이용조건 및 절차, 회사와 이용자의 권리·의무를 규정함을 목적으로 합니다.</p>
+      <p><b>제2조 (서비스의 내용)</b><br>회사는 일본 현지 빈티지 명품의 구매대행, 국제배송 대행 서비스를 제공합니다. 회사는 상품의 중개자로서 상품 자체의 품질, 진품 여부에 대한 보증은 원칙적으로 현지 판매처의 기준을 따릅니다.</p>
+      <p><b>제3조 (이용자의 의무)</b><br>이용자는 관세법 등 관련 법규를 준수하여야 하며, 허위신고·불법 물품 구매 등의 요청을 하여서는 안 됩니다. 자가사용 목적 외 판매용/사업용 구매 시 사업자 명의로 배송 신청해야 합니다.</p>
+      <p><b>제4조 (결제 및 환불)</b><br>결제 완료 후 현지 구매가 진행된 경우 환불이 제한될 수 있습니다. 상품 하자 시 현지 판매처 기준에 따라 처리됩니다.</p>
+      <p><b>제5조 (면책)</b><br>회사는 천재지변, 운송 중 파손, 통관 지연 등 불가항력적 사유로 인한 손해에 대해 책임지지 않습니다.</p>
+    `;
+  } else if (type === 'privacy') {
+    el.innerHTML = `
+      <h2>개인정보처리방침</h2>
+      <p><b>1. 수집하는 개인정보 항목</b><br>회사는 서비스 제공을 위해 다음 정보를 수집합니다: 이름, 연락처, 배송지 주소, 통관고유번호, 사업자번호, 이메일</p>
+      <p><b>2. 개인정보의 이용 목적</b><br>- 구매대행 서비스 제공 및 배송<br>- 통관 절차 진행<br>- 고객 상담 및 불만 처리<br>- 서비스 개선을 위한 통계 분석</p>
+      <p><b>3. 개인정보의 보유 및 이용기간</b><br>회원 탈퇴 시 또는 수집 목적 달성 시 지체 없이 파기합니다. 단, 관계 법령에 의해 보존이 필요한 경우 해당 기간 동안 보관합니다.<br>- 전자상거래 거래기록: 5년<br>- 소비자 불만 처리 기록: 3년</p>
+      <p><b>4. 개인정보의 제3자 제공</b><br>회사는 이용자의 사전 동의 없이 개인정보를 제3자에게 제공하지 않습니다. 다만, 배송 및 통관 업무 수행을 위해 필요한 최소한의 정보를 관련 업체에 제공할 수 있습니다.</p>
+      <p><b>5. 개인정보 보호책임자</b><br>이름: 박수현 | 이메일: support@theone-biz.com</p>
+    `;
+  } else if (type === 'guide') {
+    el.innerHTML = `
+      <h2>이용안내</h2>
+      <p><b>구매대행 절차</b><br>1. 쇼핑몰에서 원하는 상품 선택<br>2. 주문하기 → 마이페이지 주문내역에서 결제<br>3. 결제 확인 후 일본 현지에서 상품 구매 진행<br>4. 상품 입고 → 검수 → 국제배송<br>5. 국내 도착 → 통관 → 배송 완료</p>
+      <p><b>배송 안내</b><br>- 일본 현지 구매: 결제 후 1~3영업일<br>- 국제배송: EMS 기준 3~7영업일<br>- 통관: 1~3영업일 (관부가세 별도)</p>
+      <p><b>관부가세 안내</b><br>- 개인 자가사용 목적: 미화 $150 이하 면세<br>- $150 초과 시 관세 + 부가세 발생<br>- 사업자 구매: 전액 과세 대상</p>
+      <p><b>교환/반품</b><br>- 중고 명품 특성상 교환/반품이 제한됩니다<br>- 상품 설명과 현저히 다른 경우 문의해 주세요</p>
+      <p><b>고객센터</b><br>카카오톡 채널: TheOne Vintage<br>운영시간: 평일 10:00 ~ 18:00</p>
+    `;
+  }
+  modal.classList.add("show");
 }
 </script>
 </body>
