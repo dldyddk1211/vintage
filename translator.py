@@ -89,8 +89,14 @@ def apply_custom_dict(text: str) -> str:
     return text
 
 
+_ai_rate_limited_until = 0  # rate limit 발생 시 대기 시간
+
 def _translate_with_ai(text: str) -> str:
-    """AI API로 일본어 → 한국어 번역 (Gemini/OpenAI/Claude)"""
+    """AI API로 일본어 → 한국어 번역 (Gemini/OpenAI/Claude, rate limit 대응)"""
+    global _ai_rate_limited_until
+    # rate limit 쿨다운 중이면 스킵
+    if time.time() < _ai_rate_limited_until:
+        return ""
     try:
         from post_generator import get_ai_config, _call_gemini, _call_claude, _call_openai
         config = get_ai_config()
@@ -110,12 +116,31 @@ def _translate_with_ai(text: str) -> str:
 
 원문: {text}"""
 
-        if provider == "gemini" and config.get("gemini_key"):
-            return _call_gemini(prompt)
-        elif provider == "claude" and config.get("claude_key"):
-            return _call_claude(prompt)
-        elif provider == "openai" and config.get("openai_key"):
-            return _call_openai(prompt)
+        # 우선순위: Gemini → OpenAI → Claude (rate limit 분산)
+        providers = []
+        if config.get("gemini_key"):
+            providers.append(("gemini", _call_gemini))
+        if config.get("openai_key"):
+            providers.append(("openai", _call_openai))
+        if config.get("claude_key"):
+            providers.append(("claude", _call_claude))
+
+        # 현재 설정된 provider를 맨 앞으로
+        providers.sort(key=lambda x: 0 if x[0] == provider else 1)
+
+        for pname, pfunc in providers:
+            try:
+                result = pfunc(prompt)
+                if result and len(result) > 1:
+                    return result
+            except Exception as e:
+                err = str(e)
+                if "429" in err or "rate_limit" in err.lower() or "RateLimit" in err:
+                    _ai_rate_limited_until = time.time() + 60  # 60초 쿨다운
+                    logger.warning(f"⚠️ {pname} rate limit — 60초 대기, 다음 provider 시도")
+                    continue
+                logger.debug(f"{pname} 번역 실패: {e}")
+                continue
     except Exception as e:
         logger.debug(f"AI 번역 실패: {e}")
     return ""
