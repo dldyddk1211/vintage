@@ -218,6 +218,9 @@ def signup():
 
 # ── 사업자 정보 설정 ──────────────────────────
 _biz_info_path = os.path.join(get_path("db"), "biz_info.json")
+# NAS 경로 접근 불가 시 로컬 폴백
+if not os.path.exists(os.path.dirname(_biz_info_path)):
+    _biz_info_path = os.path.join(os.path.dirname(__file__), "biz_info.json")
 
 def _load_biz_info():
     import json as _json
@@ -231,7 +234,12 @@ def _load_biz_info():
 
 def _save_biz_info(data):
     import json as _json
-    os.makedirs(os.path.dirname(_biz_info_path), exist_ok=True)
+    try:
+        d = os.path.dirname(_biz_info_path)
+        if d:
+            os.makedirs(d, exist_ok=True)
+    except Exception:
+        pass
     with open(_biz_info_path, "w", encoding="utf-8") as f:
         _json.dump(data, f, ensure_ascii=False, indent=2)
 
