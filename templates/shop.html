@@ -1634,22 +1634,7 @@ function clickBrandStrip(name) {
 
 loadShop(1);
 
-// 자동 새로고침: 관리자 + 수집 중일 때만
-{% if is_admin %}
-let _autoRefreshTimer = null;
-function startAutoRefresh() {
-  if (_autoRefreshTimer) return;
-  _autoRefreshTimer = setInterval(async () => {
-    if (document.getElementById("modal").classList.contains("show")) return;
-    try {
-      const r = await fetch(PREFIX + "/status");
-      const d = await r.json();
-      if (d.scraping) loadShop(currentPage);
-    } catch(e) {}
-  }, 60000);
-}
-startAutoRefresh();
-{% endif %}
+// 자동 새로고침 제거 (수동 새로고침만 사용)
 
 // ── Shop Tab 전환 ──
 function switchShopTab(tab) {
