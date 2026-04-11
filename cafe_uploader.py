@@ -942,7 +942,9 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
             pass
 
         # ── 게시판 선택 (드롭다운에서 게시판 선택) ──
-        # URL에 menuId가 포함되어 있으면 게시판이 이미 선택된 상태
+        # 빈티지/스포츠에 따라 게시판 이름 결정
+        target_board_name = "빈티지 구매대행" if source_type == "vintage" else CAFE_MENU_NAME
+        _log(f"   📋 게시판 선택 대상: {target_board_name} (menuId={menu_id})")
         try:
             # 이미 선택된 게시판 이름 확인
             already_selected = False
@@ -956,7 +958,7 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                     el = frame_locator.locator(sel).first
                     if await el.count() > 0:
                         board_text = (await el.inner_text()).strip()
-                        if CAFE_MENU_NAME in board_text:
+                        if target_board_name in board_text:
                             _log(f"   ✅ 게시판 이미 선택됨: {board_text}")
                             already_selected = True
                             break
@@ -989,23 +991,23 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                         menu_item = None
                         # 1) text= 정확 매칭
                         exact_loc = frame_locator.locator(
-                            f"li >> text='{CAFE_MENU_NAME}'"
+                            f"li >> text='{target_board_name}'"
                         ).first
                         if await exact_loc.count() > 0:
                             menu_item = exact_loc
                         else:
                             # 2) role=option 텍스트 매칭
                             opt_loc = frame_locator.locator(
-                                f"[role='option']:has-text('{CAFE_MENU_NAME}')"
+                                f"[role='option']:has-text('{target_board_name}')"
                             ).first
                             if await opt_loc.count() > 0:
                                 menu_item = opt_loc
                             else:
                                 # 3) li 안의 a/span/button 부분 매칭
                                 partial_loc = frame_locator.locator(
-                                    f"li a:has-text('{CAFE_MENU_NAME}'), "
-                                    f"li button:has-text('{CAFE_MENU_NAME}'), "
-                                    f"li span:has-text('{CAFE_MENU_NAME}')"
+                                    f"li a:has-text('{target_board_name}'), "
+                                    f"li button:has-text('{target_board_name}'), "
+                                    f"li span:has-text('{target_board_name}')"
                                 ).first
                                 if await partial_loc.count() > 0:
                                     menu_item = partial_loc
@@ -1045,9 +1047,9 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
 
                     if found:
                         await asyncio.sleep(1)
-                        _log(f"   ✅ 게시판 선택: {CAFE_MENU_NAME}")
+                        _log(f"   ✅ 게시판 선택: {target_board_name}")
                     else:
-                        _log(f"   ⚠️ '{CAFE_MENU_NAME}' 메뉴 항목을 찾지 못했습니다")
+                        _log(f"   ⚠️ '{target_board_name}' 메뉴 항목을 찾지 못했습니다")
                 else:
                     # menuId로 접속했으므로 게시판이 URL에서 이미 지정됨
                     _log(f"   ℹ️ 게시판 선택 버튼 없음 — menuId={CAFE_MENU_ID}로 이미 지정됨")
@@ -1387,7 +1389,7 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
             if board_name:
                 _log(f"   ✅ [검증] 게시판: {board_name}")
             else:
-                _log(f"   ⬚ [검증] 게시판 이름 확인 불가 (설정: {CAFE_MENU_NAME}, menuId: {CAFE_MENU_ID})")
+                _log(f"   ⬚ [검증] 게시판 이름 확인 불가 (설정: {target_board_name}, menuId: {CAFE_MENU_ID})")
         except Exception as e:
             _log(f"   ⚠️ [검증] 게시판 확인 실패: {e}")
 
