@@ -2771,9 +2771,15 @@ def _make_vintage_content(product: dict, price_info: dict) -> str:
 
     shop_url = f"https://vintage.theone-biz.com/shop?code={code}"
 
-    content = f"""★ 사업자 회원 5% 할인! B2B 파트너 모집 중 ★
-TheOne Vintage에서 사업자 등록 시 모든 상품 5% 자동 할인!
-▶ 가입: vintage.theone-biz.com
+    content = f"""🛒 일본 빈티지 쇼핑몰 바로가기
+실시간 재고 확인과 상세 이미지를 확인하세요!
+👉 vintage.theone-biz.com
+
+💼 사업자 회원 5% 할인! B2B 파트너 모집 중!
+사업자 등록 시 모든 상품 5% 자동 할인 적용
+
+📝 구매 문의: 카페 [주문/문의] 게시판 또는 네이버 폼
+👉 naver.me/F2nuqgnV
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -2805,6 +2811,14 @@ TheOne Vintage에서 사업자 등록 시 모든 상품 5% 자동 할인!
 
 🛒 온라인 구매: {shop_url}
 💬 카카오톡 상담: TheOne Vintage 채널
+📝 네이버 폼 문의: naver.me/F2nuqgnV
+
+━━━━━━━━━━━━━━━━━━
+
+⚠️ 구매 전 꼭 확인해 주세요!
+• 빈티지 상품은 세월의 흔적이나 미세한 사용감이 있을 수 있습니다.
+• 쇼핑몰의 상세 사진과 설명을 충분히 확인 후 신중한 구매 부탁드립니다.
+• 현지 주문 완료 후 단순 변심 교환/반품이 어렵습니다.
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -2814,9 +2828,7 @@ TheOne Vintage에서 사업자 등록 시 모든 상품 5% 자동 할인!
 
 💼 사업자 회원 혜택
 ✔ 전 상품 B2C 대비 5% 할인
-✔ AI 상품 분석 기능 제공
 ✔ 대량 구매 추가 상담 가능
-
 ▶ 회원가입: vintage.theone-biz.com"""
 
     return content.strip()
