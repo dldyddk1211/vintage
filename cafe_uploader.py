@@ -737,6 +737,9 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
         # 게시글 제목 & 내용 생성 (Claude API 우선, 실패 시 기본 템플릿)
         from post_generator import generate_cafe_post, get_detail_image_urls
         post = generate_cafe_post(product, price_info)
+        if post is None:
+            _log("❌ AI 제목 생성 실패 — 이 상품 건너뜀")
+            return False, "AI 제목 생성 실패"
         title = post["title"]
         content = post["content"]
         content_intro = post.get("content_intro", "")
@@ -1814,6 +1817,10 @@ async def type_content_to_editor_iframe(page, frame_locator, content: str, log=N
             if i < len(lines) - 1:
                 await target_el.press("Enter")
                 await asyncio.sleep(0.2)
+                # 다음 줄도 빈 줄이면 추가 Enter (2줄 띄우기)
+                if not stripped and i + 1 < len(lines) and not lines[i + 1].strip():
+                    await target_el.press("Enter")
+                    await asyncio.sleep(0.1)
 
             line_num += 1
 
@@ -2714,19 +2721,109 @@ async def upload_image_from_url(page, img_url: str):
 
 def make_post_title(product: dict, price_info: dict) -> str:
     """게시글 제목 생성"""
+    source_type = product.get("source_type", "sports")
     name = product.get("name_ko") or product.get("name", "상품명 없음")
     brand = product.get("brand_ko") or product.get("brand", "")
     price_krw = format_price(price_info["price_final"])
 
-    # 제목 길이 제한 (네이버 카페 제목 최대 100자)
-    title = f"[{brand}] {name}"
-    if len(title) > 80:
-        title = title[:77] + "..."
-    return f"{title} / {price_krw}"
+    if source_type == "vintage":
+        grade = product.get("condition_grade", "")
+        grade_labels = {"NS":"신품","S":"S급","A":"A급","B":"B급","C":"C급","D":"D급"}
+        grade_text = grade_labels.get(grade, "")
+        title = f"[{brand}] {name}"
+        if grade_text:
+            title += f" [{grade_text}]"
+        if len(title) > 75:
+            title = title[:72] + "..."
+        return f"{title} / {price_krw}"
+    else:
+        title = f"[{brand}] {name}"
+        if len(title) > 80:
+            title = title[:77] + "..."
+        return f"{title} / {price_krw}"
 
 
 def make_post_content(product: dict, price_info: dict) -> str:
     """게시글 본문 생성"""
+    source_type = product.get("source_type", "sports")
+    if source_type == "vintage":
+        return _make_vintage_content(product, price_info)
+    return _make_sports_content(product, price_info)
+
+
+def _make_vintage_content(product: dict, price_info: dict) -> str:
+    """빈티지 상품 카페 게시글 본문"""
+    name = product.get("name_ko") or product.get("name", "")
+    brand = product.get("brand", "")
+    code = product.get("product_code", "")
+    grade = product.get("condition_grade", "")
+    grade_labels = {"NS":"신품/미사용","S":"중고S (최상)","A":"중고A (양호)","B":"중고B (사용감 있음)","C":"중고C (사용감 많음)","D":"중고D (난있음)"}
+    grade_text = grade_labels.get(grade, grade)
+    material = product.get("material", "")
+    color = product.get("color", "")
+    desc = product.get("description_ko") or product.get("description", "")
+    price_krw = format_price(price_info["price_final"])
+
+    # B2B 가격 (5% 할인)
+    import math
+    b2b_price = int(math.ceil(price_info["price_final"] * 0.95 / 100) * 100)
+    b2b_text = format_price(b2b_price)
+
+    shop_url = f"https://vintage.theone-biz.com/shop?code={code}"
+
+    content = f"""★ 사업자 회원 5% 할인! B2B 파트너 모집 중 ★
+TheOne Vintage에서 사업자 등록 시 모든 상품 5% 자동 할인!
+▶ 가입: vintage.theone-biz.com
+
+━━━━━━━━━━━━━━━━━━
+
+[{brand}] {name}
+
+상품번호: {code}
+상태: {grade_text}
+
+━━━━━━━━━━━━━━━━━━
+
+✅ 구매대행가: {price_krw}
+💼 사업자 회원가: {b2b_text} (5% 할인)
+
+(관부가세/해외배송비 별도)
+
+━━━━━━━━━━━━━━━━━━"""
+
+    if material:
+        content += f"\n소재: {material}"
+    if color:
+        content += f"\n사이즈: {color}"
+
+    if desc and len(desc) > 10:
+        content += f"\n\n📋 상품 설명:\n{desc[:300]}"
+
+    content += f"""
+
+━━━━━━━━━━━━━━━━━━
+
+🛒 온라인 구매: {shop_url}
+💬 카카오톡 상담: TheOne Vintage 채널
+
+━━━━━━━━━━━━━━━━━━
+
+★ TheOne Vintage ★
+일본 현지 프리미엄 빈티지 구매대행 전문
+✔ 정품 보증 ✔ 안전 배송 ✔ 실시간 환율 적용
+
+💼 사업자 회원 혜택
+✔ 전 상품 B2C 대비 5% 할인
+✔ AI 상품 분석 기능 제공
+✔ 대량 구매 추가 상담 가능
+
+▶ 회원가입: vintage.theone-biz.com"""
+
+    return content.strip()
+
+
+def _make_sports_content(product: dict, price_info: dict) -> str:
+    """스포츠 상품 카페 게시글 본문 (기존)"""
     name = product.get("name_ko") or product.get("name", "상품명 없음")
     name_ja = product.get("name", "")
     brand = product.get("brand_ko") or product.get("brand", "")
