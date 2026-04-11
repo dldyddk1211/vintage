@@ -2431,7 +2431,7 @@ def _shuffle_by_brand(products: list) -> list:
     return result
 
 
-def run_upload(max_upload=None, shuffle_brands=False, checked_codes=None, delay_min=13, delay_max=15):
+def run_upload(max_upload=None, shuffle_brands=False, checked_codes=None, delay_min=13, delay_max=15, source_type="sports"):
     """백그라운드 스레드에서 업로드 실행
 
     우선순위:
@@ -2447,26 +2447,56 @@ def run_upload(max_upload=None, shuffle_brands=False, checked_codes=None, delay_
         push_log("⚠️ 이미 업로드가 진행 중입니다")
         return
 
-    products = load_latest_products()
-    # latest.json 상품은 모두 sports
-    for p in products:
-        if "source_type" not in p:
-            p["source_type"] = "sports"
+    if source_type == "vintage":
+        # 빈티지: DB에서 직접 로드
+        push_log("📦 빈티지 상품 DB에서 로드 중...")
+        products = []
+        try:
+            from product_db import _conn
+            conn = _conn()
+            import json as _json
+            rows = conn.execute("""
+                SELECT * FROM products WHERE source_type='vintage' AND in_stock=1
+                AND (cafe_status IS NULL OR cafe_status='' OR cafe_status='대기')
+                ORDER BY created_at DESC
+            """).fetchall()
+            for r in rows:
+                p = {c: r[c] for c in r.keys()}
+                p["source_type"] = "vintage"
+                p["product_code"] = p.get("internal_code") or p.get("product_code", "")
+                p["name_ko"] = p.get("name_ko") or p.get("name", "")
+                try:
+                    p["detail_images"] = _json.loads(p.get("detail_images") or "[]")
+                except Exception:
+                    p["detail_images"] = []
+                products.append(p)
+            conn.close()
+            push_log(f"📦 빈티지 대기 상품: {len(products)}개 로드 완료")
+        except Exception as e:
+            push_log(f"❌ 빈티지 상품 로드 실패: {e}")
+            _upload_lock.release()
+            return
+    else:
+        products = load_latest_products()
+        # latest.json 상품은 모두 sports
+        for p in products:
+            if "source_type" not in p:
+                p["source_type"] = "sports"
 
-    # 빅데이터 DB 미업로드 상품 병합 (스포츠만)
-    try:
-        from product_db import get_unuploaded_products
-        db_products = get_unuploaded_products(source_type="sports")
-        existing_codes = {p.get("product_code", "") for p in products if p.get("product_code")}
-        for dp in db_products:
-            if dp.get("product_code") and dp["product_code"] not in existing_codes:
-                existing_codes.add(dp["product_code"])
-                products.append(dp)
-    except Exception as e:
-        logger.warning(f"DB 상품 병합 실패: {e}")
+        # 빅데이터 DB 미업로드 상품 병합 (스포츠만)
+        try:
+            from product_db import get_unuploaded_products
+            db_products = get_unuploaded_products(source_type="sports")
+            existing_codes = {p.get("product_code", "") for p in products if p.get("product_code")}
+            for dp in db_products:
+                if dp.get("product_code") and dp["product_code"] not in existing_codes:
+                    existing_codes.add(dp["product_code"])
+                    products.append(dp)
+        except Exception as e:
+            logger.warning(f"DB 상품 병합 실패: {e}")
 
-    # 빈티지 상품 제외
-    products = [p for p in products if (p.get("source_type") or "sports") == "sports"]
+        # 빈티지 상품 제외
+        products = [p for p in products if (p.get("source_type") or "sports") == "sports"]
 
     if not products:
         _upload_lock.release()
@@ -4176,9 +4206,10 @@ def manual_upload():
     checked_codes = data.get("checked_codes")  # 체크된 상품 코드 배열
     delay_min = data.get("delay_min", 8)
     delay_max = data.get("delay_max", 13)
+    source_type = data.get("source_type", "sports")  # vintage 지원
     thread = threading.Thread(
         target=run_upload,
-        args=(max_upload, shuffle_brands, checked_codes, delay_min, delay_max),
+        args=(max_upload, shuffle_brands, checked_codes, delay_min, delay_max, source_type),
         daemon=True,
     )
     thread.start()
