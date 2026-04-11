@@ -5429,8 +5429,9 @@ def reset_all():
     """리셋: 수집 중단 + 브라우저 강제 종료 + 데이터 삭제 + 상태 초기화"""
     import glob, shutil
 
-    # 중단 요청
-    status["stop_requested"] = True
+    # 중단 요청 (진행 중인 작업만)
+    if status["scraping"] or status.get("uploading"):
+        status["stop_requested"] = True
     status["paused"] = False
 
     # 브라우저 강제 종료 (백그라운드 스레드에서 실행)
@@ -5454,23 +5455,10 @@ def reset_all():
     # scraping/uploading 즉시 False로 → 백그라운드 스레드가 루프 탈출
     status["scraping"]  = False
     status["uploading"] = False
+    status["stop_requested"] = False  # 즉시 초기화
+    status["paused"] = False
 
-    # 잠시 후 전체 초기화 (브라우저 종료 완료 대기)
-    import time
-    def delayed_reset():
-        time.sleep(1.5)
-        status.update({
-            "scraping"      : False,
-            "uploading"     : False,
-            "last_scrape"   : None,
-            "last_upload"   : None,
-            "product_count" : 0,
-            "uploaded_count": 0,
-            "paused"        : False,
-            "stop_requested": False,
-        })
-        push_log("✅ 리셋 완료 — 초기 상태로 돌아갔습니다")
-    threading.Thread(target=delayed_reset, daemon=True).start()
+    push_log("✅ 리셋 완료 — 초기 상태로 돌아갔습니다")
 
     push_log("🔄 리셋 완료 — 모든 데이터가 삭제되고 초기화되었습니다")
     return jsonify({"ok": True, "message": "리셋 완료"})
