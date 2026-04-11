@@ -2805,6 +2805,7 @@ def _make_vintage_content(product: dict, price_info: dict) -> str:
 ✅ 구매대행가: {price_krw}
 💼 사업자 회원가: {b2b_text} (5% 할인)
 ※ 관부가세/해외배송비 별도
+※ 구매 시 실시간 환율로 계산되어 구매 금액이 변경될 수 있습니다.
 
 ━━━━━━━━━━━━━━━━━━"""
 
