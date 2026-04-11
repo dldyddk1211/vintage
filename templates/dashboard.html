@@ -428,6 +428,10 @@
         <span class="nav-icon">&#x1f4cb;</span>
         <span>수집 작업리스트</span>
       </div>
+      <div class="nav-item" data-page="vt-cafe-upload" onclick="showPage('vt-cafe-upload');loadVtCafeProducts()">
+        <span class="nav-icon">&#x2615;</span>
+        <span>네이버 카페 업로드</span>
+      </div>
     </div>
 
     <!-- ▶ Brand Auc -->
@@ -1679,6 +1683,81 @@
       </div>
     </div>
 
+    <!-- ═══ 빈티지 카페 업로드 ═══ -->
+    <div class="page-section" id="page-vt-cafe-upload">
+      <div class="panel">
+        <div class="panel-title">
+          <span>&#x2615; 빈티지 → 네이버 카페 업로드</span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn b-green" onclick="vtCafeUpload()" id="btn-vt-cafe-upload" style="padding:6px 14px;font-size:0.78rem;">&#x1f4e4; 업로드 시작</button>
+            <button class="btn b-blue" onclick="vtCafeCheck()" style="padding:6px 14px;font-size:0.78rem;">&#x1f50d; 중복 체크</button>
+            <button class="btn b-red" onclick="vtCafeStop()" style="padding:6px 14px;font-size:0.78rem;display:none;" id="btn-vt-cafe-stop">&#x23f9; 중지</button>
+            <button class="btn b-gray" onclick="loadVtCafeProducts()" style="padding:6px 14px;font-size:0.78rem;">&#x1f504; 새로고침</button>
+          </div>
+        </div>
+
+        <!-- 설정 -->
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+          <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:4px;">
+            <input type="checkbox" id="vt-cafe-shuffle" style="accent-color:var(--accent);"> 브랜드 셔플
+          </label>
+          <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:4px;">
+            최대 <input type="number" id="vt-cafe-max" value="5" min="1" max="50" style="width:50px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:0.8rem;text-align:center;"> 개
+          </label>
+          <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:4px;">
+            대기 <input type="number" id="vt-cafe-delay-min" value="8" min="1" max="30" style="width:40px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:0.8rem;text-align:center;">
+            ~ <input type="number" id="vt-cafe-delay-max" value="13" min="1" max="30" style="width:40px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:0.8rem;text-align:center;"> 분
+          </label>
+          <select id="vt-cafe-brand-filter" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.78rem;">
+            <option value="">전체 브랜드</option>
+          </select>
+        </div>
+
+        <!-- 상태 요약 -->
+        <div style="display:flex;gap:16px;margin-bottom:14px;font-size:0.82rem;">
+          <span style="color:var(--muted);">전체: <b id="vt-cafe-total" style="color:var(--text);">0</b></span>
+          <span style="color:var(--yellow);">대기: <b id="vt-cafe-waiting">0</b></span>
+          <span style="color:var(--green);">완료: <b id="vt-cafe-done">0</b></span>
+          <span style="color:var(--red);">중복: <b id="vt-cafe-dup">0</b></span>
+        </div>
+
+        <!-- 필터 -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+          <input type="text" id="vt-cafe-search" placeholder="상품명/브랜드 검색" oninput="filterVtCafe()"
+            style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:0.82rem;">
+          <select id="vt-cafe-status-filter" onchange="filterVtCafe()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:0.78rem;">
+            <option value="">전체 상태</option>
+            <option value="대기" selected>대기</option>
+            <option value="완료">완료</option>
+            <option value="중복">중복</option>
+          </select>
+          <button class="btn b-gray" onclick="selectAllVtCafe(true)" style="padding:4px 10px;font-size:0.72rem;">전체선택</button>
+          <button class="btn b-gray" onclick="selectAllVtCafe(false)" style="padding:4px 10px;font-size:0.72rem;">해제</button>
+        </div>
+
+        <!-- 상품 목록 -->
+        <div style="overflow-x:auto;">
+          <table class="tbl" style="width:100%;font-size:0.78rem;">
+            <thead>
+              <tr>
+                <th style="width:30px;"><input type="checkbox" onchange="selectAllVtCafe(this.checked)"></th>
+                <th>이미지</th>
+                <th>브랜드</th>
+                <th>상품명</th>
+                <th>가격(¥)</th>
+                <th>판매가</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody id="vt-cafe-tbody">
+              <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="vt-cafe-pagination" style="display:flex;justify-content:center;gap:4px;margin-top:12px;"></div>
+      </div>
+    </div>
+
     <!-- ═══ 빅데이터 관리 ═══ -->
     <div class="page-section" id="page-bigdata">
       <!-- 통계 카드 -->
@@ -2278,6 +2357,7 @@ const pageTitles = {
   "bigdata": "Setting \u203A \uD83D\uDCBE \uBE45\uB370\uC774\uD130 \uAD00\uB9AC",
   "cafe-upload": "Sport \u203A \u2615 \uB124\uC774\uBC84\uCE74\uD398 \uC5C5\uB85C\uB4DC",
   "cafe-schedule": "Sport \u203A \u23F0 \uC790\uB3D9 \uC2A4\uCF00\uC904",
+  "vt-cafe-upload": "Vintage \u203A \u2615 \uB124\uC774\uBC84\uCE74\uD398 \uC5C5\uB85C\uB4DC",
 };
 
 function showPage(page, pushHash) {
@@ -6036,6 +6116,121 @@ loadBrands();
 loadPriceSettings();
 loadVtPriceSettings();
 loadBizInfo();
+
+// ── 빈티지 카페 업로드 ──
+let vtCafeProducts = [];
+let vtCafePage = 1;
+const VT_CAFE_PER_PAGE = 30;
+
+async function loadVtCafeProducts() {
+  try {
+    const res = await fetch(PREFIX + "/shop/api/products?per_page=500&sort=newest");
+    const d = await res.json();
+    vtCafeProducts = (d.products || []).map(p => ({
+      ...p,
+      cafe_status: p.cafe_status || "대기",
+    }));
+    // 브랜드 필터 채우기
+    const brands = [...new Set(vtCafeProducts.map(p => p.brand))].sort();
+    const sel = document.getElementById("vt-cafe-brand-filter");
+    if (sel) {
+      sel.innerHTML = '<option value="">전체 브랜드</option>' + brands.map(b => `<option value="${b}">${b}</option>`).join("");
+    }
+    updateVtCafeSummary();
+    renderVtCafeTable();
+  } catch(e) { console.error("빈티지 카페 로드 실패", e); }
+}
+
+function updateVtCafeSummary() {
+  const el = (id) => document.getElementById(id);
+  el("vt-cafe-total").textContent = vtCafeProducts.length;
+  el("vt-cafe-waiting").textContent = vtCafeProducts.filter(p => p.cafe_status === "대기").length;
+  el("vt-cafe-done").textContent = vtCafeProducts.filter(p => p.cafe_status === "완료").length;
+  el("vt-cafe-dup").textContent = vtCafeProducts.filter(p => p.cafe_status === "중복").length;
+}
+
+function filterVtCafe() { vtCafePage = 1; renderVtCafeTable(); }
+
+function getFilteredVtCafe() {
+  const search = (document.getElementById("vt-cafe-search")?.value || "").toLowerCase();
+  const status = document.getElementById("vt-cafe-status-filter")?.value || "";
+  const brand = document.getElementById("vt-cafe-brand-filter")?.value || "";
+  return vtCafeProducts.filter(p => {
+    if (status && p.cafe_status !== status) return false;
+    if (brand && p.brand !== brand) return false;
+    if (search && !(p.name||"").toLowerCase().includes(search) && !(p.brand||"").toLowerCase().includes(search)) return false;
+    return true;
+  });
+}
+
+function renderVtCafeTable() {
+  const filtered = getFilteredVtCafe();
+  const start = (vtCafePage - 1) * VT_CAFE_PER_PAGE;
+  const page = filtered.slice(start, start + VT_CAFE_PER_PAGE);
+  const tbody = document.getElementById("vt-cafe-tbody");
+  if (!page.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:30px;">상품이 없습니다</td></tr>';
+  } else {
+    const statusColors = {"대기":"var(--yellow)","완료":"var(--green)","중복":"var(--red)"};
+    tbody.innerHTML = page.map(p => `<tr>
+      <td style="text-align:center;"><input type="checkbox" class="vt-cafe-chk" data-code="${p.product_code||''}" ${p.cafe_status==='대기'?'':'disabled'}></td>
+      <td><img src="${p.img_url||''}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'"></td>
+      <td style="font-weight:600;">${p.brand||''}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name||''}</td>
+      <td>¥${(p.price_jpy||0).toLocaleString()}</td>
+      <td style="color:var(--accent);font-weight:700;">${p.price_krw ? p.price_krw.toLocaleString()+'원' : ''}</td>
+      <td style="color:${statusColors[p.cafe_status]||'var(--muted)'};font-weight:600;">${p.cafe_status||'대기'}</td>
+    </tr>`).join("");
+  }
+  // 페이지네이션
+  const totalPages = Math.ceil(filtered.length / VT_CAFE_PER_PAGE);
+  const pgEl = document.getElementById("vt-cafe-pagination");
+  if (totalPages <= 1) { pgEl.innerHTML = ""; return; }
+  let pgHtml = "";
+  for (let i = 1; i <= totalPages; i++) {
+    pgHtml += `<button onclick="vtCafePage=${i};renderVtCafeTable()" class="btn ${i===vtCafePage?'b-blue':'b-gray'}" style="padding:3px 8px;font-size:0.72rem;">${i}</button>`;
+  }
+  pgEl.innerHTML = pgHtml;
+}
+
+function selectAllVtCafe(checked) {
+  document.querySelectorAll(".vt-cafe-chk:not(:disabled)").forEach(c => c.checked = checked);
+}
+
+async function vtCafeUpload() {
+  const checked = [...document.querySelectorAll(".vt-cafe-chk:checked")].map(c => c.dataset.code);
+  if (!checked.length) { alert("업로드할 상품을 선택해주세요"); return; }
+  const max = parseInt(document.getElementById("vt-cafe-max").value) || 5;
+  const shuffle = document.getElementById("vt-cafe-shuffle").checked;
+  const delayMin = parseInt(document.getElementById("vt-cafe-delay-min").value) || 8;
+  const delayMax = parseInt(document.getElementById("vt-cafe-delay-max").value) || 13;
+  if (!confirm(`${checked.length}개 상품 중 최대 ${max}개를 카페에 업로드합니다.\n${shuffle?'브랜드 셔플 ON':'순서대로'}\n대기시간: ${delayMin}~${delayMax}분\n\n진행하시겠습니까?`)) return;
+  try {
+    const r = await fetch(PREFIX + "/run/upload", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({checked_codes: checked.slice(0, max), max_upload: max, shuffle_brands: shuffle, delay_min: delayMin, delay_max: delayMax, source_type: "vintage"})
+    });
+    const d = await r.json();
+    addLog("🚀 " + (d.message || "빈티지 카페 업로드 시작"), "ok");
+  } catch(e) { addLog("❌ 업로드 요청 실패: " + e, "err"); }
+}
+
+async function vtCafeCheck() {
+  const brand = document.getElementById("vt-cafe-brand-filter")?.value || "";
+  try {
+    const r = await fetch(PREFIX + "/run/upload-check", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({source_type: "vintage", brand: brand})
+    });
+    const d = await r.json();
+    addLog("🔍 " + (d.message || "빈티지 중복 체크 시작"), "info");
+  } catch(e) { addLog("❌ 체크 요청 실패: " + e, "err"); }
+}
+
+function vtCafeStop() {
+  fetch(PREFIX + "/run/upload-stop", {method: "POST"}).catch(()=>{});
+  addLog("⏹ 업로드 중지 요청", "info");
+}
 loadSites();
 loadScrapeHistory();
 loadCheckSchedule();
