@@ -1228,12 +1228,14 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
                 import re as _re
                 jp_chars = _re.findall(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]+', body_text)
                 if jp_chars:
-                    # 한자만 있는 경우는 한국어 한자일 수 있으므로 카타카나/히라가나 기준으로 판단
                     kana_chars = _re.findall(r'[\u3040-\u309F\u30A0-\u30FF]+', body_text)
                     if kana_chars:
-                        _log(f"   ❌ [검증] 본문에 일본어(카나) 잔존: {', '.join(kana_chars[:5])}...")
-                        _log(f"   ❌ [검증] 번역되지 않은 일본어가 포함된 게시글입니다 — 등록 중단!")
-                        verify_ok = False
+                        if source_type == "vintage":
+                            _log(f"   ⚠️ [검증] 본문에 일본어 잔존 (빈티지 허용): {', '.join(kana_chars[:5])}...")
+                        else:
+                            _log(f"   ❌ [검증] 본문에 일본어(카나) 잔존: {', '.join(kana_chars[:5])}...")
+                            _log(f"   ❌ [검증] 번역되지 않은 일본어가 포함된 게시글입니다 — 등록 중단!")
+                            verify_ok = False
                     else:
                         _log(f"   ⬚ [검증] 본문 한자 감지 (한국어 한자일 수 있음, 통과)")
                 else:
