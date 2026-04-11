@@ -95,6 +95,7 @@ def admin_required(f):
 # ── 네이버 소셜 로그인 ──────────────────────────
 NAVER_CLIENT_ID = "CH3HgXly53mIV7WYrg_c"
 NAVER_CLIENT_SECRET = "yPrHZRAHNH"
+NAVER_CALLBACK_URL = "https://vintage.theone-biz.com/auth/naver/callback"
 
 
 @app.route(f"{URL_PREFIX}/auth/naver")
@@ -103,7 +104,7 @@ def naver_login():
     import urllib.parse, uuid
     state = uuid.uuid4().hex[:16]
     session["naver_state"] = state
-    callback = request.host_url.rstrip("/") + f"{URL_PREFIX}/auth/naver/callback"
+    callback = NAVER_CALLBACK_URL
     params = urllib.parse.urlencode({
         "response_type": "code",
         "client_id": NAVER_CLIENT_ID,
@@ -121,7 +122,7 @@ def naver_callback():
     if not code or state != session.pop("naver_state", ""):
         return redirect(f"{URL_PREFIX}/login")
 
-    callback = request.host_url.rstrip("/") + f"{URL_PREFIX}/auth/naver/callback"
+    callback = NAVER_CALLBACK_URL
     # 토큰 발급
     try:
         token_res = requests.post("https://nid.naver.com/oauth2.0/token", data={
