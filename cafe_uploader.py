@@ -1389,7 +1389,7 @@ async def upload_single_product(page, product: dict, log=None) -> bool:
             if board_name:
                 _log(f"   ✅ [검증] 게시판: {board_name}")
             else:
-                _log(f"   ⬚ [검증] 게시판 이름 확인 불가 (설정: {target_board_name}, menuId: {CAFE_MENU_ID})")
+                _log(f"   ⬚ [검증] 게시판 이름 확인 불가 (설정: {target_board_name}, menuId: {menu_id}) — 통과")
         except Exception as e:
             _log(f"   ⚠️ [검증] 게시판 확인 실패: {e}")
 
