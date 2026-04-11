@@ -1777,9 +1777,15 @@
       <div class="panel" style="margin-top:16px;">
         <div class="panel-title">
           <span>&#x23F0; 빈티지 자동 업로드 스케줄</span>
-          <button class="btn b-blue" onclick="saveVtCafeSchedule()" style="padding:5px 12px;font-size:0.78rem;">저장</button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;" id="vt-schedule-grid"></div>
+        <p style="font-size:0.8rem;color:var(--muted);margin-bottom:18px;line-height:1.6;">
+          설정한 시간에 자동으로 빈티지 대기 상품을 네이버 카페에 업로드합니다.
+        </p>
+        <div id="vt-schedule-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;"></div>
+        <div style="margin-top:20px;display:flex;gap:10px;align-items:center;">
+          <button class="btn b-green" onclick="saveVtCafeSchedule()" style="padding:10px 24px;">&#x1f4be; 스케줄 저장</button>
+          <span id="vt-sched-save-msg" style="font-size:0.8rem;color:var(--green);display:none;">저장되었습니다!</span>
+        </div>
       </div>
 
       <!-- 빈티지 카페 업로드 로그 -->
@@ -6328,53 +6334,78 @@ async function vtCafeCheck() {
 }
 
 // ── 빈티지 스케줄 ──
+let _vtScheduleSlots = [];
 async function loadVtCafeSchedule() {
   try {
     const r = await fetch(PREFIX + "/vt-cafe-schedule");
     const d = await r.json();
     if (!d.ok) return;
-    const grid = document.getElementById("vt-schedule-grid");
-    grid.innerHTML = d.slots.map((s, i) => `
-      <div style="padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <b style="font-size:0.82rem;">${s.label}</b>
-          <label style="font-size:0.75rem;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer;">
-            <input type="checkbox" class="vt-sch-enabled" data-idx="${i}" ${s.enabled?'checked':''} style="accent-color:var(--accent);"> 활성
-          </label>
-        </div>
-        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px;">
-          <input type="number" class="vt-sch-hour" data-idx="${i}" value="${s.hour}" min="0" max="23" style="width:40px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px;border-radius:4px;font-size:0.8rem;text-align:center;">
-          <span style="color:var(--muted);">:</span>
-          <input type="number" class="vt-sch-min" data-idx="${i}" value="${s.minute}" min="0" max="59" style="width:40px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px;border-radius:4px;font-size:0.8rem;text-align:center;">
-          <span style="font-size:0.7rem;color:var(--dim);">수량</span>
-          <input type="number" class="vt-sch-qty" data-idx="${i}" value="${s.quantity||3}" min="1" max="20" style="width:35px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px;border-radius:4px;font-size:0.8rem;text-align:center;">
-        </div>
-        ${s.next_run ? `<div style="font-size:0.68rem;color:var(--accent);">다음: ${s.next_run}</div>` : '<div style="font-size:0.68rem;color:var(--dim);">비활성</div>'}
-      </div>
-    `).join("");
+    _vtScheduleSlots = d.slots;
+    renderVtScheduleSlots();
   } catch(e) {}
 }
 
+function renderVtScheduleSlots() {
+  const container = document.getElementById("vt-schedule-grid");
+  if (!container) return;
+  const colorMap = { vt_morning: "#4CAF50", vt_afternoon: "#2196F3", vt_evening: "#FF9800", vt_night: "#9C27B0" };
+  const iconMap  = { vt_morning: "🌅", vt_afternoon: "☀️", vt_evening: "🌇", vt_night: "🌙" };
+  container.innerHTML = _vtScheduleSlots.map((slot, i) => {
+    const color = colorMap[slot.id] || "#666";
+    const icon  = iconMap[slot.id]  || "⏰";
+    return `
+      <div style="background:#0d0d0a;border:1px solid ${slot.enabled ? color : 'var(--border)'};border-radius:12px;padding:18px;transition:border-color 0.3s;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:1.3rem;">${icon}</span>
+            <span style="font-weight:600;font-size:0.95rem;">${slot.label}</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" class="vt-sch-enabled" data-idx="${i}" ${slot.enabled?"checked":""}
+              onchange="_vtScheduleSlots[${i}].enabled=this.checked;renderVtScheduleSlots();"
+              style="width:18px;height:18px;accent-color:${color};">
+            <span style="font-size:0.8rem;color:${slot.enabled?color:'var(--muted)'};">${slot.enabled?"활성":"비활성"}</span>
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">시간</label>
+            <div style="display:flex;gap:4px;">
+              <select class="vt-sch-hour" data-idx="${i}" onchange="_vtScheduleSlots[${i}].hour=parseInt(this.value)"
+                style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:0.82rem;flex:1;">
+                ${Array.from({length:24},(_,h)=>`<option value="${h}" ${slot.hour===h?"selected":""}>${String(h).padStart(2,"0")}시</option>`).join("")}
+              </select>
+              <select class="vt-sch-min" data-idx="${i}" onchange="_vtScheduleSlots[${i}].minute=parseInt(this.value)"
+                style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:0.82rem;width:70px;">
+                ${[0,10,15,20,30,40,45,50].map(m=>`<option value="${m}" ${slot.minute===m?"selected":""}>${String(m).padStart(2,"0")}분</option>`).join("")}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">수량</label>
+            <input type="number" class="vt-sch-qty" data-idx="${i}" value="${slot.quantity||3}" min="1" max="20"
+              onchange="_vtScheduleSlots[${i}].quantity=parseInt(this.value)||3"
+              style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82rem;width:100%;">
+          </div>
+        </div>
+        ${slot.next_run ? `<div style="margin-top:10px;font-size:0.75rem;color:var(--accent);">⏰ 다음 실행: ${slot.next_run}</div>` : ''}
+      </div>`;
+  }).join("");
+}
+
 async function saveVtCafeSchedule() {
-  const slots = [];
-  const ids = ["vt_morning","vt_afternoon","vt_evening","vt_night"];
-  const labels = ["아침","점심","저녁","새벽"];
-  for (let i = 0; i < 4; i++) {
-    slots.push({
-      id: ids[i], label: labels[i],
-      hour: parseInt(document.querySelector(`.vt-sch-hour[data-idx="${i}"]`)?.value || 0),
-      minute: parseInt(document.querySelector(`.vt-sch-min[data-idx="${i}"]`)?.value || 0),
-      quantity: parseInt(document.querySelector(`.vt-sch-qty[data-idx="${i}"]`)?.value || 3),
-      enabled: document.querySelector(`.vt-sch-enabled[data-idx="${i}"]`)?.checked || false,
-      brand: "ALL",
-    });
-  }
   try {
     const r = await fetch(PREFIX + "/vt-cafe-schedule", {
-      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({slots})
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({slots: _vtScheduleSlots})
     });
     const d = await r.json();
-    if (d.ok) { vtCafeLog("📅 빈티지 스케줄 저장 완료", "ok"); loadVtCafeSchedule(); }
+    if (d.ok) {
+      vtCafeLog("📅 빈티지 스케줄 저장 완료", "ok");
+      const msg = document.getElementById("vt-sched-save-msg");
+      if (msg) { msg.style.display = ""; setTimeout(() => msg.style.display = "none", 3000); }
+      loadVtCafeSchedule();
+    }
   } catch(e) { vtCafeLog("❌ 스케줄 저장 실패", "err"); }
 }
 
