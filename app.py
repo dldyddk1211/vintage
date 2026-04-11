@@ -15,7 +15,7 @@ from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from functools import wraps
-from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for, send_from_directory
+from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for, send_from_directory, make_response
 import queue
 
 from config import (
@@ -3104,7 +3104,7 @@ def dashboard_page():
     """메인 대시보드 페이지"""
     products = load_latest_products()
     rate = get_jpy_to_krw_rate()
-    return render_template(
+    resp = make_response(render_template(
         "dashboard.html",
         status=status,
         rate=rate,
@@ -3113,7 +3113,11 @@ def dashboard_page():
         url_prefix=URL_PREFIX,
         env=APP_ENV,
         version=APP_VERSION,
-    )
+    ))
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.route(f"{URL_PREFIX}/products")
