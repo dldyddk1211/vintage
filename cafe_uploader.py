@@ -2778,8 +2778,7 @@ def _make_vintage_content(product: dict, price_info: dict) -> str:
 💼 사업자 회원 5% 할인! B2B 파트너 모집 중!
 사업자 등록 시 모든 상품 5% 자동 할인 적용
 
-📝 구매 문의: 카페 [주문/문의] 게시판 또는 네이버 폼
-👉 naver.me/F2nuqgnV
+📝 구매 문의: 카페 [주문/문의] 게시판
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -2811,7 +2810,6 @@ def _make_vintage_content(product: dict, price_info: dict) -> str:
 
 🛒 온라인 구매: {shop_url}
 💬 카카오톡 상담: TheOne Vintage 채널
-📝 네이버 폼 문의: naver.me/F2nuqgnV
 
 ━━━━━━━━━━━━━━━━━━
 
