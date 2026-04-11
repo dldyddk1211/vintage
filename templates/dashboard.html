@@ -5794,17 +5794,20 @@ async function loadSchedule() {
   } catch(e) { console.error("스케줄 로드 실패:", e); }
 }
 
-function renderScheduleSlots() {
+async function renderScheduleSlots() {
   const container = document.getElementById("schedule-slots");
   if (!container) return;
 
-  // 브랜드 목록 가져오기
-  fetch(PREFIX + "/products/brands").then(r => r.json()).then(bd => {
-    const brands = bd.brands || [];
-    container.innerHTML = _scheduleSlots.map((slot, i) => {
-      const brandOpts = brands.map(b =>
-        `<option value="${b}" ${slot.brand === b ? "selected" : ""}>${b}</option>`
-      ).join("");
+  // 브랜드 목록 가져오기 (스포츠 + 빈티지 분류)
+  const [sportRes, vtRes] = await Promise.all([
+    fetch(PREFIX + "/products/brands").then(r=>r.json()).catch(()=>({})),
+    fetch(PREFIX + "/api/vintage-cafe-products").then(r=>r.json()).catch(()=>({})),
+  ]);
+  const sportBrands = (sportRes.brands || []).filter(b => b);
+  const vtBrands = (vtRes.brands || []).filter(b => b);
+  container.innerHTML = _scheduleSlots.map((slot, i) => {
+      const brandOpts = `<optgroup label="── 스포츠 ──">${sportBrands.map(b=>`<option value="${b}" ${slot.brand===b?"selected":""}>${b}</option>`).join("")}</optgroup>` +
+        `<optgroup label="── 빈티지 ──">${vtBrands.map(b=>`<option value="${b}" ${slot.brand===b?"selected":""}>${b}</option>`).join("")}</optgroup>`;
 
       const colorMap = { morning: "#4CAF50", afternoon: "#2196F3", evening: "#FF9800", night: "#9C27B0" };
       const iconMap  = { morning: "&#x1F305;", afternoon: "&#x2600;&#xFE0F;", evening: "&#x1F307;", night: "&#x1F319;" };
