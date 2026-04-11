@@ -132,6 +132,7 @@ def naver_callback():
         return redirect(f"{URL_PREFIX}/login")
 
     callback = NAVER_CALLBACK_URL
+    logger.info(f"🔵 네이버 콜백 수신: code={code[:10]}... state={state}")
     # 토큰 발급
     try:
         token_res = requests.post("https://nid.naver.com/oauth2.0/token", data={
@@ -143,6 +144,7 @@ def naver_callback():
             "redirect_uri": callback,
         }, timeout=10)
         token = token_res.json()
+        logger.info(f"🔵 네이버 토큰 응답: {token}")
         access_token = token.get("access_token")
         if not access_token:
             logger.warning(f"네이버 토큰 실패: {token}")
@@ -151,7 +153,9 @@ def naver_callback():
         # 프로필 조회
         profile_res = requests.get("https://openapi.naver.com/v1/nid/me",
                                    headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
-        profile = profile_res.json().get("response", {})
+        profile_data = profile_res.json()
+        logger.info(f"🔵 네이버 프로필 응답: {profile_data}")
+        profile = profile_data.get("response", {})
         naver_id = profile.get("id", "")
         name = profile.get("name", "") or profile.get("nickname", "")
         email = profile.get("email", "")
@@ -169,7 +173,7 @@ def naver_callback():
             try:
                 from user_db import _conn as _uc
                 conn = _uc()
-                conn.execute("""INSERT OR IGNORE INTO users (username, password, name, phone, status, level)
+                conn.execute("""INSERT OR IGNORE INTO users (username, password_hash, name, phone, status, level)
                                 VALUES (?,?,?,?,?,?)""",
                              (social_username, "", name, phone, "approved", "b2c"))
                 conn.commit()
