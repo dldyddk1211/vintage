@@ -62,7 +62,7 @@ TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")     # 개인 또는 
 CAFE_URL       = "https://cafe.naver.com/sohosupport"
 CAFE_ID        = "28938799"        # 카페 고유 ID
 CAFE_MENU_ID   = "100"            # 게시판 메뉴 ID
-CAFE_MENU_NAME = "스포츠 브랜드"    # 게시판 이름
+CAFE_MENU_NAME = "브랜드 구매대행"    # 게시판 이름
 CAFE_MY_NICKNAME = "서포트센터장"  # 내 닉네임 (내 글은 알림 제외)
 
 # ── 네이버 블로그 설정 ─────────────────────
