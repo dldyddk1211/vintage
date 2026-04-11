@@ -1180,8 +1180,8 @@ function renderSiteList(sites) {
 
 function renderBrandList(brands) {
   const el = document.getElementById("brand-list");
-  const mainBrands = brands.filter(b => b.count > 10);
-  const etcBrands = brands.filter(b => b.count <= 10);
+  const mainBrands = brands.filter(b => b.count > 30);
+  const etcBrands = brands.filter(b => b.count <= 30);
   const etcTotal = etcBrands.reduce((s, b) => s + b.count, 0);
 
   let html = `<li class="filter-item ${!filters.brand?'active':''}" data-val="" onclick="selectFilter('brand',this)"><span>전체</span></li>`;
