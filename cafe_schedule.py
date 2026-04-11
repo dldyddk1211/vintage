@@ -44,6 +44,37 @@ def save_schedule(slots: list):
     logger.info(f"📅 스케줄 설정 저장됨: {_SCHEDULE_PATH}")
 
 
+# ── 빈티지 카페 업로드 자동 스케줄 ──────────────────
+
+_VT_SCHEDULE_PATH = os.path.join(get_path("db"), "vt_cafe_schedule.json")
+
+VT_DEFAULT_SLOTS = [
+    {"id": "vt_morning",   "label": "아침",  "hour": 8,  "minute": 0, "enabled": False, "brand": "ALL", "quantity": 3},
+    {"id": "vt_afternoon", "label": "점심",  "hour": 13, "minute": 0, "enabled": False, "brand": "ALL", "quantity": 3},
+    {"id": "vt_evening",   "label": "저녁",  "hour": 19, "minute": 0, "enabled": False, "brand": "ALL", "quantity": 3},
+    {"id": "vt_night",     "label": "새벽",  "hour": 3,  "minute": 0, "enabled": False, "brand": "ALL", "quantity": 2},
+]
+
+
+def load_vt_schedule() -> list:
+    if os.path.exists(_VT_SCHEDULE_PATH):
+        try:
+            with open(_VT_SCHEDULE_PATH, "r", encoding="utf-8") as f:
+                slots = json.load(f)
+                if isinstance(slots, list) and len(slots) == 4:
+                    return slots
+        except Exception:
+            pass
+    return [dict(s) for s in VT_DEFAULT_SLOTS]
+
+
+def save_vt_schedule(slots: list):
+    os.makedirs(os.path.dirname(_VT_SCHEDULE_PATH), exist_ok=True)
+    with open(_VT_SCHEDULE_PATH, "w", encoding="utf-8") as f:
+        json.dump(slots, f, ensure_ascii=False, indent=2)
+    logger.info(f"📅 빈티지 스케줄 저장됨")
+
+
 # ── 업로드 체크 자동 확인 스케줄 ──────────────────
 
 _CHECK_SCHEDULE_PATH = os.path.join(get_path("db"), "check_schedule.json")

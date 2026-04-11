@@ -2813,6 +2813,36 @@ def _register_schedule_jobs():
             logger.info(f"📅 스케줄 등록: {slot['label']} {slot['hour']:02d}:{slot['minute']:02d} (브랜드={slot.get('brand','ALL')}, 수량={slot.get('quantity',5)})")
 
 
+def _register_vt_schedule_jobs():
+    """빈티지 카페 업로드 스케줄 잡 등록/갱신"""
+    from cafe_schedule import load_vt_schedule
+    slots = load_vt_schedule()
+    for slot in slots:
+        job_id = f"vt_cafe_{slot['id']}"
+        if scheduler.get_job(job_id):
+            scheduler.remove_job(job_id)
+        if slot.get("enabled"):
+            scheduler.add_job(
+                func=run_vt_scheduled_upload,
+                trigger="cron",
+                hour=slot["hour"],
+                minute=slot["minute"],
+                id=job_id,
+                name=f"빈티지 카페 [{slot['label']}] {slot['hour']:02d}:{slot['minute']:02d}",
+                args=[slot["id"], slot.get("brand", "ALL"), slot.get("quantity", 3)],
+                replace_existing=True,
+            )
+            logger.info(f"📅 빈티지 스케줄 등록: {slot['label']} {slot['hour']:02d}:{slot['minute']:02d}")
+
+
+def run_vt_scheduled_upload(slot_id: str, brand: str, quantity: int):
+    """빈티지 자동 카페 업로드"""
+    push_log(f"⏰ [빈티지/{slot_id}] 자동 업로드 시작 — {brand} {quantity}개")
+    run_upload(max_upload=quantity, shuffle_brands=(brand == "ALL"),
+               checked_codes=None, delay_min=8, delay_max=13, source_type="vintage")
+    push_log(f"⏰ [빈티지/{slot_id}] 자동 업로드 완료")
+
+
 def _register_check_schedule_job():
     """업로드 체크 자동 확인 스케줄 잡 등록/갱신"""
     job_id = "upload_check_auto"
@@ -2993,6 +3023,7 @@ def _start_scheduler_once():
     if _scheduler_started:
         return
     _register_schedule_jobs()
+    _register_vt_schedule_jobs()
     _register_check_schedule_job()
     _register_task_schedule_jobs()
     # AI API 상태 모니터링 (5분 간격)
@@ -4101,6 +4132,35 @@ def api_save_schedule():
     save_schedule(slots)
     _register_schedule_jobs()
     push_log("📅 카페 업로드 스케줄 설정이 저장되었습니다")
+    return jsonify({"ok": True})
+
+
+# ── 빈티지 카페 스케줄 API ────────────────────
+
+@app.route(f"{URL_PREFIX}/vt-cafe-schedule", methods=["GET"])
+@admin_required
+def api_get_vt_schedule():
+    from cafe_schedule import load_vt_schedule
+    slots = load_vt_schedule()
+    for slot in slots:
+        job_id = f"vt_cafe_{slot['id']}"
+        job = scheduler.get_job(job_id)
+        slot["registered"] = job is not None
+        slot["next_run"] = job.next_run_time.strftime("%Y-%m-%d %H:%M") if job and job.next_run_time else None
+    return jsonify({"ok": True, "slots": slots})
+
+
+@app.route(f"{URL_PREFIX}/vt-cafe-schedule", methods=["POST"])
+@admin_required
+def api_save_vt_schedule():
+    from cafe_schedule import save_vt_schedule
+    data = request.json or {}
+    slots = data.get("slots", [])
+    if not isinstance(slots, list) or len(slots) != 4:
+        return jsonify({"ok": False, "error": "4개 슬롯 필요"}), 400
+    save_vt_schedule(slots)
+    _register_vt_schedule_jobs()
+    push_log("📅 빈티지 카페 스케줄 설정이 저장되었습니다")
     return jsonify({"ok": True})
 
 

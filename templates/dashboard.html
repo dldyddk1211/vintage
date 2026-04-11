@@ -1773,6 +1773,15 @@
         <div id="vt-cafe-pagination" style="display:flex;justify-content:center;gap:4px;margin-top:12px;"></div>
       </div>
 
+      <!-- 빈티지 카페 자동 스케줄 -->
+      <div class="panel" style="margin-top:16px;">
+        <div class="panel-title">
+          <span>&#x23F0; 빈티지 자동 업로드 스케줄</span>
+          <button class="btn b-blue" onclick="saveVtCafeSchedule()" style="padding:5px 12px;font-size:0.78rem;">저장</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;" id="vt-schedule-grid"></div>
+      </div>
+
       <!-- 빈티지 카페 업로드 로그 -->
       <div class="panel" style="margin-top:16px;">
         <div class="panel-title">
@@ -6181,6 +6190,7 @@ async function loadVtCafeProducts() {
     addLog(`☕ 빈티지 카페 상품 로드: ${vtCafeProducts.length}개 (B2C 가격)`, "info");
     updateVtCafeSummary();
     renderVtCafeTable();
+    loadVtCafeSchedule();
   } catch(e) { console.error("빈티지 카페 로드 실패", e); tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:30px;">로드 실패: ' + e + '</td></tr>'; }
 }
 
@@ -6315,6 +6325,57 @@ async function vtCafeCheck() {
     const d = await r.json();
     addLog("🔍 " + (d.message || "빈티지 중복 체크 시작"), "info");
   } catch(e) { addLog("❌ 체크 요청 실패: " + e, "err"); }
+}
+
+// ── 빈티지 스케줄 ──
+async function loadVtCafeSchedule() {
+  try {
+    const r = await fetch(PREFIX + "/vt-cafe-schedule");
+    const d = await r.json();
+    if (!d.ok) return;
+    const grid = document.getElementById("vt-schedule-grid");
+    grid.innerHTML = d.slots.map((s, i) => `
+      <div style="padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <b style="font-size:0.82rem;">${s.label}</b>
+          <label style="font-size:0.75rem;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" class="vt-sch-enabled" data-idx="${i}" ${s.enabled?'checked':''} style="accent-color:var(--accent);"> 활성
+          </label>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px;">
+          <input type="number" class="vt-sch-hour" data-idx="${i}" value="${s.hour}" min="0" max="23" style="width:40px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px;border-radius:4px;font-size:0.8rem;text-align:center;">
+          <span style="color:var(--muted);">:</span>
+          <input type="number" class="vt-sch-min" data-idx="${i}" value="${s.minute}" min="0" max="59" style="width:40px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px;border-radius:4px;font-size:0.8rem;text-align:center;">
+          <span style="font-size:0.7rem;color:var(--dim);">수량</span>
+          <input type="number" class="vt-sch-qty" data-idx="${i}" value="${s.quantity||3}" min="1" max="20" style="width:35px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px;border-radius:4px;font-size:0.8rem;text-align:center;">
+        </div>
+        ${s.next_run ? `<div style="font-size:0.68rem;color:var(--accent);">다음: ${s.next_run}</div>` : '<div style="font-size:0.68rem;color:var(--dim);">비활성</div>'}
+      </div>
+    `).join("");
+  } catch(e) {}
+}
+
+async function saveVtCafeSchedule() {
+  const slots = [];
+  const ids = ["vt_morning","vt_afternoon","vt_evening","vt_night"];
+  const labels = ["아침","점심","저녁","새벽"];
+  for (let i = 0; i < 4; i++) {
+    slots.push({
+      id: ids[i], label: labels[i],
+      hour: parseInt(document.querySelector(`.vt-sch-hour[data-idx="${i}"]`)?.value || 0),
+      minute: parseInt(document.querySelector(`.vt-sch-min[data-idx="${i}"]`)?.value || 0),
+      quantity: parseInt(document.querySelector(`.vt-sch-qty[data-idx="${i}"]`)?.value || 3),
+      enabled: document.querySelector(`.vt-sch-enabled[data-idx="${i}"]`)?.checked || false,
+      brand: "ALL",
+    });
+  }
+  try {
+    const r = await fetch(PREFIX + "/vt-cafe-schedule", {
+      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({slots})
+    });
+    const d = await r.json();
+    if (d.ok) { vtCafeLog("📅 빈티지 스케줄 저장 완료", "ok"); loadVtCafeSchedule(); }
+  } catch(e) { vtCafeLog("❌ 스케줄 저장 실패", "err"); }
 }
 
 function vtCafeStop() {
