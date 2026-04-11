@@ -1712,8 +1712,20 @@
             대기 <input type="number" id="vt-cafe-delay-min" value="8" min="1" max="30" style="width:40px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:0.8rem;text-align:center;">
             ~ <input type="number" id="vt-cafe-delay-max" value="13" min="1" max="30" style="width:40px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:0.8rem;text-align:center;"> 분
           </label>
-          <select id="vt-cafe-brand-filter" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.78rem;">
+          <select id="vt-cafe-brand-filter" onchange="filterVtCafe()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.78rem;">
             <option value="">전체 브랜드</option>
+          </select>
+          <select id="vt-cafe-cat-filter" onchange="filterVtCafe()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.78rem;">
+            <option value="">전체 카테고리</option>
+          </select>
+          <select id="vt-cafe-grade-filter" onchange="filterVtCafe()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.78rem;">
+            <option value="">전체 상태</option>
+            <option value="NS">신품/미사용</option>
+            <option value="S">중고 S</option>
+            <option value="A">중고 A</option>
+            <option value="B">중고 B</option>
+            <option value="C">중고 C</option>
+            <option value="D">중고 D</option>
           </select>
         </div>
 
@@ -6138,7 +6150,24 @@ async function loadVtCafeProducts() {
     const brands = d.brands || [];
     const sel = document.getElementById("vt-cafe-brand-filter");
     if (sel) {
-      sel.innerHTML = '<option value="">전체 브랜드 (' + brands.length + ')</option>' + brands.map(b => `<option value="${b}">${b}</option>`).join("");
+      sel.innerHTML = '<option value="">전체 브랜드 (' + brands.length + ')</option>' + brands.map(b => {
+        const cnt = vtCafeProducts.filter(p => p.brand === b).length;
+        return `<option value="${b}">${b} (${cnt})</option>`;
+      }).join("");
+    }
+    // 카테고리 필터 채우기 (상품명에서 추출)
+    const catMap = {"숄더백":"숄더백","토트백":"토트백","핸드백":"핸드백","백팩":"백팩","클러치":"클러치","지갑":"지갑","벨트":"벨트","목걸이":"목걸이","팔찌":"팔찌","반지":"반지","선글라스":"선글라스","모자":"모자","머플러":"머플러","자켓":"자켓","코트":"코트","셔츠":"셔츠","니트":"니트","팬츠":"팬츠","스커트":"스커트","원피스":"원피스","파우치":"파우치","키케이스":"키케이스","시계":"시계",
+      "ショルダーバッグ":"숄더백","トートバッグ":"토트백","ハンドバッグ":"핸드백","リュック":"백팩","クラッチ":"클러치","財布":"지갑","ベルト":"벨트","サングラス":"선글라스","帽子":"모자","ジャケット":"자켓","コート":"코트","パンツ":"팬츠","スカート":"스커트","ワンピース":"원피스","ポーチ":"파우치","ボストンバッグ":"보스턴백"};
+    const catCounts = {};
+    vtCafeProducts.forEach(p => {
+      const name = p.name || "";
+      for (const [key, label] of Object.entries(catMap)) {
+        if (name.includes(key)) { catCounts[label] = (catCounts[label]||0) + 1; break; }
+      }
+    });
+    const catSel = document.getElementById("vt-cafe-cat-filter");
+    if (catSel) {
+      catSel.innerHTML = '<option value="">전체 카테고리</option>' + Object.entries(catCounts).sort((a,b) => b[1]-a[1]).map(([cat, cnt]) => `<option value="${cat}">${cat} (${cnt})</option>`).join("");
     }
     addLog(`☕ 빈티지 카페 상품 로드: ${vtCafeProducts.length}개 (B2C 가격)`, "info");
     updateVtCafeSummary();
@@ -6158,11 +6187,15 @@ function filterVtCafe() { vtCafePage = 1; renderVtCafeTable(); }
 
 function getFilteredVtCafe() {
   const search = (document.getElementById("vt-cafe-search")?.value || "").toLowerCase();
-  const status = document.getElementById("vt-cafe-status-filter")?.value || "";
+  const statusF = document.getElementById("vt-cafe-status-filter")?.value || "";
   const brand = document.getElementById("vt-cafe-brand-filter")?.value || "";
+  const cat = document.getElementById("vt-cafe-cat-filter")?.value || "";
+  const grade = document.getElementById("vt-cafe-grade-filter")?.value || "";
   return vtCafeProducts.filter(p => {
-    if (status && p.cafe_status !== status) return false;
+    if (statusF && p.cafe_status !== statusF) return false;
     if (brand && p.brand !== brand) return false;
+    if (grade && p.condition_grade !== grade) return false;
+    if (cat && !(p.name||"").includes(cat)) return false;
     if (search && !(p.name||"").toLowerCase().includes(search) && !(p.brand||"").toLowerCase().includes(search)) return false;
     return true;
   });
