@@ -3182,10 +3182,9 @@ def _start_scheduler_once():
     logger.info(f"📅 스케줄러 초기화 ({env_label})")
 
     if is_windows:
-        # ── 윈도우 전용: 수집 + 스포츠 카페 업로드 + NAS 내보내기 ──
+        # ── 윈도우 전용: 수집 + NAS 내보내기 ──
         _register_task_schedule_jobs()     # 자동 수집/체크/콤보
         _register_check_schedule_job()     # 업로드 체크
-        _register_schedule_jobs()          # 스포츠 카페 업로드
         # 오류 작업 자동 재시도 (매일 23:00)
         scheduler.add_job(
             func=_retry_failed_tasks_job,
@@ -3204,10 +3203,11 @@ def _start_scheduler_once():
             logger.info("📤 [Windows] NAS 내보내기 등록 (매시 정각)")
         except NameError:
             pass
-        logger.info("🔄 [Windows] 수집 + 스포츠 카페 업로드 스케줄 등록 완료")
+        logger.info("🔄 [Windows] 수집 스케줄 등록 완료")
 
     if is_mac:
-        # ── 맥 서버 전용: 빈티지 업로드/기사/동기화 ──
+        # ── 맥 서버 전용: 카페 업로드(스포츠+빈티지)/기사/동기화 ──
+        _register_schedule_jobs()          # 스포츠 카페 업로드
         _register_vt_schedule_jobs()       # 빈티지 카페 업로드
         try:
             _register_fb_schedule_jobs()   # 자유게시판 기사 자동 생성/업로드
