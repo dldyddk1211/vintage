@@ -3167,64 +3167,73 @@ def _check_ai_api_job():
 
 
 def _start_scheduler_once():
-    """스케줄러를 한 번만 시작 (중복 방지)"""
+    """스케줄러를 한 번만 시작 (중복 방지)
+    Mac(서버): 카페/블로그/기사 업로드 + NAS 동기화 + 환율 (수집 최소화)
+    Windows(수집PC): 수집 스케줄 + 오류 재시도
+    """
     global _scheduler_started
     if _scheduler_started:
         return
-    _register_schedule_jobs()
-    _register_vt_schedule_jobs()
-    _register_check_schedule_job()
-    _register_task_schedule_jobs()
-    try:
-        _register_fb_schedule_jobs()
-    except NameError:
-        pass
-    # NAS 상품 동기화 (매시 30분)
-    try:
+
+    import platform
+    is_mac = platform.system() == "Darwin"
+    is_windows = platform.system() == "Windows"
+    env_label = "Mac 서버" if is_mac else "Windows 수집PC"
+    logger.info(f"📅 스케줄러 초기화 ({env_label})")
+
+    if is_windows:
+        # ── 윈도우 전용: 수집 관련 스케줄 ──
+        _register_task_schedule_jobs()     # 자동 수집/체크/콤보
+        _register_check_schedule_job()     # 업로드 체크
+        # 오류 작업 자동 재시도 (매일 23:00)
         scheduler.add_job(
-            func=sync_products_from_nas,
-            trigger="cron", minute=30,
-            id="nas_sync", replace_existing=True,
-            name="NAS 상품 동기화 (매시 30분)",
+            func=_retry_failed_tasks_job,
+            trigger="cron", hour=23, minute=0,
+            id="retry_failed_tasks", replace_existing=True,
+            name="오류 작업 자동 재시도 (23:00)",
         )
-        logger.info("📂 NAS 동기화 스케줄 등록 (매시 30분)")
-    except NameError:
-        pass
-    # AI API 상태 모니터링 (5분 간격)
-    scheduler.add_job(
-        func=_check_ai_api_job,
-        trigger="interval",
-        minutes=5,
-        id="ai_api_monitor",
-        name="AI API 상태 모니터링 (5분)",
-        replace_existing=True,
-    )
-    logger.info("📡 AI API 모니터링 등록 (5분 간격)")
-    # 환율 자정 갱신
+        logger.info("🔄 [Windows] 수집 스케줄 등록 완료")
+
+    if is_mac:
+        # ── 맥 서버 전용: 업로드/기사/동기화 ──
+        _register_schedule_jobs()          # 스포츠 카페 업로드
+        _register_vt_schedule_jobs()       # 빈티지 카페 업로드
+        try:
+            _register_fb_schedule_jobs()   # 자유게시판 기사 자동 생성/업로드
+        except NameError:
+            pass
+        # NAS 상품 동기화 (매시 30분)
+        try:
+            scheduler.add_job(
+                func=sync_products_from_nas,
+                trigger="cron", minute=30,
+                id="nas_sync", replace_existing=True,
+                name="NAS 상품 동기화 (매시 30분)",
+            )
+            logger.info("📂 [Mac] NAS 동기화 스케줄 등록 (매시 30분)")
+        except NameError:
+            pass
+        # AI API 상태 모니터링 (5분 간격)
+        scheduler.add_job(
+            func=_check_ai_api_job,
+            trigger="interval", minutes=5,
+            id="ai_api_monitor", replace_existing=True,
+            name="AI API 상태 모니터링 (5분)",
+        )
+        logger.info("📡 [Mac] AI API 모니터링 등록")
+
+    # ── 공통: 환율 갱신 ──
     scheduler.add_job(
         func=_refresh_daily_rate_job,
-        trigger="cron",
-        hour=0,
-        minute=1,
-        id="daily_rate_refresh",
+        trigger="cron", hour=0, minute=1,
+        id="daily_rate_refresh", replace_existing=True,
         name="일일 환율 갱신 (00:01)",
-        replace_existing=True,
     )
-    logger.info("💱 일일 환율 갱신 등록 (매일 00:01)")
-    # 오류 작업 자동 재시도 (매일 23:00)
-    scheduler.add_job(
-        func=_retry_failed_tasks_job,
-        trigger="cron",
-        hour=23,
-        minute=0,
-        id="retry_failed_tasks",
-        name="오류 작업 자동 재시도 (23:00)",
-        replace_existing=True,
-    )
-    logger.info("🔄 오류 작업 자동 재시도 등록 (매일 23:00)")
+    logger.info("💱 환율 갱신 등록 (매일 00:01)")
+
     scheduler.start()
     _scheduler_started = True
-    logger.info("📅 스케줄러 시작됨 (PID: %d)", os.getpid())
+    logger.info(f"📅 스케줄러 시작 완료 ({env_label}, PID: {os.getpid()})")
 
 
 # use_reloader=True 시 부모(리로더) + 자식(워커) 2개 프로세스가 생성됨
@@ -5523,45 +5532,56 @@ https://cafe.naver.com/sohosupport/2972
 
                 _image_sources = []  # 이미지 출처 URL 저장
 
-                def _search_google_images(query, count=5):
-                    """이미지 검색으로 고화질 이미지 URL 목록 반환 (인기 이미지 우선)"""
+                def _search_images(query, count=8):
+                    """DuckDuckGo 이미지 검색 — 고화질, 다양한 소스, 매번 새로운 이미지"""
                     import re as _re_g
-                    from collections import Counter
                     try:
-                        url = f"https://www.bing.com/images/search?q={_req_lib.utils.quote(query)}&form=HDRSC2&first=1&count=50"
-                        r = _req_lib.get(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}, timeout=10)
-                        murls = _re_g.findall(r'murl&quot;:&quot;(https?://[^&]+?)&quot;', r.text)
-                        if not murls:
-                            murls = _re_g.findall(r'murl":"(https?://[^"]+?)"', r.text)
-                        if not murls:
+                        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+                        # 1단계: 검색 토큰 획득
+                        token_url = f"https://duckduckgo.com/?q={_req_lib.utils.quote(query)}&iax=images&ia=images"
+                        r = _req_lib.get(token_url, headers=headers, timeout=10)
+                        vqd = _re_g.search(r'vqd=\"([^\"]+)\"', r.text)
+                        if not vqd:
+                            vqd = _re_g.search(r'vqd=([^&\"]+)', r.text)
+                        if not vqd:
                             return []
-                        domain_count = Counter()
-                        for u in murls:
-                            try:
-                                domain = u.split("/")[2]
-                                domain_count[domain] += 1
-                            except Exception:
-                                pass
-                        def _score(u):
-                            try:
-                                return -domain_count.get(u.split("/")[2], 0)
-                            except Exception:
-                                return 0
-                        sorted_urls = sorted(murls, key=_score)
+                        # 2단계: 이미지 결과 가져오기 (최대 100개)
+                        img_url = f"https://duckduckgo.com/i.js?l=ko-kr&o=json&q={_req_lib.utils.quote(query)}&vqd={vqd.group(1)}&f=,,,,,&p=1"
+                        r2 = _req_lib.get(img_url, headers=headers, timeout=10)
+                        results = r2.json().get("results", [])
+                        # 큰 이미지만 필터 (최소 400px)
+                        valid = [r for r in results if r.get("width", 0) >= 400 and r.get("height", 0) >= 400]
+                        if not valid:
+                            valid = results
+                        # 랜덤 셔플로 매번 다른 이미지
+                        random.shuffle(valid)
+                        # 도메인 다양성 확보
                         seen_domains = set()
                         selected = []
-                        for u in sorted_urls:
+                        for r in valid:
+                            img = r.get("image", "")
                             try:
-                                d = u.split("/")[2]
+                                domain = img.split("/")[2]
                             except Exception:
-                                d = ""
-                            if d not in seen_domains:
-                                selected.append(u)
-                                seen_domains.add(d)
-                            if len(selected) >= count * 2:
+                                domain = ""
+                            if domain not in seen_domains and img:
+                                selected.append({"url": img, "source": r.get("source", ""), "domain": domain})
+                                seen_domains.add(domain)
+                            if len(selected) >= count:
                                 break
-                        random.shuffle(selected)
-                        return selected[:count]
+                        # 도메인 다양성으로 부족하면 나머지 추가
+                        if len(selected) < count:
+                            for r in valid:
+                                img = r.get("image", "")
+                                if img and not any(s["url"] == img for s in selected):
+                                    try:
+                                        domain = img.split("/")[2]
+                                    except Exception:
+                                        domain = ""
+                                    selected.append({"url": img, "source": r.get("source", ""), "domain": domain})
+                                if len(selected) >= count:
+                                    break
+                        return selected
                     except Exception as e:
                         logger.warning(f"이미지 검색 실패: {e}")
                         return []
@@ -5591,27 +5611,33 @@ https://cafe.naver.com/sohosupport/2972
                         import re as _re_img
                         sections = _re_img.split(r'-*\s*여기에 이미지\s*\d+\s*-*', content)
 
-                        for idx in range(min(len(sections)-1, 5)):
-                            try:
-                                sq = search_queries[idx] if idx < len(search_queries) else search_queries[0]
-                                # 사용자 프롬프트가 있으면 검색어로 사용
-                                if user_image_prompt:
-                                    sq = user_image_prompt
+                        # 모든 검색어 합쳐서 이미지 풀 확보 (매번 새로운 이미지)
+                        all_search_imgs = []
+                        for sq in search_queries:
+                            if user_image_prompt:
+                                sq = user_image_prompt
+                            results = _search_images(sq, 5)
+                            all_search_imgs.extend(results)
+                            if user_image_prompt:
+                                break
+                        random.shuffle(all_search_imgs)
+                        img_pool_idx = 0
 
-                                # 구글(Bing) 이미지 검색
-                                img_urls = _search_google_images(sq, 3)
-                                if not img_urls:
-                                    logger.warning(f"🖼 구글 이미지 없음: {sq}")
-                                    continue
+                        for idx in range(min(len(sections)-1, 7)):
+                            try:
+                                if img_pool_idx >= len(all_search_imgs):
+                                    break
 
                                 # 이미지 다운로드
                                 photo_data = None
-                                for img_url in img_urls:
+                                while img_pool_idx < len(all_search_imgs):
+                                    img_info = all_search_imgs[img_pool_idx]
+                                    img_pool_idx += 1
                                     try:
-                                        resp = _req_lib.get(img_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+                                        resp = _req_lib.get(img_info["url"], headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
                                         if resp.status_code == 200 and len(resp.content) > 5000:
                                             photo_data = resp.content
-                                            _image_sources.append(img_url)
+                                            _image_sources.append(img_info["url"])
                                             break
                                     except Exception:
                                         continue
@@ -5943,22 +5969,26 @@ def regenerate_article_images():
                             gclient = genai.Client(api_key=gemini_key)
 
                             if image_source in ("gemini_edit", "google_edit"):
-                                # 이미지 소스: google_edit은 Bing, gemini_edit은 Pexels
                                 photo_data = None
                                 if image_source == "google_edit":
+                                    # DuckDuckGo 이미지 검색
                                     import re as _re_g2
                                     try:
-                                        bing_url = f"https://www.bing.com/images/search?q={_req_lib.utils.quote(sq)}&form=HDRSC2"
-                                        br = _req_lib.get(bing_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-                                        murls = _re_g2.findall(r'murl&quot;:&quot;(https?://[^&]+?)&quot;', br.text)
-                                        if not murls: murls = _re_g2.findall(r'murl":"(https?://[^"]+?)"', br.text)
-                                        random.shuffle(murls)
-                                        for mu in murls[:5]:
-                                            try:
-                                                dr = _req_lib.get(mu, headers={"User-Agent":"Mozilla/5.0"}, timeout=10)
-                                                if dr.status_code==200 and len(dr.content)>5000:
-                                                    photo_data = dr.content; break
-                                            except: continue
+                                        hdrs = {"User-Agent": "Mozilla/5.0"}
+                                        tk_url = f"https://duckduckgo.com/?q={_req_lib.utils.quote(sq)}&iax=images&ia=images"
+                                        tr = _req_lib.get(tk_url, headers=hdrs, timeout=10)
+                                        vqd = _re_g2.search(r'vqd=\"([^\"]+)\"', tr.text) or _re_g2.search(r'vqd=([^&\"]+)', tr.text)
+                                        if vqd:
+                                            ij_url = f"https://duckduckgo.com/i.js?l=ko-kr&o=json&q={_req_lib.utils.quote(sq)}&vqd={vqd.group(1)}&f=,,,,,&p=1"
+                                            ir = _req_lib.get(ij_url, headers=hdrs, timeout=10)
+                                            imgs = ir.json().get("results", [])
+                                            random.shuffle(imgs)
+                                            for im in imgs[:10]:
+                                                try:
+                                                    dr = _req_lib.get(im.get("image",""), headers=hdrs, timeout=10)
+                                                    if dr.status_code == 200 and len(dr.content) > 5000:
+                                                        photo_data = dr.content; break
+                                                except: continue
                                     except: pass
                                 else:
                                     r = _req_lib.get("https://api.pexels.com/v1/search",
