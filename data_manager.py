@@ -103,20 +103,32 @@ def set_data_root(path: str) -> bool:
 
 
 def get_path(subdir: str) -> str:
-    """하위 경로 반환 — NAS 공유 폴더 우선, 없으면 로컬 폴백
-    대부분의 데이터는 NAS에 저장 (스케줄, AI설정, 히스토리, 이미지 등)
+    """하위 경로 반환
+    Mac(서버): 로컬 사용 (속도 + NAS 락 방지)
+    Windows(수집PC): NAS 공유 폴더 사용
     """
-    nas_path = os.path.join(NAS_SHARED_PATH, SUBDIRS.get(subdir, subdir))
+    if _detect_os() == "Darwin":
+        # Mac: 항상 로컬 (NAS는 동기화 소스로만 사용)
+        return os.path.join(get_data_root(), SUBDIRS.get(subdir, subdir))
+    else:
+        # Windows: NAS 공유 폴더 우선
+        nas_path = os.path.join(NAS_SHARED_PATH, SUBDIRS.get(subdir, subdir))
+        if os.path.isdir(NAS_SHARED_PATH):
+            os.makedirs(nas_path, exist_ok=True)
+            return nas_path
+        return os.path.join(get_data_root(), SUBDIRS.get(subdir, subdir))
+
+
+def get_nas_path(subdir: str) -> str:
+    """NAS 공유 폴더 경로 (동기화용)"""
+    path = os.path.join(NAS_SHARED_PATH, SUBDIRS.get(subdir, subdir))
     if os.path.isdir(NAS_SHARED_PATH):
-        os.makedirs(nas_path, exist_ok=True)
-        return nas_path
-    return os.path.join(get_data_root(), SUBDIRS.get(subdir, subdir))
+        os.makedirs(path, exist_ok=True)
+    return path
 
 
 def get_local_path(subdir: str) -> str:
-    """로컬 전용 경로 — 외부 접속 속도가 중요한 DB용
-    products.db (쇼핑몰 상품 리스트) → 고객 접속 시 빠른 응답 필요
-    """
+    """로컬 전용 경로"""
     local_root = get_data_root()
     path = os.path.join(local_root, SUBDIRS.get(subdir, subdir))
     os.makedirs(path, exist_ok=True)

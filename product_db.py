@@ -10,12 +10,12 @@ import os
 import sqlite3
 import logging
 from datetime import datetime
-from data_manager import get_path, get_local_path
+from data_manager import get_path
 
 logger = logging.getLogger(__name__)
 
-# products.db는 로컬에 저장 (쇼핑몰 외부 접속 속도 보장)
-_DB_PATH = os.path.join(get_local_path("db"), "products.db")
+# Mac: 로컬 DB (속도), Windows: NAS 공유 DB (get_path가 OS별 자동 분기)
+_DB_PATH = os.path.join(get_path("db"), "products.db")
 
 
 def _conn() -> sqlite3.Connection:

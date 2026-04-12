@@ -6142,7 +6142,8 @@ def upload_free_board_to_cafe(post_id):
 
 # ── NAS 공유 폴더 상품 동기화 ──────────────────
 # 윈도우 PC → NAS에 products.db 저장 → 맥미니가 매시 30분 로컬로 가져옴
-NAS_IMPORT_PATH = "/Volumes/파일공유/00 이용아/thone/srv/data/jp_sourcing/db"
+from data_manager import NAS_SHARED_PATH
+NAS_IMPORT_PATH = os.path.join(NAS_SHARED_PATH, "db")
 
 def sync_products_from_nas():
     """NAS 공유 폴더의 products.db → 맥미니 로컬 products.db로 동기화
