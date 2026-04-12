@@ -3251,8 +3251,7 @@ def _start_scheduler_once():
 # 자식(워커)에만 WERKZEUG_RUN_MAIN="true" 설정됨
 # 부모에서도 스케줄러가 시작되면 같은 잡이 2번 실행 → 브라우저 2개 열림!
 # → 워커 프로세스에서만 스케줄러 시작
-if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-    _start_scheduler_once()
+# 스케줄러는 __main__ 블록에서만 시작 (중복 방지)
 
 set_app_status(status)  # xebio_search에 status 딕셔너리 주입
 
@@ -7320,9 +7319,8 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"⚠️ 회원 DB 초기화 실패: {e}")
 
-    # use_reloader=False일 때 스케줄러 시작 (reloader 사용 시에는 위에서 이미 시작됨)
+    # 스케줄러 시작 — 1번만 실행 보장
     _start_scheduler_once()
-    # 자유게시판 스케줄 (모듈 완전 로드 후)
     try:
         _register_fb_schedule_jobs()
     except Exception:
@@ -7335,5 +7333,5 @@ if __name__ == "__main__":
         port=SERVER_PORT,
         debug=False,
         threaded=True,
-        use_reloader=True,       # 파일 수정 시 자동 재기동
+        use_reloader=False,      # 스케줄러 중복 방지 (파일 수정 시 수동 재기동)
     )
