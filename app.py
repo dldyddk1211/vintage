@@ -3890,6 +3890,16 @@ def _start_queue_worker():
                 conn.close()
 
                 push_log(f"✅ 큐 완료: {r['brand_name'] or '전체'} — {count}개")
+
+                # 수집 완료 → NAS 자동 내보내기 (윈도우에서만)
+                import platform as _pf
+                if _pf.system() == "Windows":
+                    try:
+                        export_all_to_nas()
+                        push_log(f"📤 수집 완료 → NAS 자동 내보내기")
+                    except Exception:
+                        pass
+
             except Exception as e:
                 conn = sqlite3.connect(db_path)
                 conn.execute("UPDATE scrape_tasks SET status='오류' WHERE id=?", (task_id,))
@@ -4091,6 +4101,15 @@ def api_scrape_sync():
         return jsonify({"ok": False, "message": str(e), "count": 0})
     finally:
         status["scraping"] = False
+
+    # 수집 완료 → NAS로 자동 내보내기 (윈도우에서만)
+    import platform
+    if platform.system() == "Windows":
+        try:
+            export_all_to_nas()
+            push_log(f"📤 수집 완료 → NAS 자동 내보내기 완료")
+        except Exception as e:
+            push_log(f"⚠️ NAS 내보내기 실패: {e}")
 
     return jsonify({"ok": True, "count": count, "message": f"수집 완료: {count}개"})
 
