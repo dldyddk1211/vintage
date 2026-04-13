@@ -5382,14 +5382,43 @@ def generate_free_board_article():
         all_trend_info = trending_keywords + luxury_suggestions
         logger.info(f"📊 트렌드: 인기 {len(trending_keywords)}개, 명품추천 {len(luxury_suggestions)}개")
 
+        # 실시간 뉴스 수집 (Google News RSS — 사실 기반 기사 작성용)
+        news_text = ""
+        news_items = []
+        try:
+            import xml.etree.ElementTree as _ET_news
+            # 키워드별 뉴스 검색
+            news_queries = [user_keyword] if user_keyword else ["명품 시세", "일본 엔화 환율", "럭셔리 브랜드"]
+            for nq in news_queries[:2]:
+                try:
+                    news_url = f"https://news.google.com/rss/search?q={_req_lib.utils.quote(nq)}&hl=ko&gl=KR&ceid=KR:ko"
+                    nr = requests.get(news_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                    if nr.status_code == 200:
+                        nroot = _ET_news.fromstring(nr.text)
+                        for nitem in nroot.findall(".//item")[:5]:
+                            ntitle = nitem.find("title").text if nitem.find("title") is not None else ""
+                            npub = nitem.find("pubDate").text[:16] if nitem.find("pubDate") is not None else ""
+                            if ntitle and ntitle not in [n["title"] for n in news_items]:
+                                news_items.append({"title": ntitle, "date": npub})
+                except Exception:
+                    pass
+            if news_items:
+                news_lines = [f"- [{n['date']}] {n['title']}" for n in news_items[:10]]
+                news_text = "\n\n[사실 확인용 최신 뉴스 — 반드시 이 뉴스를 참고하여 사실 기반으로 작성]\n" + "\n".join(news_lines)
+                logger.info(f"📰 뉴스 {len(news_items)}건 수집: {', '.join([n['title'][:20] for n in news_items[:3]])}...")
+        except Exception as e:
+            logger.warning(f"뉴스 수집 실패: {e}")
+
         trending_text = ""
-        if all_trend_info:
-            parts = []
-            if trending_keywords:
-                parts.append(f"실시간 인기검색어: {', '.join(trending_keywords[:10])}")
-            if luxury_suggestions:
-                parts.append(f"명품 관련 추천검색어: {', '.join(luxury_suggestions[:8])}")
-            trending_text = "\n\n[참고: 오늘의 검색 트렌드]\n" + "\n".join(parts) + "\n위 트렌드 중 명품/경제/패션과 연관 지을 수 있는 키워드가 있다면 자연스럽게 활용하세요.\n환율 언급 시 반드시 '일본환율' 또는 '미국환율'로만 표기하세요. 단순 '환율'은 사용하지 마세요."
+        parts = []
+        if trending_keywords:
+            parts.append(f"실시간 인기검색어: {', '.join(trending_keywords[:10])}")
+        if luxury_suggestions:
+            parts.append(f"명품 관련 추천검색어: {', '.join(luxury_suggestions[:8])}")
+        if parts:
+            trending_text = "\n\n[참고: 오늘의 검색 트렌드]\n" + "\n".join(parts)
+        trending_text += "\n환율 언급 시 반드시 '일본환율' 또는 '미국환율'로만 표기하세요."
+        trending_text += news_text
 
         if article_type == "economy":
             topics = [
@@ -5434,8 +5463,10 @@ def generate_free_board_article():
 6. 이모지는 섹션 제목에만 최소한으로 사용 (본문 내 이모지 남용 금지)
 7. 대표키워드 5~7개 선정 (제목/본문에 자연스럽게 포함)
 8. 모든 가격/금액은 반드시 한국 원화(원)로 표기 (달러($) 사용 금지)
-9. 반드시 사실 기반 정보만 작성 (추측/가정/허위 정보 금지, 확인된 데이터만 사용)
-10. 확인되지 않은 수치는 "약", "추정" 등을 붙여 구분
+9. 반드시 사실 기반 정보만 작성 — 아래 [최신 뉴스]를 참고하여 실제 있었던 사건/수치만 언급
+10. 셀럽/인물 언급 시 실제 확인된 뉴스가 있는 경우만 (지어내기 절대 금지)
+11. 확인되지 않은 수치는 "약", "추정" 등을 붙여 구분
+12. 가격/시세 수치를 넣을 때는 출처나 시점을 명시 (예: "2026년 4월 기준 약 150만원")
 
 반드시 아래 JSON 형식으로만 응답:
 {{"title":"기사 제목","content":"기사 본문","keywords":["키워드1","키워드2","키워드3","키워드4","키워드5"]}}{trending_text}"""
@@ -5455,6 +5486,28 @@ def generate_free_board_article():
             ]
             brand_ko, brand_en, category = random.choice(brands)
             keyword_line = f"\n특히 다음 키워드를 중심으로 작성: {user_keyword}" if user_keyword else ""
+
+            # 브랜드 관련 최신 뉴스 추가 수집
+            try:
+                import xml.etree.ElementTree as _ET_b
+                brand_news_url = f"https://news.google.com/rss/search?q={_req_lib.utils.quote(brand_ko + ' 2026')}&hl=ko&gl=KR&ceid=KR:ko"
+                bnr = requests.get(brand_news_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                if bnr.status_code == 200:
+                    bnroot = _ET_b.fromstring(bnr.text)
+                    for bni in bnroot.findall(".//item")[:5]:
+                        bnt = bni.find("title").text if bni.find("title") is not None else ""
+                        bnp = bni.find("pubDate").text[:16] if bni.find("pubDate") is not None else ""
+                        if bnt and bnt not in [n["title"] for n in news_items]:
+                            news_items.append({"title": bnt, "date": bnp})
+                    # trending_text 갱신
+                    if news_items:
+                        news_lines = [f"- [{n['date']}] {n['title']}" for n in news_items[:12]]
+                        news_text = "\n\n[사실 확인용 최신 뉴스 — 반드시 참고]\n" + "\n".join(news_lines)
+                        trending_text = trending_text.split("[사실 확인용")[0] + news_text
+                        logger.info(f"📰 {brand_ko} 뉴스 추가 수집")
+            except Exception:
+                pass
+
             prompt = f"""당신은 럭셔리 패션 매거진 에디터입니다.
 오늘 날짜: {today} ({weekday}요일)
 브랜드: {brand_ko} ({brand_en}) - {category}{keyword_line}
@@ -5486,7 +5539,9 @@ def generate_free_board_article():
 5. 이모지는 섹션 제목에만 최소한으로 사용
 6. 대표키워드 5~7개 선정 (예: {brand_ko}신상, {brand_ko}트렌드, {brand_ko}컬렉션)
 7. 모든 가격은 원화(원)로 표기
-8. 사실 기반 정보만 작성, 확인 안 된 수치는 "약", "추정" 표기
+8. 반드시 사실 기반 정보만 — 아래 [최신 뉴스]를 참고하여 실제 사건/수치만 언급
+9. 셀럽/인물 언급 시 실제 확인된 뉴스가 있는 경우만 (지어내기 절대 금지)
+10. 확인 안 된 수치는 "약", "추정" 표기, 가격은 시점 명시
 
 반드시 아래 JSON 형식으로만 응답:
 {{"title":"기사 제목","content":"기사 본문","keywords":["키워드1","키워드2","키워드3","키워드4","키워드5"]}}{trending_text}"""
