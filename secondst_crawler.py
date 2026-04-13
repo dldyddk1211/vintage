@@ -161,13 +161,17 @@ async def scrape_2ndstreet(
                 "--disable-features=TranslateUI,Translate",
                 "--lang=ja",
                 "--accept-lang=ja",
+                "--incognito",
             ],
         )
         ctx = await _browser.new_context(
             viewport={"width": 1280, "height": 900},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             locale="ja-JP",
-            extra_http_headers={"Accept-Language": "ja"},
+            timezone_id="Asia/Tokyo",
+            geolocation={"latitude": 35.6762, "longitude": 139.6503},
+            permissions=["geolocation"],
+            extra_http_headers={"Accept-Language": "ja,ja-JP;q=0.9"},
         )
         await ctx.add_init_script("""
             Object.defineProperty(navigator, 'language', {get: () => 'ja'});
