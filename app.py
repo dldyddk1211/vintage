@@ -1861,6 +1861,87 @@ def api_save_product_image_order():
         conn.close()
 
 
+@app.route(f"{URL_PREFIX}/api/blog-fill-images", methods=["POST"])
+@admin_required
+def blog_fill_images():
+    """블로그 이미지 부족분 AI 생성 (Gemini → Pexels 폴백)"""
+    data = request.json or {}
+    keyword = data.get("keyword", "luxury brand product")
+    count = min(data.get("count", 3), 5)
+    code = data.get("code", "")
+
+    images = []
+    try:
+        # 1순위: Gemini AI 생성
+        from data_manager import get_path
+        gemini_key = ""
+        try:
+            env_path = os.path.join(os.path.dirname(__file__), ".env")
+            with open(env_path, encoding="utf-8") as ef:
+                for line in ef:
+                    if line.strip().startswith("GEMINI_API_KEY="):
+                        gemini_key = line.strip().split("=", 1)[1].strip()
+                        break
+        except Exception:
+            pass
+
+        if gemini_key and len(gemini_key) > 20:
+            from google import genai
+            from google.genai import types as _gt
+            gclient = genai.Client(api_key=gemini_key)
+            img_dir = os.path.join(get_path("db"), "blog_images")
+            os.makedirs(img_dir, exist_ok=True)
+
+            for i in range(count):
+                try:
+                    resp = gclient.models.generate_content(
+                        model="gemini-2.5-flash-image",
+                        contents=f"Professional product photo: {keyword}. Elegant, warm lighting, luxury boutique. IMPORTANT: Do NOT include ANY text in the image.",
+                        config=_gt.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
+                    )
+                    for part in resp.candidates[0].content.parts:
+                        if part.inline_data:
+                            from datetime import datetime as _dt
+                            fn = f"blog_{_dt.now().strftime('%Y%m%d_%H%M%S')}_{i+1}.png"
+                            fp = os.path.join(img_dir, fn)
+                            with open(fp, "wb") as f:
+                                f.write(part.inline_data.data)
+                            # 파일 URL로 접근 가능하게
+                            images.append(f"/api/blog-image/{fn}")
+                            break
+                    import time; time.sleep(2)
+                except Exception as e:
+                    logger.warning(f"Gemini 이미지 {i+1} 실패: {e}")
+
+        # 2순위: Pexels 폴백
+        if len(images) < count:
+            PEXELS_KEY = "ZMFMszrhmZ9oy5UTEC0XKa7h8JGytGpnLWkoFDcE4bdqxLv7r507JHEe"
+            remain = count - len(images)
+            try:
+                import requests as _req
+                r = _req.get("https://api.pexels.com/v1/search",
+                    params={"query": keyword, "per_page": remain, "orientation": "landscape"},
+                    headers={"Authorization": PEXELS_KEY}, timeout=10)
+                if r.status_code == 200:
+                    for p in r.json().get("photos", []):
+                        images.append(p["src"]["large"])
+            except Exception:
+                pass
+
+        return jsonify({"ok": True, "images": images})
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)})
+
+
+@app.route(f"{URL_PREFIX}/api/blog-image/<path:filename>")
+@admin_required
+def serve_blog_image(filename):
+    """블로그 AI 이미지 서빙"""
+    from flask import send_from_directory
+    img_dir = os.path.join(get_path("db"), "blog_images")
+    return send_from_directory(img_dir, filename)
+
+
 @app.route(f"{URL_PREFIX}/shop/api/product-by-code")
 def shop_api_product_by_code():
     """internal_code(고유번호)로 상품 1건 정확 조회"""

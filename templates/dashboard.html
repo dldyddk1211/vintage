@@ -2009,9 +2009,12 @@
             <button class="btn b-gray" onclick="document.getElementById('blog-img-panel').style.display='none'" style="padding:4px 8px;font-size:0.72rem;">닫기</button>
           </div>
         </div>
-        <div style="font-size:0.7rem;color:var(--dim);margin-bottom:8px;">◀ ▶ 버튼으로 순서 변경 | 클릭하여 선택/해제 | 최소 5개 이상 선택</div>
+        <div style="font-size:0.7rem;color:var(--dim);margin-bottom:8px;">◀ ▶ 버튼으로 순서 변경 | 클릭하여 선택/해제 | 최소 5개 이상</div>
         <div id="blog-img-list" style="display:flex;gap:8px;flex-wrap:wrap;padding:8px;min-height:120px;background:var(--bg);border:1px solid var(--border);border-radius:8px;"></div>
-        <div id="blog-img-count" style="margin-top:6px;font-size:0.72rem;color:var(--muted);"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+          <span id="blog-img-count" style="font-size:0.72rem;color:var(--muted);"></span>
+          <button class="btn b-blue" onclick="fillBlogImagesAI()" id="btn-fill-ai-img" style="padding:3px 10px;font-size:0.68rem;display:none;">🤖 부족분 AI 이미지 생성</button>
+        </div>
       </div>
 
       <!-- 블로그 업로드 로그 -->
@@ -7505,7 +7508,8 @@ async function openBlogImageEditor(code) {
 function renderBlogImageEditor() {
   const el = document.getElementById("blog-img-list");
   const list = window._blogImgList;
-  el.innerHTML = list.map((img, i) => `
+  // 이미지 카드
+  let html = list.map((img, i) => `
     <div style="position:relative;border:3px solid ${img.selected?'var(--accent)':'transparent'};border-radius:8px;overflow:hidden;transition:all .2s;">
       <img src="${img.url}" style="width:120px;height:120px;object-fit:cover;cursor:pointer;${img.selected?'':'opacity:0.3;filter:grayscale(100%);'}"
         onclick="toggleBlogImg(${i})" onerror="this.parentElement.style.display='none'">
@@ -7516,8 +7520,23 @@ function renderBlogImageEditor() {
       </div>
     </div>
   `).join("");
+  // 5개 미만이면 빈 슬롯 표시
   const selectedCount = list.filter(x => x.selected).length;
-  document.getElementById("blog-img-count").innerHTML = `선택: <b>${selectedCount}</b>개 / 전체: ${list.length}개 ${selectedCount < 5 ? '<span style="color:var(--red);">(최소 5개 필요)</span>' : ''}`;
+  const need = Math.max(0, 5 - list.length);
+  for (let i = 0; i < need; i++) {
+    html += `<div style="width:120px;height:120px;border:2px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:0.7rem;">빈 슬롯</div>`;
+  }
+  el.innerHTML = html;
+  // 카운트 + AI 버튼
+  const fillBtn = document.getElementById("btn-fill-ai-img");
+  if (list.length < 5) {
+    document.getElementById("blog-img-count").innerHTML = `선택: <b>${selectedCount}</b>개 / 전체: ${list.length}개 <span style="color:var(--red);">(${5-list.length}개 부족)</span>`;
+    fillBtn.style.display = "";
+    fillBtn.textContent = `🤖 ${5-list.length}개 AI 이미지 생성`;
+  } else {
+    document.getElementById("blog-img-count").innerHTML = `선택: <b>${selectedCount}</b>개 / 전체: ${list.length}개`;
+    fillBtn.style.display = "none";
+  }
 }
 
 function toggleBlogImg(idx) {
@@ -7531,6 +7550,34 @@ function moveBlogImg(idx, dir) {
   if (newIdx < 0 || newIdx >= list.length) return;
   [list[idx], list[newIdx]] = [list[newIdx], list[idx]];
   renderBlogImageEditor();
+}
+
+async function fillBlogImagesAI() {
+  const need = Math.max(0, 5 - window._blogImgList.length);
+  if (need <= 0) return;
+  const p = vtBlogProducts.find(x => x.product_code === window._blogImgCode);
+  const keyword = p ? `${p.brand} ${(p.name||'').substring(0,20)} luxury product` : "luxury brand product";
+
+  const btn = document.getElementById("btn-fill-ai-img");
+  btn.textContent = `⏳ ${need}개 생성 중...`; btn.disabled = true;
+
+  try {
+    const r = await fetch(PREFIX + "/api/blog-fill-images", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({keyword, count: need, code: window._blogImgCode})
+    });
+    const d = await r.json();
+    if (d.ok && d.images) {
+      for (const url of d.images) {
+        window._blogImgList.push({url, selected: true});
+      }
+      renderBlogImageEditor();
+      vtBlogLog(`🤖 AI 이미지 ${d.images.length}개 생성 완료`, "ok");
+    } else {
+      vtBlogLog(`❌ AI 이미지 생성 실패: ${d.message||''}`, "err");
+    }
+  } catch(e) { vtBlogLog(`❌ ${e}`, "err"); }
+  finally { btn.textContent = `🤖 ${need}개 AI 이미지 생성`; btn.disabled = false; }
 }
 
 async function saveBlogImageOrder() {
