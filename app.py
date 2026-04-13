@@ -3984,6 +3984,23 @@ def _start_queue_worker():
         return
     _queue_worker_started = True
 
+    # 서버 재시작 시 "예약"/"수집중" 상태 작업을 큐에 복구
+    try:
+        import sqlite3 as _sq
+        _db = os.path.join(get_path("db"), "users.db")
+        _c = _sq.connect(_db)
+        _c.row_factory = _sq.Row
+        _stuck = _c.execute("SELECT id FROM scrape_tasks WHERE status IN ('예약','수집중') ORDER BY id").fetchall()
+        for _r in _stuck:
+            _c.execute("UPDATE scrape_tasks SET status='예약' WHERE id=?", (_r["id"],))
+            _scrape_queue.put(_r["id"])
+        _c.commit()
+        _c.close()
+        if _stuck:
+            push_log(f"🔄 서버 재시작: {len(_stuck)}개 예약 작업 큐에 복구")
+    except Exception:
+        pass
+
     def _worker():
         while True:
             task_id = _scrape_queue.get()
@@ -4067,7 +4084,7 @@ def enqueue_tasks():
     added = 0
     for tid in task_ids:
         r = conn.execute("SELECT status FROM scrape_tasks WHERE id=?", (tid,)).fetchone()
-        if r and r["status"] == "대기":
+        if r and r["status"] in ("대기", "예약", "오류"):
             conn.execute("UPDATE scrape_tasks SET status='예약' WHERE id=?", (tid,))
             _scrape_queue.put(tid)
             added += 1
