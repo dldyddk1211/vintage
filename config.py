@@ -80,14 +80,33 @@ LOGIN_USERS = {
     "admin": "0000",            # 관리자 계정 (기본값)
 }
 
-# .env에서 관리자 비밀번호 로드
+# 관리자 비밀번호 로드: NAS 공유 설정 → .env 순서
 import os as _os
+import json as _json
+
+# 1순위: NAS 공유 폴더의 admin_config.json (모든 디바이스 공유)
+try:
+    from data_manager import get_nas_path
+    _admin_cfg_path = _os.path.join(get_nas_path("db"), "admin_config.json")
+    if _os.path.exists(_admin_cfg_path):
+        with open(_admin_cfg_path, encoding="utf-8") as _af:
+            _admin_cfg = _json.load(_af)
+            if _admin_cfg.get("admin_password"):
+                LOGIN_USERS["admin"] = _admin_cfg["admin_password"]
+            if _admin_cfg.get("secret_key"):
+                SECRET_KEY = _admin_cfg["secret_key"]
+except Exception:
+    pass
+
+# 2순위: 로컬 .env (NAS 없을 때 폴백)
 _env_path = _os.path.join(_os.path.dirname(__file__), ".env")
 if _os.path.exists(_env_path):
     with open(_env_path, encoding="utf-8") as _f:
         for _line in _f:
             if _line.strip().startswith("ADMIN_PASSWORD="):
-                LOGIN_USERS["admin"] = _line.strip().split("=", 1)[1].strip()
+                _env_pw = _line.strip().split("=", 1)[1].strip()
+                if _env_pw and LOGIN_USERS["admin"] == "0000":
+                    LOGIN_USERS["admin"] = _env_pw
                 break
 
 SECRET_KEY = "jp-sourcing-secret-key-change-me"  # 세션 암호화 키 (운영 시 변경)

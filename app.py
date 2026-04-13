@@ -6445,7 +6445,7 @@ def sync_all_from_nas(selected_files=None):
                        "vt_cafe_schedule.json", "check_schedule.json", "fb_schedule.json",
                        "uploaded_history.json", "translation_dict.json",
                        "naver_accounts.json", "blog_accounts.json",
-                       "price_config.json", "vintage_price.json", "biz_info.json"]
+                       "price_config.json", "vintage_price.json", "biz_info.json", "admin_config.json"]
     sync_files = [f for f in all_sync_files if not selected_files or f in selected_files]
 
     try:
@@ -6621,7 +6621,7 @@ def export_all_to_nas(selected_files=None):
                      "cafe_schedule.json", "vt_cafe_schedule.json", "check_schedule.json",
                      "fb_schedule.json", "uploaded_history.json", "translation_dict.json",
                      "naver_accounts.json", "blog_accounts.json",
-                     "price_config.json", "vintage_price.json", "biz_info.json"]
+                     "price_config.json", "vintage_price.json", "biz_info.json", "admin_config.json"]
         export_files = [f for f in all_files if not selected_files or f in selected_files]
         copied = []
         for fn in export_files:
