@@ -6321,7 +6321,8 @@ def sync_all_from_nas():
                 nas_mtime = os.path.getmtime(nas_file)
                 local_mtime = os.path.getmtime(local_file) if os.path.exists(local_file) else 0
                 if nas_mtime > local_mtime:
-                    shutil.copy2(nas_file, local_file)
+                    with open(nas_file, "rb") as _sf, open(local_file, "wb") as _df:
+                        _df.write(_sf.read())
                     copied.append(fn)
         if copied:
             push_log(f"📂 NAS → 로컬 파일 복사: {', '.join(copied)}")
@@ -6370,7 +6371,9 @@ def sync_products_from_nas():
 
         # 1단계: NAS 파일을 임시 폴더로 복사 (NAS DB 직접 열기 금지)
         tmp_db_path = "/tmp/products_nas_tmp.db"
-        shutil.copy2(nas_db_path, tmp_db_path)
+        # shutil.copy2는 SMB 메타데이터 복사 시 권한 오류 → 직접 읽기/쓰기
+        with open(nas_db_path, "rb") as src, open(tmp_db_path, "wb") as dst:
+            dst.write(src.read())
         push_log(f"📂 NAS 파일 복사 완료 → 로컬 임시 DB")
 
         # 2단계: 임시 DB에서 로컬 DB로 병합 (로컬 파일끼리만 작업)
@@ -6486,7 +6489,8 @@ def export_all_to_nas():
             local_file = os.path.join(local_db_dir, fn)
             nas_file = os.path.join(nas_db_dir, fn)
             if os.path.exists(local_file):
-                shutil.copy2(local_file, nas_file)
+                with open(local_file, "rb") as _sf, open(nas_file, "wb") as _df:
+                    _df.write(_sf.read())
                 copied.append(fn)
 
         msg = f"📤 로컬 → NAS 복사 완료 ({len(copied)}개 파일)"
