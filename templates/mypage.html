@@ -414,7 +414,7 @@
       </div>
       <div style="margin-top:14px;display:flex;gap:8px;">
         <button class="pay-next-btn" onclick="payByTransfer()" style="flex:1;background:#3b82f6;margin-top:0;">🏦 계좌이체</button>
-        <button class="pay-next-btn" onclick="payByCard()" style="flex:1;background:var(--dim);margin-top:0;cursor:not-allowed;opacity:0.7;">💳 신용카드 <span style="font-size:0.65rem;">(준비중)</span></button>
+        <button class="pay-next-btn" onclick="payByCard()" style="flex:1;background:#8b5cf6;margin-top:0;">💳 신용카드</button>
       </div>
     </div>
 
@@ -1345,7 +1345,7 @@ function copyAccount() {
 }
 
 function payByCard() {
-  alert("준비중입니다.\n곧 카드 결제가 가능합니다.");
+  submitPayment();
 }
 
 function submitPayment() {
