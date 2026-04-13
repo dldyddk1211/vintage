@@ -6112,6 +6112,40 @@ https://cafe.naver.com/sohosupport/2972
                         except Exception as de:
                             logger.warning(f"🖼 다운로드 실패: {de}")
 
+                # Gemini 실패 시 Pexels 폴백 (5개 미만이면)
+                PEXELS_API_KEY = "ZMFMszrhmZ9oy5UTEC0XKa7h8JGytGpnLWkoFDcE4bdqxLv7r507JHEe"
+                if len(image_paths) < 5 and image_source != "pexels":
+                    need = 5 - len(image_paths)
+                    push_log(f"🖼 이미지 {len(image_paths)}장 → Pexels 폴백으로 {need}장 추가")
+                    for sq in search_queries:
+                        if len(image_paths) >= 5:
+                            break
+                        try:
+                            pr = _req_lib.get("https://api.pexels.com/v1/search",
+                                params={"query": sq, "per_page": 2, "orientation": "landscape"},
+                                headers={"Authorization": PEXELS_API_KEY}, timeout=10)
+                            if pr.status_code == 200:
+                                for pp in pr.json().get("photos", []):
+                                    if len(image_paths) >= 5:
+                                        break
+                                    try:
+                                        img_resp = _req_lib.get(pp["src"]["large"], timeout=10)
+                                        img_data = img_resp.content
+                                        cap_idx = len(image_paths)
+                                        caption = _gem_captions[cap_idx] if cap_idx < len(_gem_captions) else ""
+                                        img_data = _overlay_text_on_image(img_data, caption)
+                                        from datetime import datetime as _dt2
+                                        fn = f"article_{_dt2.now().strftime('%Y%m%d_%H%M%S')}_{cap_idx+1}.png"
+                                        fp = os.path.join(img_dir, fn)
+                                        with open(fp, "wb") as out:
+                                            out.write(img_data)
+                                        image_paths.append(fp)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                    logger.info(f"🖼 Pexels 폴백 후 총 {len(image_paths)}장")
+
                 image_path = ",".join(image_paths) if image_paths else ""
                 logger.info(f"🖼 [{image_source}] 이미지 {len(image_paths)}장 수집 완료")
             except Exception as e:

@@ -7531,12 +7531,12 @@ function renderBlogImageEditor() {
   const fillBtn = document.getElementById("btn-fill-ai-img");
   if (list.length < 5) {
     document.getElementById("blog-img-count").innerHTML = `선택: <b>${selectedCount}</b>개 / 전체: ${list.length}개 <span style="color:var(--red);">(${5-list.length}개 부족)</span>`;
-    fillBtn.style.display = "";
     fillBtn.textContent = `🤖 ${5-list.length}개 AI 이미지 생성`;
   } else {
     document.getElementById("blog-img-count").innerHTML = `선택: <b>${selectedCount}</b>개 / 전체: ${list.length}개`;
-    fillBtn.style.display = "none";
+    fillBtn.textContent = `🤖 AI 이미지 추가`;
   }
+  fillBtn.style.display = "";
 }
 
 function toggleBlogImg(idx) {
