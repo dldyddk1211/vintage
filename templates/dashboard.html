@@ -1261,8 +1261,8 @@
             </div>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
-            <button class="btn b-green" onclick="settingSyncDown()" id="btn-setting-sync" style="padding:8px 16px;">📥 선택 파일 동기화 다운 (NAS → 로컬)</button>
-            <button class="btn b-blue" onclick="settingSyncUp()" id="btn-setting-export" style="padding:8px 16px;">📤 선택 파일 동기화 업 (로컬 → NAS)</button>
+            <button class="btn b-green" onclick="settingSyncDown()" id="btn-setting-sync" style="padding:8px 16px;">📥 NAS에서 다운로드</button>
+            <button class="btn b-blue" onclick="settingSyncUp()" id="btn-setting-export" style="padding:8px 16px;">📤 NAS로 업로드</button>
           </div>
           <div id="setting-sync-result" style="margin-top:10px;font-size:0.8rem;"></div>
         </div>
@@ -2030,8 +2030,8 @@
         <div class="panel-title">
           <span>&#x1f4c2; 상품 리스트 (NAS 동기화)</span>
           <div style="display:flex;gap:6px;">
-            <button class="btn b-green" onclick="runNasSync()" id="btn-nas-sync" style="padding:6px 14px;font-size:0.78rem;">&#x1f504; NAS → 로컬 동기화</button>
-            <button class="btn b-blue" onclick="runNasExport()" id="btn-nas-export" style="padding:6px 14px;font-size:0.78rem;">&#x1f4e4; 로컬 → NAS 내보내기</button>
+            <button class="btn b-green" onclick="runNasSync()" id="btn-nas-sync" style="padding:6px 14px;font-size:0.78rem;">📥 NAS에서 다운로드</button>
+            <button class="btn b-blue" onclick="runNasExport()" id="btn-nas-export" style="padding:6px 14px;font-size:0.78rem;">📤 NAS로 업로드</button>
             <button class="btn b-gray" onclick="loadNasStatus()" style="padding:6px 14px;font-size:0.78rem;">새로고침</button>
           </div>
         </div>
@@ -2056,11 +2056,10 @@
         </div>
 
         <div style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:0.78rem;color:var(--muted);">
-          <b>동기화 흐름 (NAS DB 직접 열기 금지 — 파일 복사만):</b><br>
-          &#x1f5a5; <b>윈도우 PC</b>: 로컬에서 수집 → 매시 정각 로컬 DB를 NAS로 복사<br>
-          &#x1f4bb; <b>맥미니 서버</b>: 매시 30분 NAS 파일을 로컬로 복사 → 로컬에서 병합<br>
-          &#x1f310; <b>쇼핑몰 고객</b>: 각 서버의 로컬 DB에서 빠르게 응답<br>
-          &#x26a0; NAS는 파일 전달용만 사용 — SQLite 락 문제 없음
+          <b>동기화 흐름:</b><br>
+          &#x1f5a5; <b>윈도우 (수집PC)</b>: 수집 완료 → 📤 NAS로 업로드 (자동/수동)<br>
+          &#x1f4bb; <b>맥미니 (서버)</b>: 📥 NAS에서 다운로드 → 로컬 DB 최신화 (매시 30분 자동/수동)<br>
+          &#x1f310; <b>쇼핑몰 고객</b>: 각 로컬 DB에서 빠르게 응답
         </div>
 
         <!-- 동기화 로그 -->
@@ -7273,7 +7272,7 @@ async function settingSyncDown() {
       el.innerHTML = `<span style="color:var(--red);">❌ ${d.message}</span>`;
     }
   } catch(e) { el.innerHTML = `<span style="color:var(--red);">❌ ${e}</span>`; }
-  finally { btn.textContent = "📥 선택 파일 동기화 다운 (NAS → 로컬)"; btn.disabled = false; }
+  finally { btn.textContent = "📥 NAS에서 다운로드"; btn.disabled = false; }
 }
 
 async function settingSyncUp() {
@@ -7290,7 +7289,7 @@ async function settingSyncUp() {
     const d = await r.json();
     el.innerHTML = d.ok ? `<span style="color:var(--green);">✅ ${d.message}</span>` : `<span style="color:var(--red);">❌ ${d.message}</span>`;
   } catch(e) { el.innerHTML = `<span style="color:var(--red);">❌ ${e}</span>`; }
-  finally { btn.textContent = "📤 선택 파일 동기화 업 (로컬 → NAS)"; btn.disabled = false; }
+  finally { btn.textContent = "📤 NAS로 업로드"; btn.disabled = false; }
 }
 
 // ── NAS 상품 동기화 ──
@@ -7321,7 +7320,7 @@ async function runNasExport() {
     logEl.innerHTML = d.ok ? `<span style="color:var(--green);">✅ ${d.message}</span>` : `<span style="color:var(--red);">❌ ${d.message}</span>`;
     loadNasStatus();
   } catch(e) { logEl.innerHTML = `<span style="color:var(--red);">❌ ${e}</span>`; }
-  finally { btn.textContent = "📤 로컬 → NAS 내보내기"; btn.disabled = false; }
+  finally { btn.textContent = "📤 NAS로 업로드"; btn.disabled = false; }
 }
 
 async function runNasSync() {
