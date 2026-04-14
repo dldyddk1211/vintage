@@ -173,9 +173,9 @@ def naver_callback():
             try:
                 from user_db import _conn as _uc
                 conn = _uc()
-                conn.execute("""INSERT OR IGNORE INTO users (username, password_hash, name, phone, status, level)
-                                VALUES (?,?,?,?,?,?)""",
-                             (social_username, "", name, phone, "approved", "b2c"))
+                conn.execute("""INSERT OR IGNORE INTO users (username, password_hash, name, email, phone, status, level)
+                                VALUES (?,?,?,?,?,?,?)""",
+                             (social_username, "", name, email, phone, "approved", "b2c"))
                 conn.commit()
                 conn.close()
                 logger.info(f"네이버 소셜 회원가입: {social_username} ({name})")
@@ -286,6 +286,7 @@ def signup():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        email = request.form.get("email", "").strip()
         name = request.form.get("name", "").strip()
         phone = request.form.get("phone", "").strip()
         if not username or not password:
@@ -302,8 +303,9 @@ def signup():
                 try:
                     from user_db import _conn as user_conn
                     conn = user_conn()
-                    conn.execute("""UPDATE users SET postal_code=?, address=?, address_detail=?, customs_id=?
+                    conn.execute("""UPDATE users SET email=?, postal_code=?, address=?, address_detail=?, customs_id=?
                                    WHERE username=?""", (
+                        email,
                         request.form.get("postal_code", "").strip(),
                         request.form.get("address", "").strip(),
                         request.form.get("address_detail", "").strip(),
@@ -737,7 +739,7 @@ def update_myinfo():
     conn = user_conn()
     try:
         fields = {k: data[k].strip() for k in
-                  ["name","phone","postal_code","address","address_detail","customs_id","business_number"]
+                  ["name","email","phone","postal_code","address","address_detail","customs_id","business_number"]
                   if k in data and data[k] is not None}
         if not fields:
             return jsonify({"ok": False, "message": "변경할 정보 없음"})

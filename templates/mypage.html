@@ -176,6 +176,7 @@
         <div class="form-grid">
           <label>아이디</label><input id="my-username" value="{{ username }}" disabled style="color:var(--dim);">
           <label>이름</label><input id="my-name" placeholder="이름">
+          <label>이메일</label><input id="my-email" type="email" placeholder="example@email.com">
           <label>연락처</label><input id="my-phone" placeholder="010-0000-0000">
         </div>
       </div>
@@ -643,6 +644,7 @@ async function loadMyInfo() {
     if (!d.ok) return;
     const u = d.user;
     document.getElementById("my-name").value = u.name || "";
+    document.getElementById("my-email").value = u.email || "";
     document.getElementById("my-phone").value = u.phone || "";
     document.getElementById("my-postal").value = u.postal_code || "";
     document.getElementById("my-address").value = u.address || "";
@@ -660,6 +662,7 @@ async function saveMyInfo() {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({
         name: document.getElementById("my-name").value,
+        email: document.getElementById("my-email").value,
         phone: document.getElementById("my-phone").value,
         postal_code: document.getElementById("my-postal").value,
         address: document.getElementById("my-address").value,

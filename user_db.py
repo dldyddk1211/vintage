@@ -53,6 +53,8 @@ def init_db():
             ("customs_id", "''"),
             ("business_number", "''"),
             ("business_cert_file", "''"),
+            # 이메일
+            ("email", "''"),
             # 마지막 접속
             ("last_login", "''"),
         ]:
