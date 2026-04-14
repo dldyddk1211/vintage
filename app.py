@@ -3380,9 +3380,37 @@ def _start_scheduler_once():
     )
     logger.info("💱 환율 갱신 등록 (매일 00:01)")
 
+    # ── 공통: Git 자동 풀 (매시 정각) ──
+    scheduler.add_job(
+        func=_auto_git_pull,
+        trigger="cron", minute=0,
+        id="auto_git_pull", replace_existing=True,
+        name="Git 자동 풀 (매시 정각)",
+    )
+    logger.info("🔄 Git 자동 풀 등록 (매시 정각)")
+
     scheduler.start()
     _scheduler_started = True
     logger.info(f"📅 스케줄러 시작 완료 ({env_label}, PID: {os.getpid()})")
+
+
+def _auto_git_pull():
+    """GitHub에서 최신 코드 자동 풀"""
+    import subprocess
+    try:
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        result = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            cwd=project_dir, capture_output=True, text=True, timeout=30
+        )
+        output = result.stdout.strip()
+        if "Already up to date" in output:
+            logger.debug("🔄 Git: 이미 최신")
+        elif output:
+            push_log(f"🔄 Git 자동 풀 완료: {output[:100]}")
+            logger.info(f"🔄 Git pull: {output[:100]}")
+    except Exception as e:
+        logger.warning(f"🔄 Git pull 실패: {e}")
 
 
 # use_reloader=True 시 부모(리로더) + 자식(워커) 2개 프로세스가 생성됨
