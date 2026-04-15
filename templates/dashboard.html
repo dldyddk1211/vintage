@@ -58,7 +58,7 @@
     }
 
     /* ── 카테고리 하위 메뉴 ──────────────── */
-    .nav-sub { overflow:hidden; max-height:300px; transition:max-height .25s ease; }
+    .nav-sub { overflow:hidden; max-height:600px; transition:max-height .25s ease; }
     .nav-sub.collapsed { max-height:0; }
 
     .nav-item {
@@ -441,6 +441,10 @@
       <div class="nav-item" data-page="nas-sync" onclick="showPage('nas-sync');loadNasStatus()">
         <span class="nav-icon">&#x1f4c2;</span>
         <span>상품 리스트 (NAS)</span>
+      </div>
+      <div class="nav-item" data-page="db-update" onclick="showPage('db-update');loadDbUpdateStatus()">
+        <span class="nav-icon">&#x1f504;</span>
+        <span>상품DB 업데이트</span>
       </div>
     </div>
 
@@ -2074,6 +2078,97 @@
       </div>
     </div>
 
+    <!-- ═══ 상품DB 업데이트 ═══ -->
+    <div class="page-section" id="page-db-update">
+      <div class="panel">
+        <div class="panel-title">
+          <span>&#x1f504; 상품DB 자동 업데이트</span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn b-blue" onclick="runDbUpdateNow()" id="btn-db-update-run" style="padding:6px 14px;font-size:0.78rem;">&#x25b6; 지금 실행</button>
+            <button class="btn b-red" onclick="stopDbUpdate()" id="btn-db-update-stop" style="padding:6px 14px;font-size:0.78rem;display:none;">&#x23f9; 중지</button>
+            <button class="btn b-gray" onclick="loadDbUpdateStatus()" style="padding:6px 14px;font-size:0.78rem;">새로고침</button>
+          </div>
+        </div>
+
+        <!-- 수집 대상 선택 -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;">
+          <div style="font-size:0.8rem;font-weight:600;margin-bottom:10px;">수집 대상</div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <label style="font-size:0.78rem;">
+              브랜드:
+              <select id="dbu-brand" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:0.78rem;min-width:160px;">
+                <option value="">전체 브랜드</option>
+              </select>
+            </label>
+            <label style="font-size:0.78rem;">
+              카테고리:
+              <select id="dbu-category" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:0.78rem;min-width:120px;">
+                <option value="">전체 카테고리</option>
+              </select>
+            </label>
+            <button class="btn b-green" onclick="addDbUpdateTarget()" style="padding:5px 14px;font-size:0.78rem;">+ 추가</button>
+          </div>
+          <div style="margin-top:8px;font-size:0.72rem;color:var(--muted);">
+            전체 브랜드 + 전체 카테고리 선택 시 모든 브랜드를 순차적으로 자동 수집합니다.
+          </div>
+          <!-- 저장된 수집 대상 리스트 -->
+          <div id="dbu-target-list" style="margin-top:12px;display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+
+        <!-- 상태 카드 -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;">
+            <div style="font-size:0.72rem;color:var(--muted);">자동 업데이트</div>
+            <div id="dbu-auto-status" style="font-size:0.85rem;font-weight:600;margin-top:4px;">-</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;">
+            <div style="font-size:0.72rem;color:var(--muted);">주기</div>
+            <div id="dbu-interval" style="font-size:0.85rem;font-weight:600;margin-top:4px;">7일</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;">
+            <div style="font-size:0.72rem;color:var(--muted);">마지막 실행</div>
+            <div id="dbu-last-run" style="font-size:0.78rem;margin-top:4px;">-</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;">
+            <div style="font-size:0.72rem;color:var(--muted);">다음 실행</div>
+            <div id="dbu-next-run" style="font-size:0.78rem;color:var(--accent);margin-top:4px;">-</div>
+          </div>
+        </div>
+
+        <!-- 스케줄 설정 -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;">
+          <div style="font-size:0.8rem;font-weight:600;margin-bottom:10px;">스케줄 설정</div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <label style="font-size:0.78rem;display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="dbu-enabled" onchange="saveDbUpdateSchedule()"> 자동 실행
+            </label>
+            <label style="font-size:0.78rem;">
+              주기(일):
+              <input type="number" id="dbu-interval-days" value="7" min="1" max="30" style="width:50px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:0.78rem;" onchange="saveDbUpdateSchedule()">
+            </label>
+            <label style="font-size:0.78rem;">
+              실행 시각:
+              <input type="time" id="dbu-run-time" value="03:00" style="padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:0.78rem;" onchange="saveDbUpdateSchedule()">
+            </label>
+          </div>
+        </div>
+
+        <!-- 브랜드별 진행 상태 -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;">
+          <div style="font-size:0.8rem;font-weight:600;margin-bottom:10px;">브랜드별 진행 상태</div>
+          <div id="dbu-brand-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;">
+            <!-- JS로 채움 -->
+          </div>
+        </div>
+
+        <!-- 실행 로그 -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;">
+          <div style="font-size:0.8rem;font-weight:600;margin-bottom:10px;">실행 로그</div>
+          <div id="dbu-log" style="max-height:300px;overflow-y:auto;font-size:0.75rem;font-family:monospace;color:var(--muted);white-space:pre-wrap;"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ 빅데이터 관리 ═══ -->
     <div class="page-section" id="page-bigdata">
       <!-- 통계 카드 -->
@@ -2687,6 +2782,7 @@ const pageTitles = {
   "vt-cafe-upload": "Vintage \u203A \u2615 \uB124\uC774\uBC84\uCE74\uD398 \uC5C5\uB85C\uB4DC",
   "vt-blog-upload": "Vintage \u203A \uD83D\uDCDD \uB124\uC774\uBC84\uBE14\uB85C\uADF8 \uC5C5\uB85C\uB4DC",
   "nas-sync": "Vintage \u203A \uD83D\uDCC2 \uC0C1\uD488 \uB9AC\uC2A4\uD2B8 (NAS)",
+  "db-update": "Vintage \u203A \uD83D\uDD04 \uC0C1\uD488DB \uC5C5\uB370\uC774\uD2B8",
 };
 
 function showPage(page, pushHash) {
@@ -7353,6 +7449,207 @@ async function runNasSync() {
     btn.textContent = "🔄 지금 동기화";
     btn.disabled = false;
   }
+}
+
+// ── 상품DB 업데이트 ──
+let _dbuLogTimer = null;
+
+async function loadDbUpdateStatus() {
+  try {
+    const r = await fetch(PREFIX + "/api/db-update/status");
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) return;
+    const d = await r.json();
+    if (!d.ok) return;
+
+    // 브랜드/카테고리 드롭다운 채우기
+    if (d.options) {
+      const bSel = document.getElementById("dbu-brand");
+      const cSel = document.getElementById("dbu-category");
+      const prevBrand = bSel.value;
+      const prevCat = cSel.value;
+      bSel.innerHTML = '<option value="">전체 브랜드</option>' +
+        (d.options.brands || []).map(b => `<option value="${b.code}">${b.name}</option>`).join("");
+      cSel.innerHTML = '<option value="">전체 카테고리</option>' +
+        (d.options.categories || []).map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+      if (prevBrand) bSel.value = prevBrand;
+      if (prevCat) cSel.value = prevCat;
+    }
+
+    // 저장된 수집 대상 리스트
+    renderDbUpdateTargets(d.targets || []);
+
+    // 스케줄 설정
+    document.getElementById("dbu-enabled").checked = d.enabled || false;
+    document.getElementById("dbu-interval-days").value = d.interval_days || 7;
+    document.getElementById("dbu-run-time").value = d.run_time || "03:00";
+
+    // 상태 카드
+    document.getElementById("dbu-auto-status").innerHTML = d.enabled
+      ? '<span style="color:var(--green);">활성</span>'
+      : '<span style="color:var(--red);">비활성</span>';
+    document.getElementById("dbu-interval").textContent = (d.interval_days || 7) + "일";
+    document.getElementById("dbu-last-run").textContent = d.last_run || "없음";
+    document.getElementById("dbu-next-run").textContent = d.next_run || "-";
+
+    // 실행 중이면 중지 버튼 표시
+    const btnRun = document.getElementById("btn-db-update-run");
+    const btnStop = document.getElementById("btn-db-update-stop");
+    if (d.running) {
+      btnRun.style.display = "none";
+      btnStop.style.display = "";
+      startDbUpdateLog();
+    } else {
+      btnRun.style.display = "";
+      btnStop.style.display = "none";
+      stopDbUpdateLog();
+    }
+
+    // 브랜드별 진행 상태
+    renderDbUpdateBrands(d.brands || []);
+
+    // 로그
+    if (d.log) {
+      document.getElementById("dbu-log").textContent = d.log;
+    }
+  } catch(e) { console.error(e); }
+}
+
+function renderDbUpdateTargets(targets) {
+  const el = document.getElementById("dbu-target-list");
+  if (!targets.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.75rem;">저장된 수집 대상이 없습니다. 브랜드/카테고리를 선택 후 [+ 추가] 버튼을 눌러주세요.</div>';
+    return;
+  }
+  el.innerHTML = targets.map((t, i) => {
+    const bLabel = t.brand_name || "전체 브랜드";
+    const cLabel = t.category_name || "전체 카테고리";
+    return `<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;">
+      <span style="font-size:0.82rem;font-weight:600;color:var(--accent);min-width:20px;">${i+1}</span>
+      <span style="font-size:0.78rem;flex:1;"><b>${bLabel}</b> &middot; ${cLabel}</span>
+      <button onclick="removeDbUpdateTarget(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:0.85rem;padding:2px 6px;" title="삭제">&times;</button>
+    </div>`;
+  }).join("");
+}
+
+async function addDbUpdateTarget() {
+  const bSel = document.getElementById("dbu-brand");
+  const cSel = document.getElementById("dbu-category");
+  const brand_code = bSel.value;
+  const category_id = cSel.value;
+  const brand_name = bSel.options[bSel.selectedIndex].text;
+  const category_name = cSel.options[cSel.selectedIndex].text;
+  try {
+    const r = await fetch(PREFIX + "/api/db-update/targets", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "add", brand_code, category_id, brand_name, category_name})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      renderDbUpdateTargets(d.targets || []);
+    } else {
+      alert(d.message || "추가 실패");
+    }
+  } catch(e) { console.error(e); }
+}
+
+async function removeDbUpdateTarget(idx) {
+  try {
+    const r = await fetch(PREFIX + "/api/db-update/targets", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "remove", index: idx})
+    });
+    const d = await r.json();
+    if (d.ok) renderDbUpdateTargets(d.targets || []);
+  } catch(e) { console.error(e); }
+}
+
+function renderDbUpdateBrands(brands) {
+  const el = document.getElementById("dbu-brand-list");
+  if (!brands.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.78rem;">실행 대기 중</div>';
+    return;
+  }
+  el.innerHTML = brands.map(b => {
+    let statusIcon = "⬜";
+    let statusColor = "var(--muted)";
+    let statusText = "대기";
+    if (b.status === "running") { statusIcon = "🔄"; statusColor = "var(--accent)"; statusText = "수집 중"; }
+    else if (b.status === "done") { statusIcon = "✅"; statusColor = "var(--green)"; statusText = `완료 (${b.count || 0}개)`; }
+    else if (b.status === "error") { statusIcon = "❌"; statusColor = "var(--red)"; statusText = "오류"; }
+    else if (b.status === "skipped") { statusIcon = "⏭️"; statusColor = "var(--dim)"; statusText = "스킵"; }
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--card);border:1px solid var(--border);border-radius:6px;">
+      <span>${statusIcon}</span>
+      <span style="font-size:0.78rem;flex:1;">${b.name}</span>
+      <span style="font-size:0.72rem;color:${statusColor};">${statusText}</span>
+    </div>`;
+  }).join("");
+}
+
+async function saveDbUpdateSchedule() {
+  const enabled = document.getElementById("dbu-enabled").checked;
+  const interval_days = parseInt(document.getElementById("dbu-interval-days").value) || 7;
+  const run_time = document.getElementById("dbu-run-time").value || "03:00";
+  try {
+    await fetch(PREFIX + "/api/db-update/schedule", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({enabled, interval_days, run_time})
+    });
+    loadDbUpdateStatus();
+  } catch(e) { console.error(e); }
+}
+
+async function runDbUpdateNow() {
+  const btn = document.getElementById("btn-db-update-run");
+  btn.textContent = "⏳ 시작 중..."; btn.disabled = true;
+  try {
+    const r = await fetch(PREFIX + "/api/db-update/run", {method: "POST"});
+    const d = await r.json();
+    if (d.ok) {
+      btn.style.display = "none";
+      document.getElementById("btn-db-update-stop").style.display = "";
+      startDbUpdateLog();
+    } else {
+      alert(d.message || "실행 실패");
+    }
+  } catch(e) { alert("오류: " + e); }
+  finally { btn.textContent = "▶ 지금 실행"; btn.disabled = false; }
+}
+
+async function stopDbUpdate() {
+  try {
+    await fetch(PREFIX + "/api/db-update/stop", {method: "POST"});
+    document.getElementById("btn-db-update-stop").style.display = "none";
+    document.getElementById("btn-db-update-run").style.display = "";
+    stopDbUpdateLog();
+  } catch(e) { console.error(e); }
+}
+
+function startDbUpdateLog() {
+  if (_dbuLogTimer) return;
+  _dbuLogTimer = setInterval(async () => {
+    try {
+      const r = await fetch(PREFIX + "/api/db-update/status");
+      const d = await r.json();
+      if (!d.ok) return;
+      if (d.log) {
+        const el = document.getElementById("dbu-log");
+        el.textContent = d.log;
+        el.scrollTop = el.scrollHeight;
+      }
+      renderDbUpdateBrands(d.brands || []);
+      if (!d.running) {
+        loadDbUpdateStatus();
+      }
+    } catch(e) {}
+  }, 3000);
+}
+
+function stopDbUpdateLog() {
+  if (_dbuLogTimer) { clearInterval(_dbuLogTimer); _dbuLogTimer = null; }
 }
 
 // ── 빈티지 블로그 업로드 ──

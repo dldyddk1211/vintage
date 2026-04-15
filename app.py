@@ -3341,6 +3341,8 @@ def _start_scheduler_once():
             logger.info("📤 [Windows] NAS 내보내기 등록 (매시 정각)")
         except NameError:
             pass
+        # 상품DB 자동 업데이트 (7일 주기)
+        _register_db_update_job()
         logger.info("🔄 [Windows] 수집 스케줄 등록 완료")
 
     if is_mac:
@@ -6842,6 +6844,316 @@ def nas_sync_status():
         except Exception:
             pass
     return jsonify({"ok": True, **info})
+
+
+# ── 상품DB 자동 업데이트 ─────────────────────
+_db_update_status = {
+    "running": False,
+    "stop_requested": False,
+    "log": [],
+    "brands": [],          # [{name, code, status, count}]
+    "current_brand": "",
+}
+
+def _load_db_update_schedule():
+    """DB 업데이트 스케줄 설정 로드"""
+    path = os.path.join(get_path("db"), "db_update_schedule.json")
+    default = {"enabled": False, "interval_days": 7, "run_time": "03:00", "last_run": "", "targets": []}
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                d = json.load(f)
+                default.update(d)
+        except Exception:
+            pass
+    if "targets" not in default:
+        default["targets"] = []
+    return default
+
+def _save_db_update_schedule(data):
+    """DB 업데이트 스케줄 설정 저장"""
+    path = os.path.join(get_path("db"), "db_update_schedule.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def _dbu_log(msg):
+    """DB 업데이트 로그 추가"""
+    ts = datetime.now().strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    _db_update_status["log"].append(line)
+    # 최대 500줄 유지
+    if len(_db_update_status["log"]) > 500:
+        _db_update_status["log"] = _db_update_status["log"][-300:]
+    logger.info(f"[DB업데이트] {msg}")
+
+def _run_db_update_all():
+    """저장된 targets 리스트를 순차 실행 (백그라운드 스레드)
+
+    targets가 비어있으면 전체 브랜드 × 전체 카테고리 수집
+    """
+    import time
+    from site_config import get_brands as get_site_brands, get_site
+    _db_update_status["running"] = True
+    _db_update_status["stop_requested"] = False
+    _db_update_status["log"] = []
+
+    site_id = "2ndstreet"
+    all_brands = get_site_brands(site_id)
+
+    # 저장된 targets 로드
+    sched = _load_db_update_schedule()
+    targets = sched.get("targets", [])
+
+    # targets가 없으면 전체 브랜드로 자동 구성
+    if not targets:
+        targets = [{"brand_code": "", "brand_name": "전체 브랜드", "category_id": "", "category_name": "전체 카테고리"}]
+
+    # 실행할 작업 목록 펼치기: 전체 브랜드인 항목은 개별 브랜드로 확장
+    jobs = []
+    for t in targets:
+        if not t.get("brand_code"):
+            # 전체 브랜드 → 개별 브랜드로 확장
+            for code, name in all_brands.items():
+                jobs.append({"brand_code": code, "brand_name": name, "category_id": t.get("category_id", ""), "category_name": t.get("category_name", "전체 카테고리")})
+        else:
+            jobs.append(t)
+
+    # 브랜드 상태 초기화
+    _db_update_status["brands"] = [
+        {"code": j["brand_code"], "name": f'{j["brand_name"]} ({j["category_name"]})', "status": "pending", "count": 0}
+        for j in jobs
+    ]
+
+    _dbu_log(f"상품DB 업데이트 시작 — {len(jobs)}개 작업 ({len(targets)}개 수집 대상)")
+
+    for idx, job in enumerate(jobs):
+        if _db_update_status["stop_requested"]:
+            _dbu_log("중지 요청 — 업데이트 중단")
+            for b in _db_update_status["brands"]:
+                if b["status"] == "pending":
+                    b["status"] = "skipped"
+            break
+
+        b_code = job["brand_code"]
+        b_name = job["brand_name"]
+        c_id = job.get("category_id", "")
+        c_name = job.get("category_name", "전체")
+        label = f"{b_name} / {c_name}"
+
+        _dbu_log(f"[{idx+1}/{len(jobs)}] {label} 수집 시작")
+        _db_update_status["current_brand"] = b_name
+        _db_update_status["brands"][idx]["status"] = "running"
+
+        try:
+            # 스크래핑이 진행 중이면 대기
+            wait_count = 0
+            while status.get("scraping"):
+                if _db_update_status["stop_requested"]:
+                    break
+                if wait_count == 0:
+                    _dbu_log(f"   다른 스크래핑 진행 중 — 대기...")
+                time.sleep(10)
+                wait_count += 1
+                if wait_count > 60:
+                    _dbu_log(f"   대기 시간 초과 — {label} 스킵")
+                    _db_update_status["brands"][idx]["status"] = "skipped"
+                    continue
+
+            if _db_update_status["stop_requested"]:
+                continue
+
+            run_scrape(
+                site_id=site_id,
+                category_id=c_id,
+                keyword="",
+                pages="",
+                brand_code=b_code,
+            )
+
+            saved_count = status.get("product_count", 0)
+            _db_update_status["brands"][idx]["status"] = "done"
+            _db_update_status["brands"][idx]["count"] = saved_count
+            _dbu_log(f"   {label} 완료 — {saved_count}개 수집")
+
+            # 작업 간 대기
+            if idx < len(jobs) - 1 and not _db_update_status["stop_requested"]:
+                wait_sec = 30
+                _dbu_log(f"   다음 작업 전 {wait_sec}초 대기...")
+                time.sleep(wait_sec)
+
+        except Exception as e:
+            _dbu_log(f"   {label} 오류: {e}")
+            _db_update_status["brands"][idx]["status"] = "error"
+
+    # 완료 처리
+    _db_update_status["running"] = False
+    _db_update_status["current_brand"] = ""
+
+    sched = _load_db_update_schedule()
+    sched["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    _save_db_update_schedule(sched)
+
+    total = sum(b["count"] for b in _db_update_status["brands"] if b["status"] == "done")
+    done_count = sum(1 for b in _db_update_status["brands"] if b["status"] == "done")
+    _dbu_log(f"전체 완료 — {done_count}/{len(jobs)} 작업, 총 {total}개 수집")
+
+
+@app.route(f"{URL_PREFIX}/api/db-update/status", methods=["GET"])
+@admin_required
+def db_update_status():
+    """DB 업데이트 상태 조회"""
+    from site_config import get_brands as get_site_brands, get_site
+    sched = _load_db_update_schedule()
+    # 다음 실행 시간 계산
+    next_run = ""
+    if sched["enabled"] and sched.get("last_run"):
+        try:
+            from datetime import timedelta
+            last = datetime.strptime(sched["last_run"], "%Y-%m-%d %H:%M:%S")
+            nxt = last + timedelta(days=sched.get("interval_days", 7))
+            next_run = nxt.strftime("%Y-%m-%d") + " " + sched.get("run_time", "03:00")
+        except Exception:
+            pass
+    elif sched["enabled"]:
+        next_run = "오늘 " + sched.get("run_time", "03:00") + " (첫 실행)"
+
+    # 브랜드/카테고리 옵션 목록
+    site_info = get_site("2ndstreet") or {}
+    brands_map = get_site_brands("2ndstreet")
+    brand_options = [{"code": code, "name": name} for code, name in brands_map.items()]
+    cat_options = [{"id": cid, "name": cat.get("name", cid)} for cid, cat in site_info.get("categories", {}).items()]
+
+    return jsonify({
+        "ok": True,
+        "running": _db_update_status["running"],
+        "enabled": sched.get("enabled", False),
+        "interval_days": sched.get("interval_days", 7),
+        "run_time": sched.get("run_time", "03:00"),
+        "last_run": sched.get("last_run", ""),
+        "next_run": next_run,
+        "brands": _db_update_status["brands"],
+        "targets": sched.get("targets", []),
+        "log": "\n".join(_db_update_status["log"][-100:]),
+        "options": {
+            "brands": brand_options,
+            "categories": cat_options,
+        },
+    })
+
+
+@app.route(f"{URL_PREFIX}/api/db-update/schedule", methods=["POST"])
+@admin_required
+def db_update_schedule_save():
+    """DB 업데이트 스케줄 저장"""
+    data = request.get_json() or {}
+    sched = _load_db_update_schedule()
+    sched["enabled"] = data.get("enabled", False)
+    sched["interval_days"] = data.get("interval_days", 7)
+    sched["run_time"] = data.get("run_time", "03:00")
+    _save_db_update_schedule(sched)
+
+    # 스케줄러 재등록
+    _register_db_update_job()
+
+    return jsonify({"ok": True})
+
+
+@app.route(f"{URL_PREFIX}/api/db-update/run", methods=["POST"])
+@admin_required
+def db_update_run():
+    """DB 업데이트 수동 실행 (저장된 targets 기반)"""
+    if _db_update_status["running"]:
+        return jsonify({"ok": False, "message": "이미 실행 중입니다"})
+    t = threading.Thread(target=_run_db_update_all, daemon=True)
+    t.start()
+    return jsonify({"ok": True, "message": "업데이트 시작"})
+
+
+@app.route(f"{URL_PREFIX}/api/db-update/stop", methods=["POST"])
+@admin_required
+def db_update_stop():
+    """DB 업데이트 중지"""
+    _db_update_status["stop_requested"] = True
+    status["stop_requested"] = True  # 현재 진행 중인 스크래핑도 중지
+    return jsonify({"ok": True})
+
+
+@app.route(f"{URL_PREFIX}/api/db-update/targets", methods=["POST"])
+@admin_required
+def db_update_targets():
+    """수집 대상 리스트 추가/삭제"""
+    data = request.get_json() or {}
+    sched = _load_db_update_schedule()
+    targets = sched.get("targets", [])
+    action = data.get("action", "")
+
+    if action == "add":
+        brand_code = data.get("brand_code", "")
+        category_id = data.get("category_id", "")
+        brand_name = data.get("brand_name", "전체 브랜드")
+        category_name = data.get("category_name", "전체 카테고리")
+        # 중복 체크
+        for t in targets:
+            if t.get("brand_code") == brand_code and t.get("category_id") == category_id:
+                return jsonify({"ok": False, "message": "이미 등록된 수집 대상입니다", "targets": targets})
+        targets.append({
+            "brand_code": brand_code,
+            "brand_name": brand_name,
+            "category_id": category_id,
+            "category_name": category_name,
+        })
+    elif action == "remove":
+        idx = data.get("index", -1)
+        if 0 <= idx < len(targets):
+            targets.pop(idx)
+
+    sched["targets"] = targets
+    _save_db_update_schedule(sched)
+    return jsonify({"ok": True, "targets": targets})
+
+
+def _register_db_update_job():
+    """DB 업데이트 스케줄러 등록"""
+    job_id = "db_update_auto"
+    try:
+        scheduler.remove_job(job_id)
+    except Exception:
+        pass
+
+    sched = _load_db_update_schedule()
+    if not sched.get("enabled"):
+        return
+
+    run_time = sched.get("run_time", "03:00")
+    hour, minute = (int(x) for x in run_time.split(":"))
+    interval_days = sched.get("interval_days", 7)
+
+    def _scheduled_db_update():
+        """스케줄러에서 호출 — 주기 체크 후 실행"""
+        s = _load_db_update_schedule()
+        last_run = s.get("last_run", "")
+        if last_run:
+            try:
+                from datetime import timedelta
+                last = datetime.strptime(last_run, "%Y-%m-%d %H:%M:%S")
+                if datetime.now() - last < timedelta(days=interval_days):
+                    return  # 아직 주기 안 됨
+            except Exception:
+                pass
+        if not _db_update_status["running"]:
+            t = threading.Thread(target=_run_db_update_all, daemon=True)
+            t.start()
+
+    scheduler.add_job(
+        _scheduled_db_update,
+        "cron",
+        hour=hour,
+        minute=minute,
+        id=job_id,
+        replace_existing=True,
+    )
+    logger.info(f"[DB업데이트] 스케줄 등록: 매일 {hour:02d}:{minute:02d} 체크 (주기 {interval_days}일)")
 
 
 # ── 빈티지 가격 설정 ─────────────────────
