@@ -3,7 +3,7 @@ data_manager.py
 서버 데이터 경로 관리
 
 구조:
-  공유폴더(NAS): /Volumes/파일공유/00 이용아/thone/srv/data/jp_sourcing/
+  공유폴더(NAS): /Volumes/파일공유/00 이용아/thone/srv/data/vintage/
     → products.db, 스케줄, AI설정, 이미지 등 모든 데이터
   로컬:          기존 경로
     → users.db (회원/주문/장바구니 — 외부 접근 쇼핑몰 전용)
@@ -16,13 +16,13 @@ import platform
 
 logger = logging.getLogger(__name__)
 
-PROJECT_NAME = "jp_sourcing"
+PROJECT_NAME = "vintage"
 
 # NAS 공유 폴더 경로 (OS별)
 if platform.system() == "Darwin":
-    NAS_SHARED_PATH = "/Volumes/파일공유/00 이용아/thone/srv/data/jp_sourcing"
+    NAS_SHARED_PATH = "/Volumes/파일공유/00 이용아/thone/srv/data/vintage"
 else:
-    NAS_SHARED_PATH = r"Z:\VOL1\파일공유\00 이용아\thone\srv\data\jp_sourcing"
+    NAS_SHARED_PATH = r"Z:\VOL1\파일공유\00 이용아\thone\srv\data\vintage"
 
 # OS별 기본 경로 (로컬 — users.db 전용 폴백)
 _home = os.path.expanduser("~")
