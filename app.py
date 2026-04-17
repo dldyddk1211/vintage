@@ -4418,8 +4418,8 @@ def scrape_check_count():
                 params.append(f"brand%5B%5D={brand}")
             params.append("sortBy=recommend&page=1")
             url = "https://www.2ndstreet.jp/search?" + "&".join(params)
-            await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-            await asyncio.sleep(5)
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(6)
             # 팝업 제거
             await page.evaluate("""() => {
                 document.body.classList.remove('zigzag-worldshopping-style-body-lock');
@@ -4427,21 +4427,30 @@ def scrape_check_count():
                 const btn = document.querySelector('#onetrust-accept-btn-handler');
                 if (btn) btn.click();
             }""")
-            await asyncio.sleep(2)
-            result = await page.evaluate(r"""() => {
-                const els = document.querySelectorAll('*');
-                for (const el of els) {
-                    const t = el.innerText || '';
-                    const m = t.match(/検索結果[：:]\s*([\d,]+)\s*点/);
-                    if (m) return m[1];
-                }
-                return '';
-            }""")
+            await asyncio.sleep(3)
+            # 검색 결과 수량 파싱 (최대 3회 재시도)
+            result = ''
+            for attempt in range(3):
+                result = await page.evaluate(r"""() => {
+                    const els = document.querySelectorAll('*');
+                    for (const el of els) {
+                        const t = el.innerText || '';
+                        const m = t.match(/検索結果[：:]\s*([\d,]+)\s*点/);
+                        if (m) return m[1];
+                    }
+                    return '';
+                }""")
+                if result:
+                    break
+                await page.wait_for_timeout(3000)
             await browser.close()
             await pw.stop()
             return result
 
-        total_text = asyncio.run(_check())
+        # Flask 내부 이벤트 루프 충돌 방지: 별도 스레드에서 실행
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            total_text = pool.submit(lambda: asyncio.run(_check())).result(timeout=60)
         if total_text:
             total_items = int(total_text.replace(",", ""))
             total_pages = (total_items + 29) // 30

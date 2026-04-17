@@ -117,7 +117,7 @@ async def scrape_2ndstreet(
     max_pages=999,
     brand_code="",
     batch_size=10,
-    batch_rest=120,
+    batch_rest=96,
     max_items=0,
 ):
     """
@@ -153,7 +153,7 @@ async def scrape_2ndstreet(
         await force_close_browser()
         _playwright = await async_playwright().start()
         _browser = await _playwright.chromium.launch(
-            headless=True,
+            headless=False,
             slow_mo=300,
             args=[
                 "--disable-blink-features=AutomationControlled",
@@ -219,7 +219,7 @@ async def scrape_2ndstreet(
 
             # 페이지 간 랜덤 대기 (봇 감지 방지)
             if page_num > 1:
-                hover_sec = _random.uniform(2, 5)
+                hover_sec = _random.uniform(1.5, 4)
                 log(f"   ⏸️ {hover_sec:.1f}초 대기 중...")
                 await asyncio.sleep(hover_sec)
 
@@ -237,7 +237,7 @@ async def scrape_2ndstreet(
                 else:
                     log(f"   ❌ 페이지 {page_num} 서버 오류 3회 연속 — 건너뜀")
                     continue
-                await asyncio.sleep(3 + _random.uniform(1, 3))
+                await asyncio.sleep(2.5 + _random.uniform(0.8, 2.5))
 
                 # 1) WorldShopping body-lock 해제 + 오버레이 제거 (클릭 차단 원인)
                 try:
@@ -561,7 +561,7 @@ async def _process_detail_pages(page, products, log, _random, category=""):
         try:
             log(f"   📄 [{idx+1}/{len(products)}] {prod.get('brand','')} {(prod.get('name') or '')[:35]} ¥{prod.get('price_jpy',0):,}")
             # 상세 페이지 간 랜덤 대기
-            await asyncio.sleep(_random.uniform(1.5, 3.5))
+            await asyncio.sleep(_random.uniform(1.2, 2.8))
             # Bad Gateway 재시도
             detail_ok = False
             for _dr in range(3):
@@ -577,7 +577,7 @@ async def _process_detail_pages(page, products, log, _random, category=""):
                 log(f"   ❌ 상세 페이지 서버 오류 — 건너뜀")
                 _translate_and_save(prod, log)
                 continue
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(1.2)
 
             # WorldShopping body-lock 해제 + 쿠키 배너 JS 클릭
             try:
@@ -645,7 +645,7 @@ async def _process_detail_pages(page, products, log, _random, category=""):
             _translate_and_save(prod, log)
             name_ko = (prod.get("name_ko") or "")[:35]
             log(f"      ✅ {name_ko} | {prod.get('subcategory','?')}")
-            await asyncio.sleep(_random.uniform(2, 3))
+            await asyncio.sleep(_random.uniform(1.5, 2.5))
         except Exception as e:
             from translator import TranslationError
             if isinstance(e, TranslationError):
@@ -708,7 +708,7 @@ async def rescrape_details(log=None):
 
         pw = await async_playwright().start()
         browser = await pw.chromium.launch(
-            headless=True,
+            headless=False,
             slow_mo=200,
             args=[
                 "--disable-blink-features=AutomationControlled",

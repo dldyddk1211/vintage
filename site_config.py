@@ -96,7 +96,7 @@ SITES = {
             "000260": "BOTTEGA VENETA",
             "000285": "Christian Dior",
             "000257": "BURBERRY",
-            "000319": "FERRAGAMO",
+            "001355": "FERRAGAMO",
             "kw:Issey Miyake": "Issey Miyake",
             "001545": "Tiffany & Co.",
         },

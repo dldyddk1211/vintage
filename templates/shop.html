@@ -1489,7 +1489,7 @@ function openModal(idx) {
 
   // 상세 테이블 생성 (고유번호 + 컨디션 맨 위)
   let rows = [];
-  if (p.product_code && p.product_code.startsWith("No.")) rows.push(["고유번호", p.product_code]);
+  if (p.product_code) rows.push(["고유번호", p.product_code]);
   if (gradeText) rows.push(["상태", gradeText]);
   if (p.size_info) rows.push(["컬러", transJa(p.size_info)]);
   if (p.material) rows.push(["소재", transJa(p.material)]);
