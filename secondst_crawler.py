@@ -500,6 +500,23 @@ async def scrape_2ndstreet(
                 total_skipped += skipped
                 log(f"\n   ✅ 이번 청크 {chunk_count}개 완료 — 누적 {total_saved}개 저장")
                 log(f"   📄 진행률: {pages_done}/{len(page_list)}페이지 ({pages_done*100//len(page_list)}%)")
+
+                # 🔁 교대 실행: 수집 청크 완료 → 기존 상품 최신화 300개 체크
+                try:
+                    import platform
+                    if platform.system() == "Windows":
+                        log(f"   🔍 교대 최신화 체크 시작 (300개)...")
+                        await force_close_browser()
+                        import concurrent.futures
+                        from product_checker import run_check_batch
+                        def _run_check():
+                            return run_check_batch(300, status_callback=log)
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            check_result = pool.submit(_run_check).result(timeout=1800)
+                        log(f"   🔍 교대 최신화 완료: 체크 {check_result.get('checked',0)}, 품절 {check_result.get('sold_out',0)}, 가격변동 {check_result.get('price_changed',0)}")
+                except Exception as e:
+                    log(f"   ⚠️ 교대 최신화 오류: {str(e)[:80]}")
+
                 log(f"   🔄 브라우저 재시작 중...\n")
                 products.clear()
                 page = await _open_browser()
