@@ -1707,6 +1707,7 @@
             <button class="btn b-blue" onclick="runCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x25b6; 선택 실행</button>
             <button class="btn b-purple" onclick="runBrandRoundRobin()" id="btn-run-all" style="padding:5px 12px;font-size:0.78rem">&#x1f504; 브랜드별 순환실행</button>
             <button class="btn b-yellow" onclick="scheduleCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x23F0; 예약 실행</button>
+            <button class="btn b-green" onclick="resetCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x21A9; 선택 대기로</button>
             <button class="btn b-red" onclick="stopAllTasks()" style="padding:5px 12px;font-size:0.78rem">&#x23F9; 전체 멈춤</button>
             <button class="btn b-red" onclick="deleteCheckedTasks()" style="padding:5px 12px;font-size:0.78rem">&#x1f5d1; 선택 삭제</button>
             <button class="btn b-gray" onclick="clearScrapeTasks()" style="padding:5px 12px;font-size:0.78rem">전체 삭제</button>
@@ -4145,6 +4146,18 @@ async function deleteCheckedTasks() {
   }
   checkedTaskIds.clear();
   addLog(`\u2705 ${ids.length}개 작업 삭제`, "ok");
+  loadScrapeTasks();
+}
+
+async function resetCheckedTasks() {
+  const ids = [...checkedTaskIds];
+  if (!ids.length) { alert("대기로 변경할 항목을 선택해주세요"); return; }
+  if (!confirm(`${ids.length}개 작업을 '대기' 상태로 변경하시겠습니까?`)) return;
+  for (const id of ids) {
+    await fetch(PREFIX + "/scrape/tasks/" + id, {method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({status:"대기", count:0})}).catch(()=>{});
+  }
+  checkedTaskIds.clear();
+  addLog(`\u21A9 ${ids.length}개 작업 → 대기로 변경`, "ok");
   loadScrapeTasks();
 }
 
