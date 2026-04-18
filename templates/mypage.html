@@ -752,6 +752,8 @@ async function toggleMyBatchDetail(orderId, el) {
   tr.after(detailRow);
   try {
     const res = await fetch(PREFIX + "/shop/api/order-batch/" + orderId);
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) { detailRow.querySelector("div").textContent = "세부 주문 없음"; return; }
     const d = await res.json();
     if (!d.ok || !d.items || !d.items.length) {
       detailRow.querySelector("div").textContent = "세부 주문 없음";

@@ -5665,6 +5665,8 @@ async function toggleBatchDetail(orderId, el) {
   tr.after(detailRow);
   try {
     const res = await fetch(PREFIX + "/orders/" + orderId + "/related");
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) { detailRow.querySelector("div").textContent = "세부 주문 없음"; return; }
     const d = await res.json();
     if (!d.ok || !d.related || !d.related.length) {
       detailRow.querySelector("div").textContent = "세부 주문 없음";
