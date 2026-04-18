@@ -141,7 +141,14 @@ async def check_products_batch(products, status_callback=None):
 
             try:
                 resp = await page.goto(link, wait_until="domcontentloaded", timeout=20000)
-                await asyncio.sleep(random.uniform(1, 2))
+                await asyncio.sleep(random.uniform(1.5, 2.5))
+                # 가격 요소 로딩 대기 (최대 6초)
+                price_loaded = False
+                try:
+                    await page.wait_for_selector('[itemprop="price"], .priceMain, .priceNum', timeout=6000)
+                    price_loaded = True
+                except Exception:
+                    pass
 
                 if resp is None or resp.status == 404:
                     # 품절/삭제
@@ -156,15 +163,26 @@ async def check_products_batch(products, status_callback=None):
                     is_sold = await page.evaluate("""() => {
                         // 2ndstreet: 판매 종료 시 특정 문구 표시
                         const body = document.body.innerText || '';
-                        // 상품 상세 영역의 SOLD OUT만 체크
+                        // 상품 상세 영역의 SOLD OUT만 체크 (추천상품 영역 오탐 방지)
                         const modal = document.querySelector('.modal_cont, .itemDetail, .goodsDetail, [class*="detail"]');
                         const target = modal ? modal.innerText : body;
                         if (target.includes('SOLD OUT')) return true;
-                        // 메인 가격 요소(.priceMain, itemprop=price)가 없으면 품절
+                        // 페이지 자체가 없는 경우
+                        if (body.includes('ページが見つかりません')) return true;
+                        // 메인 가격 요소가 없으면 품절
                         const price = document.querySelector('[itemprop="price"], .priceMain, .priceNum');
                         if (!price) return true;
                         return false;
                     }""")
+                    # 가격 로드 실패 시 한번 더 대기 후 재확인 (오탐 방지)
+                    if is_sold and not price_loaded:
+                        await asyncio.sleep(2)
+                        is_sold = await page.evaluate("""() => {
+                            const body = document.body.innerText || '';
+                            if (body.includes('SOLD OUT') || body.includes('売り切れ') || body.includes('売切れ')) return true;
+                            const price = document.querySelector('[itemprop="price"], .priceMain, .priceNum');
+                            return !price;
+                        }""")
 
                     if is_sold:
                         conn.execute(
