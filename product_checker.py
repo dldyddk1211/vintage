@@ -117,8 +117,8 @@ async def check_products_batch(products, status_callback=None):
     try:
         playwright = await async_playwright().start()
         browser = await playwright.chromium.launch(
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled", "--lang=ja"],
+            headless=False,
+            args=["--disable-blink-features=AutomationControlled", "--lang=ja", "--disable-translate"],
         )
         context = await browser.new_context(
             viewport={"width": 1280, "height": 900},
@@ -140,7 +140,7 @@ async def check_products_batch(products, status_callback=None):
             pid = p["id"]
 
             try:
-                resp = await page.goto(link, wait_until="domcontentloaded", timeout=15000)
+                resp = await page.goto(link, wait_until="domcontentloaded", timeout=20000)
                 await asyncio.sleep(random.uniform(1, 2))
 
                 if resp is None or resp.status == 404:
@@ -162,8 +162,8 @@ async def check_products_batch(products, status_callback=None):
                             body.includes('この商品は売切れ') ||
                             body.includes('この商品は現在販売しておりません') ||
                             body.includes('ページが見つかりません')) return true;
-                        // 상품 가격이 없으면 품절
-                        const price = document.querySelector('.itemPrice, .price, [class*="price"]');
+                        // 메인 가격 요소(.priceMain, itemprop=price)가 없으면 품절
+                        const price = document.querySelector('[itemprop="price"], .priceMain, .priceNum');
                         if (!price) return true;
                         return false;
                     }""")
@@ -176,10 +176,14 @@ async def check_products_batch(products, status_callback=None):
                         result["sold_out"] += 1
                         log(f"   [{i+1}] 품절: {p['brand']} {(p.get('name') or '')[:30]} (売切)")
                     else:
-                        # 가격 변동 체크
+                        # 가격 변동 체크 — 정확한 메인 가격 요소만 선택
                         new_price = await page.evaluate("""() => {
-                            const el = document.querySelector('.itemPrice, [class*="price"]');
+                            // 우선순위: itemprop=price (가장 정확)
+                            const el = document.querySelector('[itemprop="price"], .priceNum, .priceMain');
                             if (!el) return 0;
+                            // content 속성이 있으면 우선 사용 (숫자 원본)
+                            const content = el.getAttribute('content');
+                            if (content && /^\\d+$/.test(content)) return parseInt(content);
                             const m = el.innerText.replace(/[^0-9]/g, '');
                             return parseInt(m) || 0;
                         }""")
@@ -197,13 +201,26 @@ async def check_products_batch(products, status_callback=None):
 
                     result["checked"] += 1
                 else:
-                    # 기타 상태 (502 등) — 다음에 재시도
+                    # 기타 상태 (403 봇차단, 502 서버오류 등)
                     result["errors"] += 1
+                    err_detail = "봇 차단" if resp.status == 403 else f"서버 오류"
+                    log(f"   [{i+1}] HTTP {resp.status} ({err_detail}): {p['brand']} {(p.get('name') or '')[:25]}")
 
             except Exception as e:
                 result["errors"] += 1
-                if i < 3:  # 첫 몇 개만 에러 로그
-                    log(f"   체크 오류: {str(e)[:60]}")
+                err_msg = str(e)
+                # 에러 타입별 분류
+                if "Timeout" in err_msg or "timeout" in err_msg:
+                    err_type = "타임아웃(15초 초과)"
+                elif "net::ERR_" in err_msg:
+                    err_type = "네트워크 오류"
+                elif "Target closed" in err_msg or "Browser closed" in err_msg:
+                    err_type = "브라우저 종료됨"
+                elif "Navigation" in err_msg:
+                    err_type = "페이지 이동 실패"
+                else:
+                    err_type = "기타"
+                log(f"   [{i+1}] 오류({err_type}): {p['brand']} {(p.get('name') or '')[:25]} | {err_msg[:80]}")
 
             # 진행률 (10개마다 로그)
             if (i + 1) % 10 == 0 or i == len(products) - 1:
