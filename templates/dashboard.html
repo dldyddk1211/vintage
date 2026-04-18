@@ -2270,10 +2270,19 @@
             <div id="fresh-progress" style="height:100%;background:linear-gradient(90deg,var(--green),var(--accent));width:0%;transition:width 0.5s;"></div>
           </div>
           <div style="font-size:0.72rem;color:var(--muted);text-align:right;" id="fresh-pct">-</div>
-          <!-- 로그 -->
-          <div id="fresh-log" style="margin-top:8px;max-height:150px;overflow-y:auto;font-size:0.72rem;font-family:monospace;color:var(--muted);white-space:pre-wrap;"></div>
+          <!-- 실시간 로그 -->
+          <div style="margin-top:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <div style="font-size:0.75rem;font-weight:600;color:var(--text);">실시간 로그</div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span id="fresh-live-dot" style="width:6px;height:6px;border-radius:50%;background:var(--dim);"></span>
+                <span id="fresh-live-label" style="font-size:0.68rem;color:var(--dim);">대기</span>
+              </div>
+            </div>
+            <div id="fresh-log" style="max-height:400px;overflow-y:auto;font-size:0.73rem;font-family:'Consolas','Monaco',monospace;color:var(--muted);white-space:pre-wrap;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;line-height:1.7;"></div>
+          </div>
           <div style="margin-top:8px;font-size:0.68rem;color:var(--dim);">
-            * Windows 수집PC에서만 실행됩니다. 유휴 시간에 자동 실행, 수집 중에는 교대 실행됩니다.
+            * Windows 수집PC에서만 실행됩니다. 유휴 시간에 자동 실행 (5분 간격), 수집 중에는 교대 실행됩니다.
           </div>
         </div>
       </div>
@@ -7954,12 +7963,28 @@ async function loadFreshnessStatus() {
         el("fresh-mode").innerHTML = `<span style="color:var(--green);">${d.mode==="idle"?"자동 실행 중":"교대 실행 중"}</span>`;
         el("btn-fresh-run").style.display = "none";
         el("btn-fresh-stop").style.display = "";
-        if (!_freshTimer) _freshTimer = setInterval(loadFreshnessStatus, 5000);
+        if (!_freshTimer) _freshTimer = setInterval(loadFreshnessStatus, 3000);
       } else {
         el("fresh-mode").innerHTML = '<span style="color:var(--muted);">대기</span>';
         el("btn-fresh-run").style.display = "";
         el("btn-fresh-stop").style.display = "none";
         if (_freshTimer) { clearInterval(_freshTimer); _freshTimer = null; }
+      }
+    }
+    // 실시간 표시 dot
+    const dot = el("fresh-live-dot");
+    const lbl = el("fresh-live-label");
+    if (dot && lbl) {
+      if (d.running) {
+        dot.style.background = "var(--green)";
+        dot.style.boxShadow = "0 0 6px var(--green)";
+        lbl.textContent = "실행 중";
+        lbl.style.color = "var(--green)";
+      } else {
+        dot.style.background = "var(--dim)";
+        dot.style.boxShadow = "none";
+        lbl.textContent = "대기";
+        lbl.style.color = "var(--dim)";
       }
     }
     if (d.log && el("fresh-log")) {
