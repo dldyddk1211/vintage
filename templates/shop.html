@@ -1324,16 +1324,17 @@ async function loadShop(page = 1) {
     }
 
     grid.innerHTML = allProducts.map((p, i) => `
-      <div class="product-card" onclick="openModal(${i})">
+      <div class="product-card" onclick="openModal(${i})" style="${p.sold_out?'opacity:0.5;':''}">
         <div class="product-img-wrap">
           <img src="${(p.detail_images && p.detail_images[0]) || p.img_url || ''}" alt="" loading="lazy"
                onerror="if(this.dataset.retry!=='1'){this.dataset.retry='1';this.src=('${p.img_url||''}');}else{this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22><rect fill=%22%23181a22%22 width=%221%22 height=%221%22/></svg>';}"">
           ${p.condition_grade ? `<span class="product-grade">${p.condition_grade}</span>` : ""}
+          ${p.sold_out ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.7);color:var(--red);font-size:0.9rem;font-weight:800;padding:6px 16px;border-radius:6px;border:2px solid var(--red);letter-spacing:0.1em;">SOLD OUT</div>` : ""}
         </div>
         <div class="product-info">
           <div class="product-brand">${p.brand}</div>
           <div class="product-name">${transJa(p.name)}</div>
-          ${renderCardPrice(p)}
+          ${p.sold_out ? '<div class="product-price" style="color:var(--red);font-size:0.82rem;">품절</div>' : renderCardPrice(p)}
         </div>
       </div>
     `).join("");

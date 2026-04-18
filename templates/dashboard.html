@@ -442,7 +442,7 @@
         <span class="nav-icon">&#x1f4c2;</span>
         <span>상품 리스트 (NAS)</span>
       </div>
-      <div class="nav-item" data-page="db-update" onclick="showPage('db-update');loadDbUpdateStatus()">
+      <div class="nav-item" data-page="db-update" onclick="showPage('db-update');loadDbUpdateStatus();loadFreshnessStatus()">
         <span class="nav-icon">&#x1f504;</span>
         <span>상품DB 업데이트</span>
       </div>
@@ -2232,6 +2232,49 @@
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;">
           <div style="font-size:0.8rem;font-weight:600;margin-bottom:10px;">실행 로그</div>
           <div id="dbu-log" style="max-height:300px;overflow-y:auto;font-size:0.75rem;font-family:monospace;color:var(--muted);white-space:pre-wrap;"></div>
+        </div>
+
+        <!-- 상품 최신화 현황 -->
+        <div style="margin-top:16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div style="font-size:0.8rem;font-weight:600;">&#x1f50d; 상품 최신화 현황</div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn b-blue" onclick="runFreshnessCheck()" id="btn-fresh-run" style="padding:5px 12px;font-size:0.75rem;">&#x25b6; 수동 실행</button>
+              <button class="btn b-red" onclick="stopFreshnessCheck()" id="btn-fresh-stop" style="padding:5px 12px;font-size:0.75rem;display:none;">&#x23f9; 중지</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px;">
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+              <div style="font-size:0.68rem;color:var(--muted);">전체 상품</div>
+              <div style="font-size:1rem;font-weight:700;" id="fresh-total">-</div>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+              <div style="font-size:0.68rem;color:var(--muted);">체크 완료</div>
+              <div style="font-size:1rem;font-weight:700;color:var(--green);" id="fresh-checked">-</div>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+              <div style="font-size:0.68rem;color:var(--muted);">미확인</div>
+              <div style="font-size:1rem;font-weight:700;color:var(--yellow);" id="fresh-need">-</div>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+              <div style="font-size:0.68rem;color:var(--muted);">품절 확인</div>
+              <div style="font-size:1rem;font-weight:700;color:var(--red);" id="fresh-soldout">-</div>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+              <div style="font-size:0.68rem;color:var(--muted);">상태</div>
+              <div style="font-size:0.82rem;font-weight:600;" id="fresh-mode">-</div>
+            </div>
+          </div>
+          <!-- 프로그레스 -->
+          <div style="background:var(--card);border-radius:6px;height:6px;overflow:hidden;border:1px solid var(--border);margin-bottom:6px;">
+            <div id="fresh-progress" style="height:100%;background:linear-gradient(90deg,var(--green),var(--accent));width:0%;transition:width 0.5s;"></div>
+          </div>
+          <div style="font-size:0.72rem;color:var(--muted);text-align:right;" id="fresh-pct">-</div>
+          <!-- 로그 -->
+          <div id="fresh-log" style="margin-top:8px;max-height:150px;overflow-y:auto;font-size:0.72rem;font-family:monospace;color:var(--muted);white-space:pre-wrap;"></div>
+          <div style="margin-top:8px;font-size:0.68rem;color:var(--dim);">
+            * Windows 수집PC에서만 실행됩니다. 유휴 시간에 자동 실행, 수집 중에는 교대 실행됩니다.
+          </div>
         </div>
       </div>
     </div>
@@ -7883,6 +7926,64 @@ function downloadKwCsv() {
   a.href = URL.createObjectURL(blob);
   a.download = "keyword_analysis.csv";
   a.click();
+}
+
+// ── 상품 최신화 ──
+var _freshTimer = null;
+
+async function loadFreshnessStatus() {
+  try {
+    const r = await fetch(PREFIX + "/api/freshness/status");
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) return;
+    const d = await r.json();
+    if (!d.ok) return;
+    const s = d.stats || {};
+    const el = id => document.getElementById(id);
+    if (el("fresh-total")) el("fresh-total").textContent = (s.total||0).toLocaleString();
+    if (el("fresh-checked")) el("fresh-checked").textContent = (s.checked||0).toLocaleString();
+    if (el("fresh-need")) el("fresh-need").textContent = (s.need_check||0).toLocaleString();
+    if (el("fresh-soldout")) el("fresh-soldout").textContent = (s.sold_out||0).toLocaleString();
+    // 프로그레스
+    const pct = s.total > 0 ? Math.round((s.checked||0) / s.total * 100) : 0;
+    if (el("fresh-progress")) el("fresh-progress").style.width = pct + "%";
+    if (el("fresh-pct")) el("fresh-pct").textContent = `${(s.checked||0).toLocaleString()} / ${(s.total||0).toLocaleString()} (${pct}%)`;
+    // 상태
+    if (el("fresh-mode")) {
+      if (d.running) {
+        el("fresh-mode").innerHTML = `<span style="color:var(--green);">${d.mode==="idle"?"자동 실행 중":"교대 실행 중"}</span>`;
+        el("btn-fresh-run").style.display = "none";
+        el("btn-fresh-stop").style.display = "";
+        if (!_freshTimer) _freshTimer = setInterval(loadFreshnessStatus, 5000);
+      } else {
+        el("fresh-mode").innerHTML = '<span style="color:var(--muted);">대기</span>';
+        el("btn-fresh-run").style.display = "";
+        el("btn-fresh-stop").style.display = "none";
+        if (_freshTimer) { clearInterval(_freshTimer); _freshTimer = null; }
+      }
+    }
+    if (d.log && el("fresh-log")) {
+      el("fresh-log").textContent = d.log;
+      el("fresh-log").scrollTop = el("fresh-log").scrollHeight;
+    }
+  } catch(e) {}
+}
+
+async function runFreshnessCheck() {
+  try {
+    const r = await fetch(PREFIX + "/api/freshness/run", {method:"POST"});
+    const d = await r.json();
+    if (d.ok) {
+      _freshTimer = setInterval(loadFreshnessStatus, 5000);
+      loadFreshnessStatus();
+    } else { alert(d.message || "실행 실패"); }
+  } catch(e) { alert("오류: " + e); }
+}
+
+async function stopFreshnessCheck() {
+  try { await fetch(PREFIX + "/api/freshness/stop", {method:"POST"}); } catch(e) {}
+  if (_freshTimer) { clearInterval(_freshTimer); _freshTimer = null; }
+  loadFreshnessStatus();
 }
 
 // ── Kavinet ──

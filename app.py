@@ -2212,6 +2212,7 @@ def shop_api_products():
                 "color_raw": r["color"] if "color" in r.keys() else "",
                 "description": desc,
                 "detail_images": detail_imgs[:12],
+                "sold_out": (r["product_status"] == "sold_out") if "product_status" in r.keys() and r["product_status"] else False,
             })
 
         return jsonify({
@@ -2701,6 +2702,16 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages="", brand_
     finally:
         status["scraping"] = False
         push_log("🔧 run_scrape 종료 (scraping=False)")
+
+        # [Windows] 수집 완료 후 교대 최신화 체크 실행
+        import platform
+        if platform.system() == "Windows" and not _freshness_status.get("running"):
+            try:
+                push_log("🔍 교대 실행: 기존 상품 300개 최신화 체크 시작")
+                run_interleaved_check()
+                push_log("🔍 교대 체크 완료")
+            except Exception as e:
+                push_log(f"🔍 교대 체크 오류: {e}")
 
 
 def _shuffle_by_brand(products: list) -> list:
@@ -3390,6 +3401,14 @@ def _start_scheduler_once():
             pass
         # 상품DB 자동 업데이트 (7일 주기)
         _register_db_update_job()
+        # 유휴 시간 상품 최신화 체크 (5분 간격)
+        scheduler.add_job(
+            func=_idle_product_check,
+            trigger="interval", minutes=5,
+            id="idle_product_check", replace_existing=True,
+            name="유휴 시간 상품 최신화 (5분 간격)",
+        )
+        logger.info("🔍 [Windows] 유휴 시간 상품 최신화 등록 (5분 간격)")
         logger.info("🔄 [Windows] 수집 스케줄 등록 완료")
 
     if is_mac:
@@ -4154,6 +4173,150 @@ def keyword_search():
         return jsonify({"ok": False, "message": str(e)})
     except Exception as e:
         return jsonify({"ok": False, "message": f"조회 실패: {e}"})
+
+
+# ── 상품 최신화 체크 (Windows 전용) ─────────────────────
+_freshness_status = {
+    "running": False,
+    "mode": "",        # "idle" 또는 "interleaved"
+    "log": [],
+    "last_result": {},
+}
+
+def _freshness_log(msg):
+    ts = datetime.now().strftime("%H:%M:%S")
+    _freshness_status["log"].append(f"[{ts}] {msg}")
+    if len(_freshness_status["log"]) > 500:
+        _freshness_status["log"] = _freshness_status["log"][-300:]
+    logger.info(f"[최신화] {msg}")
+
+
+def _idle_product_check():
+    """5분 간격 호출 — 수집 작업이 없으면 자동으로 상태 체크 실행 (Windows 전용)"""
+    import platform
+    if platform.system() != "Windows":
+        return
+
+    # 이미 실행 중이면 스킵
+    if _freshness_status["running"]:
+        return
+    # 수집 작업 진행 중이면 스킵 (교대 실행은 수집 함수 내에서 처리)
+    if status.get("scraping"):
+        return
+    if _db_update_status.get("running"):
+        return
+
+    # 유휴 시간 → 최신화 체크 실행
+    t = threading.Thread(target=_run_freshness_check, args=("idle",), daemon=True)
+    t.start()
+
+
+def _run_freshness_check(mode="idle"):
+    """상품 최신화 체크 실행 (백그라운드)
+
+    mode="idle": 유휴 시간 — 계속 300개씩 체크 (다른 작업 시작되면 중단)
+    mode="interleaved": 교대 실행 — 1배치(300개)만 체크 후 반환
+    """
+    import time
+    from product_checker import run_check_batch, get_check_stats, checker_status, CHUNK_SIZE
+
+    _freshness_status["running"] = True
+    _freshness_status["mode"] = mode
+    checker_status["stop_requested"] = False
+
+    try:
+        if mode == "idle":
+            _freshness_log("유휴 시간 최신화 시작")
+            batch_count = 0
+            while True:
+                # 다른 작업이 시작되면 즉시 중단
+                if status.get("scraping") or _db_update_status.get("running"):
+                    _freshness_log("수집 작업 감지 — 최신화 일시 중단")
+                    break
+                if checker_status["stop_requested"]:
+                    _freshness_log("중지 요청 — 최신화 중단")
+                    break
+
+                result = run_check_batch(CHUNK_SIZE, _freshness_log)
+                if result["checked"] == 0 and result["sold_out"] == 0:
+                    _freshness_log("체크할 상품 없음 — 전체 최신화 완료")
+                    break
+
+                batch_count += 1
+                total = result["checked"] + result["sold_out"]
+                _freshness_log(f"배치 #{batch_count} 완료: 체크 {result['checked']}, 품절 {result['sold_out']}, 가격변동 {result['price_changed']}")
+
+                # 배치 간 대기 (30초)
+                _freshness_log("30초 대기...")
+                for _ in range(30):
+                    if status.get("scraping") or _db_update_status.get("running"):
+                        break
+                    if checker_status["stop_requested"]:
+                        break
+                    time.sleep(1)
+
+        elif mode == "interleaved":
+            _freshness_log("교대 실행: 체크 300개 시작")
+            result = run_check_batch(CHUNK_SIZE, _freshness_log)
+            _freshness_log(f"교대 체크 완료: 체크 {result['checked']}, 품절 {result['sold_out']}, 가격변동 {result['price_changed']}")
+            _freshness_status["last_result"] = result
+
+    except Exception as e:
+        _freshness_log(f"최신화 오류: {e}")
+    finally:
+        _freshness_status["running"] = False
+        _freshness_status["mode"] = ""
+
+
+def run_interleaved_check():
+    """수집 작업에서 호출 — 1배치 교대 체크 실행 (동기)"""
+    import time
+    from product_checker import run_check_batch, CHUNK_SIZE
+
+    _freshness_log("교대 실행: 체크 300개 시작")
+    result = run_check_batch(CHUNK_SIZE, _freshness_log)
+    _freshness_log(f"교대 체크 완료: 체크 {result['checked']}, 품절 {result['sold_out']}, 가격변동 {result['price_changed']}")
+    return result
+
+
+@app.route(f"{URL_PREFIX}/api/freshness/status", methods=["GET"])
+@admin_required
+def freshness_status_api():
+    """최신화 체크 상태 조회"""
+    from product_checker import get_check_stats
+    try:
+        stats = get_check_stats()
+    except Exception:
+        stats = {}
+    return jsonify({
+        "ok": True,
+        "running": _freshness_status["running"],
+        "mode": _freshness_status["mode"],
+        "stats": stats,
+        "log": "\n".join(_freshness_status["log"][-50:]),
+    })
+
+
+@app.route(f"{URL_PREFIX}/api/freshness/run", methods=["POST"])
+@admin_required
+def freshness_run_api():
+    """최신화 체크 수동 실행"""
+    if _freshness_status["running"]:
+        return jsonify({"ok": False, "message": "이미 실행 중입니다"})
+    if status.get("scraping"):
+        return jsonify({"ok": False, "message": "수집 작업 진행 중 — 수집 완료 후 자동 실행됩니다"})
+    t = threading.Thread(target=_run_freshness_check, args=("idle",), daemon=True)
+    t.start()
+    return jsonify({"ok": True})
+
+
+@app.route(f"{URL_PREFIX}/api/freshness/stop", methods=["POST"])
+@admin_required
+def freshness_stop_api():
+    """최신화 체크 중지"""
+    from product_checker import checker_status
+    checker_status["stop_requested"] = True
+    return jsonify({"ok": True})
 
 
 # ── Kavinet API ─────────────────────
