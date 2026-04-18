@@ -413,14 +413,10 @@
         <span class="nav-icon">&#x1f465;</span>
         <span>회원관리</span>
       </div>
-      <div class="nav-item" data-page="orders" onclick="showPage('orders');loadOrders()">
+      <div class="nav-item" data-page="orders" onclick="showPage('orders');initOrderTabs()">
         <span class="nav-icon">&#x1f4e6;</span>
         <span>주문확인</span>
         <span class="nav-badge" id="nav-order-count" style="display:none">0</span>
-      </div>
-      <div class="nav-item" data-page="board-admin" onclick="showPage('board-admin');loadBoardAdmin()">
-        <span class="nav-icon">&#x1f4ac;</span>
-        <span>고객 요청/문의</span>
       </div>
       <div class="nav-item" data-page="scrape-tasks" onclick="showPage('scrape-tasks');loadScrapeTasks()">
         <span class="nav-icon">&#x1f4cb;</span>
@@ -807,15 +803,19 @@
 
     <!-- ═══ 주문확인 ═══ -->
     <div class="page-section" id="page-orders">
+      <!-- 탭 헤더 -->
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
+        <div class="order-tab active" data-tab="order" onclick="switchOrderTab('order')" style="padding:10px 20px;font-size:0.85rem;color:var(--accent);cursor:pointer;border-bottom:2px solid var(--accent);margin-bottom:-2px;font-weight:700;">&#x1f6d2; 주문 <span id="order-tab-cnt" style="font-size:0.72rem;color:var(--yellow);"></span></div>
+        <div class="order-tab" data-tab="cart" onclick="switchOrderTab('cart')" style="padding:10px 20px;font-size:0.85rem;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;">&#x1f6d2; 장바구니 <span id="cart-tab-cnt" style="font-size:0.72rem;color:var(--yellow);"></span></div>
+      </div>
+
+      <!-- 주문 탭 -->
+      <div class="order-tab-content" id="order-tab-order">
       <div class="panel">
         <div class="panel-title">
-          <span>&#x1f4e6; 주문/문의 리스트</span>
+          <span>&#x1f4e6; 주문 리스트</span>
           <div style="display:flex;gap:8px;">
-            <select id="order-filter" onchange="loadOrders(true)" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:0.78rem;">
-              <option value="">전체</option>
-              <option value="order">주문</option>
-              <option value="inquiry">문의</option>
-            </select>
+            <input type="hidden" id="order-filter" value="order">
             <select id="order-status-filter" onchange="loadOrders(true)" style="background:#0d0d0a;border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:0.78rem;">
               <option value="">전체 상태</option>
               <option value="new">신규</option>
@@ -842,6 +842,8 @@
             <option value="cancelled">취소</option>
           </select>
           <button onclick="bulkChangeOrderStatus()" class="btn b-blue" style="padding:4px 10px;font-size:0.72rem;">적용</button>
+          <span style="color:var(--border)">|</span>
+          <button onclick="bulkDeleteOrders()" class="btn b-red" style="padding:4px 10px;font-size:0.72rem;">선택 삭제</button>
         </div>
         <div style="overflow-x:auto;">
           <table class="tbl" style="width:100%;font-size:0.78rem;">
@@ -849,8 +851,6 @@
               <tr>
                 <th style="width:30px"><input type="checkbox" onchange="toggleAllOrderChk(this.checked)"></th>
                 <th>주문번호</th>
-                <th>일시</th>
-                <th>유형</th>
                 <th>고객</th>
                 <th>레벨</th>
                 <th>이름</th>
@@ -873,10 +873,11 @@
           </table>
         </div>
       </div>
-    </div>
+      </div><!-- end order-tab-order -->
 
-    <!-- ═══ 고객 요청/문의 ═══ -->
-    <div class="page-section" id="page-board-admin">
+      <!-- 문의 탭 -->
+      <div class="order-tab-content" id="order-tab-inquiry" style="display:none;">
+      <div id="page-board-admin">
       <div class="panel">
         <div class="panel-title">
           <span>&#x1f4ac; 고객 요청/문의</span>
@@ -893,7 +894,39 @@
         </div>
         <div id="board-admin-list" style="font-size:0.82rem;">로딩 중...</div>
       </div>
-    </div>
+      </div>
+      </div><!-- end order-tab-inquiry -->
+
+      <!-- 장바구니 탭 -->
+      <div class="order-tab-content" id="order-tab-cart" style="display:none;">
+      <div class="panel">
+        <div class="panel-title">
+          <span>&#x1f6d2; 고객 장바구니</span>
+          <button class="btn b-gray" onclick="loadAdminCarts()" style="padding:5px 12px;font-size:0.78rem">&#x1f504; 새로고침</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="tbl" style="width:100%;font-size:0.78rem;">
+            <thead>
+              <tr>
+                <th>고객ID</th>
+                <th>고객명</th>
+                <th>이미지</th>
+                <th>브랜드</th>
+                <th>상품명</th>
+                <th>고유번호</th>
+                <th>가격</th>
+                <th>담은일</th>
+              </tr>
+            </thead>
+            <tbody id="admin-cart-tbody">
+              <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      </div><!-- end order-tab-cart -->
+
+    </div><!-- end page-orders -->
 
     <!-- ═══ Vintage ═══ -->
     <div class="page-section" id="page-vintage">
@@ -5689,12 +5722,10 @@ async function loadOrders(force) {
       return `<tr style="border-bottom:1px solid var(--border)22;">
         <td style="padding:6px;text-align:center;"><input type="checkbox" class="order-chk" data-id="${o.id}" onchange="updateOrderSelCnt()"></td>
         <td style="padding:6px;font-family:monospace;font-size:0.68rem;color:var(--accent);white-space:nowrap;">${o.order_number||''}</td>
-        <td style="padding:6px;white-space:nowrap;font-size:0.72rem;">${o.created_at||''}</td>
-        <td style="padding:6px;text-align:center;">${typeIcons[o.type]||'📋'} ${o.type==='order'?'주문':'문의'}</td>
         <td style="padding:6px;font-weight:600;">${o.username||''}</td>
         <td style="padding:6px;font-size:0.7rem;font-weight:700;color:${o.user_level==='b2b'?'#4f8ef7':'var(--green)'};">${(o.user_level||'b2c').toUpperCase()}</td>
         <td style="padding:6px;"><a href="#" onclick="showCustomerPopup(event,'${o.username||''}')" style="color:var(--accent);text-decoration:underline;cursor:pointer;">${o.customer_name||'-'}</a></td>
-        <td style="padding:4px;"><img src="${o.product_img||''}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid var(--border);" onerror="this.style.display='none'"></td>
+        <td style="padding:4px;position:relative;"><img src="${o.product_img||''}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid var(--border);" onerror="this.style.display='none'">${o.product_sold_out ? '<span style="position:absolute;top:2px;left:2px;background:var(--red);color:#fff;font-size:0.5rem;padding:1px 3px;border-radius:2px;font-weight:700;">품절</span>' : ''}</td>
         <td style="padding:6px;">${o.brand||''}</td>
         <td style="padding:6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(o.product_name||'').includes('일괄결제') ? `<a href="#" onclick="event.preventDefault();showBatchOrders(${o.id},'${(o.product_name||'').replace(/'/g,"\\'")}')" style="color:var(--yellow);text-decoration:underline;cursor:pointer;">${o.product_name}</a>` : (o.product_name||'')}</td>
         <td style="padding:6px;font-family:monospace;font-size:0.72rem;"><a href="${o.product_link || ('{{ url_prefix }}/shop?code='+encodeURIComponent(o.product_code||''))}" target="_blank" style="color:var(--accent);text-decoration:underline;cursor:pointer;" title="${o.product_link?'원본 상품 페이지':'쇼핑몰에서 보기'}">${o.product_code||''}</a></td>
@@ -5801,6 +5832,18 @@ async function bulkChangeOrderStatus() {
   loadOrders(true);
 }
 
+async function bulkDeleteOrders() {
+  const ids = [];
+  document.querySelectorAll(".order-chk:checked").forEach(c => ids.push(parseInt(c.dataset.id)));
+  if (!ids.length) { alert("삭제할 주문을 선택해주세요"); return; }
+  if (!confirm(`${ids.length}건을 삭제하시겠습니까?\n삭제된 주문은 복구할 수 없습니다.`)) return;
+  for (const id of ids) {
+    await fetch(PREFIX + "/orders/" + id, {method:"DELETE"}).catch(()=>{});
+  }
+  addLog(`\u2705 ${ids.length}건 주문 삭제`, "ok");
+  loadOrders(true);
+}
+
 function updateOrderBadge(count) {
   const badge = document.getElementById("nav-order-count");
   if (badge) {
@@ -5831,6 +5874,114 @@ async function updateOrderField(id, field, value) {
       loadOrders(true);
     }
   } catch(e) {}
+}
+
+// ── 주문/문의/장바구니 탭 ─────────────────────
+function switchOrderTab(tab) {
+  document.querySelectorAll(".order-tab").forEach(el => {
+    const active = el.dataset.tab === tab;
+    el.style.color = active ? "var(--accent)" : "var(--muted)";
+    el.style.borderBottomColor = active ? "var(--accent)" : "transparent";
+    el.style.fontWeight = active ? "700" : "400";
+    el.classList.toggle("active", active);
+  });
+  document.querySelectorAll(".order-tab-content").forEach(el => el.style.display = "none");
+  const target = document.getElementById("order-tab-" + tab);
+  if (target) target.style.display = "block";
+  if (tab === "order") { document.getElementById("order-filter").value = "order"; loadOrders(true); }
+  if (tab === "inquiry") { document.getElementById("order-filter").value = "inquiry"; loadOrders(true); loadBoardAdmin(); }
+  if (tab === "cart") loadAdminCarts();
+}
+
+function initOrderTabs() {
+  const currentTab = document.querySelector(".order-tab.active")?.dataset?.tab || "order";
+  switchOrderTab(currentTab);
+}
+
+async function loadAdminCarts() {
+  const tbody = document.getElementById("admin-cart-tbody");
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px;">로딩 중...</td></tr>';
+  try {
+    const r = await fetch(PREFIX + "/api/admin/carts");
+    const d = await r.json();
+    if (!d.ok || !d.carts.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px;">장바구니가 비어있습니다</td></tr>';
+      document.getElementById("cart-tab-cnt").textContent = "";
+      return;
+    }
+    document.getElementById("cart-tab-cnt").textContent = d.carts.length;
+    tbody.innerHTML = d.carts.map(c => `<tr>
+      <td style="font-size:0.75rem;">${c.username||''}</td>
+      <td style="font-weight:600;">${c.customer_name||'-'}</td>
+      <td style="position:relative;"><img src="${c.img_url||''}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">${c.sold_out ? '<span style="position:absolute;top:2px;left:2px;background:var(--red);color:#fff;font-size:0.5rem;padding:1px 3px;border-radius:2px;font-weight:700;">품절</span>' : ''}</td>
+      <td>${c.brand||''}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.product_name||''}</td>
+      <td><a href="#" onclick="event.preventDefault();openAdminCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}')" style="font-family:monospace;font-size:0.72rem;color:var(--accent);text-decoration:underline;cursor:pointer;">${c.product_code||''}</a></td>
+      <td>${c.price||''}</td>
+      <td style="font-size:0.72rem;color:var(--muted);">${(c.created_at||'').substring(0,16)}</td>
+    </tr>`).join("");
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:20px;">로드 실패</td></tr>';
+  }
+}
+
+var _adminCartMainImg = "";
+async function openAdminCartDetail(code) {
+  if (!code) return;
+  try {
+    const r = await fetch(PREFIX + "/shop/api/product-by-code?code=" + encodeURIComponent(code));
+    const d = await r.json();
+    if (!d.ok || !d.product) { alert("상품 정보를 찾을 수 없습니다"); return; }
+    const p = d.product;
+    const imgs = (p.detail_images && p.detail_images.length) ? p.detail_images : (p.img_url ? [p.img_url] : []);
+    _adminCartMainImg = imgs[0] || "";
+    const gradeLabels = {"NS":"신품/미사용","S":"중고S (최상)","A":"중고A (양호)","B":"중고B (사용감 있음)","C":"중고C (사용감 많음)","D":"중고D (난있음)"};
+    const gradeText = gradeLabels[p.condition_grade] || p.condition_grade || "";
+    const desc = p.description || "";
+
+    // 상세 테이블
+    let rows = [];
+    if (p.product_code) rows.push(["고유번호", `<span style="font-family:monospace;">${p.product_code}</span>`]);
+    if (gradeText) rows.push(["상태", gradeText]);
+    if (p.size_info) rows.push(["컬러", p.size_info]);
+    if (p.material) rows.push(["소재", p.material]);
+    if (p.color_raw) rows.push(["사이즈(cm)", p.color_raw]);
+    const tableHtml = rows.length ? `<table style="width:100%;border-collapse:collapse;font-size:0.82rem;margin-top:12px;">
+      ${rows.map(([l,v]) => `<tr>
+        <th style="text-align:left;padding:8px 12px;background:rgba(212,165,74,0.08);color:var(--muted);font-weight:500;width:90px;border-bottom:1px solid var(--border);white-space:nowrap;">${l}</th>
+        <td style="padding:8px 12px;color:var(--text);border-bottom:1px solid var(--border);">${v}</td>
+      </tr>`).join("")}</table>` : "";
+
+    const html = `
+      <div id="admin-cart-modal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.78);z-index:1000;display:flex;justify-content:center;align-items:center;" onclick="if(event.target===this)this.remove()">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:780px;width:95%;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,0.5);">
+          <div style="display:flex;gap:0;">
+            <!-- 이미지 영역 -->
+            <div style="flex:0 0 50%;background:#111318;padding:16px;display:flex;flex-direction:column;gap:8px;border-radius:14px 0 0 14px;">
+              <div style="overflow:hidden;border-radius:8px;">
+                <img id="admin-cart-main-img" src="${imgs[0]||''}" style="width:100%;border-radius:8px;aspect-ratio:1;object-fit:cover;" onerror="this.style.display='none'">
+              </div>
+              ${imgs.length > 1 ? `<div style="display:flex;gap:5px;flex-wrap:wrap;">${imgs.map((img, i) => `<img src="${img}" onclick="document.getElementById('admin-cart-main-img').src='${img}'" style="width:52px;height:52px;border-radius:5px;object-fit:cover;cursor:pointer;border:2px solid ${i===0?'var(--accent)':'transparent'};opacity:${i===0?'1':'0.5'};transition:all .2s;" onmouseover="this.style.opacity='1';this.style.borderColor='var(--accent)'" onmouseout="this.style.opacity='${i===0?'1':'0.5'}'" onerror="this.style.display='none'">`).join("")}</div>` : ""}
+            </div>
+            <!-- 상세 영역 -->
+            <div style="flex:1;padding:24px 20px;display:flex;flex-direction:column;gap:10px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-family:'Cormorant Garamond',serif;font-size:0.88rem;color:var(--accent);font-weight:500;letter-spacing:0.1em;">${p.brand||''}</div>
+                <button onclick="document.getElementById('admin-cart-modal').remove()" style="background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer;">&times;</button>
+              </div>
+              <div style="font-size:1.05rem;font-weight:600;line-height:1.5;">${p.name||''}</div>
+              <div style="font-size:1.3rem;font-weight:800;color:var(--green);">${p.price_krw ? p.price_krw.toLocaleString()+'원' : '¥'+(p.price_jpy||0).toLocaleString()}</div>
+              <div style="font-size:0.72rem;color:var(--muted);">(관부가세,해외배송비 미포함)</div>
+              ${tableHtml}
+              ${desc ? `<div style="margin-top:8px;padding:12px;background:rgba(212,165,74,0.06);border:1px solid var(--border);border-radius:8px;font-size:0.8rem;color:var(--text);line-height:1.7;">${desc.replace(/\\n/g,'<br>')}</div>` : ''}
+              ${p.link ? `<a href="${p.link}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:8px 14px;background:rgba(212,165,74,0.1);border:1px solid var(--accent);border-radius:6px;color:var(--accent);font-size:0.78rem;font-weight:600;text-decoration:none;">&#x1f310; 2ndstreet 원본 보기 &#x2197;</a>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  } catch(e) { alert("로드 실패: " + e); }
 }
 
 // ── 고객 요청/문의 관리 ─────────────────────

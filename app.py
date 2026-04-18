@@ -680,6 +680,20 @@ def get_cart():
     try:
         rows = conn.execute("SELECT * FROM cart WHERE username=? ORDER BY created_at DESC", (username,)).fetchall()
         items = [{c: r[c] for c in r.keys()} for r in rows]
+        # 품절 여부 체크
+        try:
+            from product_db import _conn as prod_conn
+            pconn = prod_conn()
+            for item in items:
+                code = item.get("product_code", "")
+                if code:
+                    pr = pconn.execute("SELECT product_status FROM products WHERE internal_code=? OR product_code=? LIMIT 1", (code, code)).fetchone()
+                    item["sold_out"] = (pr and pr["product_status"] == "sold_out") if pr else False
+                else:
+                    item["sold_out"] = False
+            pconn.close()
+        except Exception:
+            pass
         return jsonify({"ok": True, "items": items, "count": len(items)})
     finally:
         conn.close()
@@ -694,12 +708,18 @@ def add_to_cart():
     from user_db import _conn as user_conn
     conn = user_conn()
     try:
+        product_code = data.get("code", "")
         conn.execute("""INSERT OR IGNORE INTO cart (username, product_code, brand, product_name, price, price_jpy, img_url)
                         VALUES (?,?,?,?,?,?,?)""",
-                     (username, data.get("code",""), data.get("brand",""), data.get("name",""),
+                     (username, product_code, data.get("brand",""), data.get("name",""),
                       data.get("price",""), data.get("price_jpy",0), data.get("img_url","")))
         conn.commit()
         count = conn.execute("SELECT count(*) FROM cart WHERE username=?", (username,)).fetchone()[0]
+
+        # 백그라운드 품절 체크
+        t = threading.Thread(target=_check_product_soldout, args=(product_code,), daemon=True)
+        t.start()
+
         return jsonify({"ok": True, "count": count})
     finally:
         conn.close()
@@ -1423,29 +1443,9 @@ def _init_orders_db():
 
 
 def _generate_order_number(conn=None, created_at=None):
-    """주문번호 생성: ORD-YYYYMMDD-XXXX"""
-    from datetime import datetime
-    if created_at:
-        try:
-            dt = datetime.strptime(created_at[:10], "%Y-%m-%d")
-        except Exception:
-            dt = datetime.now()
-    else:
-        dt = datetime.now()
-    date_str = dt.strftime("%Y%m%d")
-    prefix = f"ORD-{date_str}-"
-    if conn:
-        row = conn.execute(
-            "SELECT order_number FROM orders WHERE order_number LIKE ? ORDER BY order_number DESC LIMIT 1",
-            (f"{prefix}%",)
-        ).fetchone()
-        if row and row["order_number"]:
-            try:
-                last_seq = int(row["order_number"].split("-")[-1])
-                return f"{prefix}{last_seq + 1:04d}"
-            except Exception:
-                pass
-    return f"{prefix}0001"
+    """주문번호 생성: ORD-YYMMDD-HHMMSS"""
+    dt = datetime.now()
+    return f"ORD-{dt.strftime('%y%m%d')}-{dt.strftime('%H%M%S')}"
 
 
 def _save_order(ntype, username, customer_name, brand, product_name, product_code, price, price_jpy):
@@ -1471,9 +1471,84 @@ def _save_order(ntype, username, customer_name, brand, product_name, product_cod
         except Exception as e:
             logger.warning(f"[SMS] 주문 접수 알림 실패: {e}")
 
+        # 백그라운드 품절 체크 → 품절이면 자동 취소 + 문자
+        order_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        t = threading.Thread(target=_bg_check_and_update_order, args=(order_id, product_code, username), daemon=True)
+        t.start()
+
         return order_number
     finally:
         conn.close()
+
+
+def _check_product_soldout(product_code):
+    """상품 품절 여부 빠른 체크 (HTTP 요청) — 백그라운드에서 호출"""
+    from product_db import _conn
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT id, link, product_status FROM products WHERE internal_code=? OR product_code=? LIMIT 1",
+            (product_code, product_code)
+        ).fetchone()
+        if not row or not row["link"]:
+            return None  # 상품 없음
+        # 이미 품절 마킹된 경우
+        if row["product_status"] == "sold_out":
+            return True
+        # 2ndstreet URL 접속 체크
+        try:
+            import requests as _req
+            resp = _req.get(row["link"], timeout=10, allow_redirects=True,
+                           headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0"})
+            if resp.status_code == 404:
+                conn.execute("UPDATE products SET product_status='sold_out', checked_at=? WHERE id=?",
+                             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), row["id"]))
+                conn.commit()
+                return True
+            # 페이지 내 품절 문구 체크
+            body = resp.text
+            if "売り切れ" in body or "この商品は現在販売しておりません" in body or "ページが見つかりません" in body:
+                conn.execute("UPDATE products SET product_status='sold_out', checked_at=? WHERE id=?",
+                             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), row["id"]))
+                conn.commit()
+                return True
+            # 판매중
+            conn.execute("UPDATE products SET product_status='available', checked_at=? WHERE id=?",
+                         (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), row["id"]))
+            conn.commit()
+            return False
+        except Exception:
+            return None  # 네트워크 오류 시 알 수 없음
+    finally:
+        conn.close()
+
+
+def _bg_check_and_update_order(order_id, product_code, username):
+    """백그라운드: 주문 상품 품절 체크 → 품절이면 자동 취소 + 문자"""
+    try:
+        is_sold = _check_product_soldout(product_code)
+        if is_sold:
+            from user_db import _conn as user_conn
+            conn = user_conn()
+            try:
+                order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+                if order and order["status"] == "new":
+                    conn.execute("UPDATE orders SET status='sold_out' WHERE id=?", (order_id,))
+                    conn.commit()
+                    logger.info(f"[품절체크] 주문 #{order_id} 자동 품절취소 ({product_code})")
+                    # SMS 발송
+                    user = conn.execute("SELECT phone FROM users WHERE username=?", (username,)).fetchone()
+                    if user and user["phone"]:
+                        from aligo_sms import send_order_notification, load_config
+                        load_config()
+                        product_name = (order["product_name"] or "") if "product_name" in order.keys() else ""
+                        order_number = (order["order_number"] or "") if "order_number" in order.keys() else ""
+                        send_order_notification(user["phone"], order_number, "sold_out", product_name)
+                        logger.info(f"[SMS] 품절 자동 알림: {username} ({user['phone']})")
+            finally:
+                conn.close()
+    except Exception as e:
+        logger.warning(f"[품절체크] 오류: {e}")
 
 
 @app.route(f"{URL_PREFIX}/orders")
@@ -1506,8 +1581,12 @@ def get_orders():
             for r in rows:
                 code = r["product_code"] or ""
                 if code and code not in product_extras:
-                    pr = pconn.execute("SELECT link, img_url FROM products WHERE internal_code=? LIMIT 1", (code,)).fetchone()
-                    product_extras[code] = {"link": pr["link"] if pr else "", "img": pr["img_url"] if pr else ""}
+                    pr = pconn.execute("SELECT link, img_url, product_status FROM products WHERE internal_code=? OR product_code=? LIMIT 1", (code, code)).fetchone()
+                    product_extras[code] = {
+                        "link": pr["link"] if pr else "",
+                        "img": pr["img_url"] if pr else "",
+                        "sold_out": (pr["product_status"] == "sold_out") if pr and pr["product_status"] else False,
+                    }
             pconn.close()
         except Exception:
             pass
@@ -1516,6 +1595,7 @@ def get_orders():
             extras = product_extras.get(r["product_code"], {})
             o["product_link"] = extras.get("link", "")
             o["product_img"] = extras.get("img", "")
+            o["product_sold_out"] = extras.get("sold_out", False)
             # 원가/마진 계산
             pname = o.get("product_name", "") or ""
             pjpy = o.get("price_jpy", 0) or 0
@@ -1607,6 +1687,21 @@ def get_related_orders(order_id):
                 except Exception:
                     o["product_img"] = ""
         return jsonify({"ok": True, "related": related, "count": len(related)})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/orders/<int:order_id>", methods=["DELETE"])
+@admin_required
+def delete_order(order_id):
+    """주문 삭제"""
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        conn.execute("DELETE FROM orders WHERE id=?", (order_id,))
+        conn.commit()
+        logger.info(f"주문 삭제: #{order_id}")
+        return jsonify({"ok": True})
     finally:
         conn.close()
 
@@ -3641,6 +3736,15 @@ def _start_scheduler_once():
     )
     logger.info("📅 회원 만료 알림 등록 (매일 09:00)")
 
+    # ── 공통: 장바구니 품절 체크 (매일 04:00) ──
+    scheduler.add_job(
+        func=_check_cart_soldout,
+        trigger="cron", hour=4, minute=0,
+        id="cart_soldout_check", replace_existing=True,
+        name="장바구니 품절 체크 (04:00)",
+    )
+    logger.info("🛒 장바구니 품절 체크 등록 (매일 04:00)")
+
     # ── 공통: Git 자동 풀 (매시 정각) ──
     scheduler.add_job(
         func=_auto_git_pull,
@@ -3806,6 +3910,33 @@ def _backup_config_files():
 def _backup_products_db():
     """[Windows] products.db 백업 → NAS/backups/products/"""
     _backup_db_file("products.db", "products", max_backups=30)
+
+
+def _check_cart_soldout():
+    """장바구니 상품 품절 체크 (매일 새벽 4시)"""
+    from user_db import _conn
+    conn = _conn()
+    try:
+        rows = conn.execute("SELECT DISTINCT product_code FROM cart WHERE product_code IS NOT NULL AND product_code != ''").fetchall()
+        codes = [r[0] for r in rows]
+        if not codes:
+            return
+        logger.info(f"[장바구니 품절체크] {len(codes)}개 상품 체크 시작")
+        sold_count = 0
+        for code in codes:
+            try:
+                is_sold = _check_product_soldout(code)
+                if is_sold:
+                    sold_count += 1
+                import time
+                time.sleep(1)  # 봇 감지 방지
+            except Exception:
+                pass
+        logger.info(f"[장바구니 품절체크] 완료: {len(codes)}개 중 {sold_count}개 품절")
+    except Exception as e:
+        logger.warning(f"[장바구니 품절체크] 오류: {e}")
+    finally:
+        conn.close()
 
 
 def _check_member_expiry():
@@ -4564,6 +4695,44 @@ def freshness_stop_api():
     from product_checker import checker_status
     checker_status["stop_requested"] = True
     return jsonify({"ok": True})
+
+
+# ── 관리자 장바구니 조회 ─────────────────────
+@app.route(f"{URL_PREFIX}/api/admin/carts", methods=["GET"])
+@admin_required
+def admin_carts():
+    """전체 고객 장바구니 조회 (고객명 + 품절 여부 포함)"""
+    from user_db import _conn
+    from product_db import _conn as prod_conn
+    conn = _conn()
+    try:
+        rows = conn.execute("""
+            SELECT c.*, u.name as customer_name
+            FROM cart c LEFT JOIN users u ON c.username = u.username
+            ORDER BY c.created_at DESC
+        """).fetchall()
+        carts = [{col: r[col] for col in r.keys()} for r in rows]
+        # products DB에서 품절 여부 조회
+        try:
+            pconn = prod_conn()
+            for c in carts:
+                code = c.get("product_code", "")
+                if code:
+                    pr = pconn.execute(
+                        "SELECT product_status FROM products WHERE internal_code=? OR product_code=? LIMIT 1",
+                        (code, code)
+                    ).fetchone()
+                    c["sold_out"] = (pr and pr["product_status"] == "sold_out") if pr else False
+                else:
+                    c["sold_out"] = False
+            pconn.close()
+        except Exception:
+            pass
+        return jsonify({"ok": True, "carts": carts})
+    except Exception as e:
+        return jsonify({"ok": True, "carts": []})
+    finally:
+        conn.close()
 
 
 # ── 문자 발송 API (알리고) ─────────────────────

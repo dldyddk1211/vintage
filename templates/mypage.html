@@ -807,8 +807,9 @@ async function loadMyCart() {
       return;
     }
     // Desktop table
-    tbody.innerHTML = d.items.map(c => `<tr>
-      <td><img class="cart-img" src="${c.img_url||''}" onerror="this.style.display='none'" style="cursor:pointer;" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}')"></td>
+    tbody.innerHTML = d.items.map(c => `<tr style="${c.sold_out?'opacity:0.5;':''}">
+      <td style="position:relative;"><img class="cart-img" src="${c.img_url||''}" onerror="this.style.display='none'" style="cursor:pointer;" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}')">
+        ${c.sold_out ? '<span style="position:absolute;top:2px;left:2px;background:var(--red);color:#fff;font-size:0.55rem;padding:1px 4px;border-radius:3px;font-weight:700;">품절</span>' : ''}</td>
       <td><a href="#" onclick="event.preventDefault();openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}');" style="color:var(--text);text-decoration:underline;text-underline-offset:3px;cursor:pointer;">${c.product_name||''}</a></td>
       <td style="font-weight:600;">${c.brand||''}</td>
       <td style="font-family:monospace;font-size:0.75rem;">${c.product_code||''}</td>
@@ -819,7 +820,8 @@ async function loadMyCart() {
       </td>
     </tr>`).join("");
     // Mobile cards
-    mobileEl.innerHTML = d.items.map(c => `<div class="cart-card">
+    mobileEl.innerHTML = d.items.map(c => `<div class="cart-card" style="${c.sold_out?'opacity:0.5;':''}position:relative;">
+      ${c.sold_out ? '<span style="position:absolute;top:4px;left:4px;background:var(--red);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:3px;font-weight:700;z-index:1;">품절</span>' : ''}
       <img src="${c.img_url||''}" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}');" style="cursor:pointer;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22><rect fill=%22%23181a22%22 width=%221%22 height=%221%22/></svg>'">
       <div class="cart-card-info" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}');" style="cursor:pointer;">
         <div class="brand">${c.brand||''}</div>
