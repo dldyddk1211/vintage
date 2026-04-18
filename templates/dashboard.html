@@ -491,6 +491,10 @@
         <span class="nav-icon">&#x1f4ec;</span>
         <span>텔레그램 알림</span>
       </div>
+      <div class="nav-item" data-page="sms" onclick="showPage('sms');loadSmsStatus()">
+        <span class="nav-icon">&#x1f4f1;</span>
+        <span>문자 발송</span>
+      </div>
       <div class="nav-item" data-page="bigdata" onclick="showPage('bigdata')">
         <span class="nav-icon">&#x1f4be;</span>
         <span>빅데이터 관리</span>
@@ -2425,6 +2429,90 @@
       </div>
     </div>
 
+    <!-- ═══ 문자 발송 ═══ -->
+    <div class="page-section" id="page-sms">
+      <div class="panel">
+        <div class="panel-title"><span>&#x1f4f1; 고객 문자 발송 (알리고)</span></div>
+
+        <!-- API 설정 -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;">
+          <div style="font-size:0.8rem;font-weight:600;margin-bottom:10px;">알리고 API 설정</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+            <div style="flex:1;min-width:140px;">
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">API Key</label>
+              <input id="sms-api-key" type="password" placeholder="API 키" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.78rem;">
+            </div>
+            <div style="min-width:120px;">
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">User ID</label>
+              <input id="sms-user-id" placeholder="알리고 아이디" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.78rem;">
+            </div>
+            <div style="min-width:130px;">
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">발신번호</label>
+              <input id="sms-sender" placeholder="010-0000-0000" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.78rem;">
+            </div>
+            <button class="btn b-green" onclick="saveSmsConfig()" style="padding:7px 14px;font-size:0.78rem;">저장</button>
+          </div>
+          <div style="display:flex;gap:12px;margin-top:8px;font-size:0.75rem;">
+            <span id="sms-balance" style="color:var(--muted);">잔여: -</span>
+            <span id="sms-config-status" style="color:var(--muted);"></span>
+          </div>
+        </div>
+
+        <!-- 발송 대상 -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;">
+          <div style="font-size:0.8rem;font-weight:600;margin-bottom:10px;">발송 대상</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">
+            <label style="font-size:0.78rem;display:flex;align-items:center;gap:6px;">
+              <input type="radio" name="sms-target" value="select" checked onchange="toggleSmsTarget()"> 회원 선택
+            </label>
+            <label style="font-size:0.78rem;display:flex;align-items:center;gap:6px;">
+              <input type="radio" name="sms-target" value="all" onchange="toggleSmsTarget()"> 전체 회원
+            </label>
+            <label style="font-size:0.78rem;display:flex;align-items:center;gap:6px;">
+              <input type="radio" name="sms-target" value="manual" onchange="toggleSmsTarget()"> 직접 입력
+            </label>
+          </div>
+          <!-- 회원 선택 -->
+          <div id="sms-target-select">
+            <div id="sms-member-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px;"></div>
+          </div>
+          <!-- 직접 입력 -->
+          <div id="sms-target-manual" style="display:none;">
+            <textarea id="sms-phones" rows="3" placeholder="수신번호 입력 (줄바꿈 또는 쉼표로 구분)&#10;예: 010-1234-5678&#10;010-9876-5432" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:0.82rem;resize:vertical;"></textarea>
+          </div>
+          <div style="margin-top:6px;font-size:0.72rem;color:var(--muted);" id="sms-target-count">선택: 0명</div>
+        </div>
+
+        <!-- 메시지 작성 -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;">
+          <div style="font-size:0.8rem;font-weight:600;margin-bottom:10px;">메시지 작성</div>
+          <div style="margin-bottom:8px;">
+            <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">제목 (LMS만)</label>
+            <input id="sms-title" placeholder="TheOne Vintage" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:0.82rem;">
+          </div>
+          <div>
+            <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px;">내용</label>
+            <textarea id="sms-msg" rows="5" placeholder="메시지 내용을 입력하세요" oninput="updateSmsCount()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:0.82rem;resize:vertical;"></textarea>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:0.72rem;color:var(--muted);">
+            <span id="sms-byte-count">0 byte (SMS)</span>
+            <div style="display:flex;gap:6px;">
+              <button onclick="smsTemplate('order')" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--muted);font-size:0.7rem;cursor:pointer;">주문확인</button>
+              <button onclick="smsTemplate('ship')" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--muted);font-size:0.7rem;cursor:pointer;">배송안내</button>
+              <button onclick="smsTemplate('promo')" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--muted);font-size:0.7rem;cursor:pointer;">프로모션</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 발송 버튼 -->
+        <div style="display:flex;gap:10px;">
+          <button class="btn b-blue" onclick="sendSms()" style="padding:10px 24px;font-size:0.85rem;font-weight:700;">&#x1f4e8; 발송하기</button>
+          <button class="btn b-gray" onclick="testSms()" style="padding:10px 16px;font-size:0.82rem;">테스트 발송</button>
+        </div>
+        <div id="sms-result" style="margin-top:10px;font-size:0.82rem;display:none;"></div>
+      </div>
+    </div>
+
     <!-- ═══ 키워드 분석 (SEO) ═══ -->
     <div class="page-section" id="page-seo-keyword">
       <div class="panel">
@@ -2972,6 +3060,7 @@ const pageTitles = {
   "kavinet": "\uD83C\uDFAF Kavinet \u203A \uB300\uC2DC\uBCF4\uB4DC",
   "kavinet-products": "\uD83C\uDFAF Kavinet \u203A \uC0C1\uD488 \uBAA9\uB85D",
   "kavinet-scrape": "\uD83C\uDFAF Kavinet \u203A \uC218\uC9D1",
+  "sms": "Setting \u203A \uD83D\uDCF1 \uBB38\uC790 \uBC1C\uC1A1",
   "seo-keyword": "Setting \u203A \uD83D\uDD0D \uD0A4\uC6CC\uB4DC \uBD84\uC11D",
 };
 
@@ -7871,6 +7960,156 @@ function stopDbUpdateLog() {
 // ── 빈티지 블로그 업로드 ──
 let vtBlogProducts = [];
 let vtBlogPage = 1;
+// ── 문자 발송 (SMS) ──
+async function loadSmsStatus() {
+  try {
+    const r = await fetch(PREFIX + "/api/sms/status");
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) return;
+    const d = await r.json();
+    if (d.config) {
+      document.getElementById("sms-api-key").value = d.config.api_key ? "••••••••" : "";
+      document.getElementById("sms-user-id").value = d.config.user_id || "";
+      document.getElementById("sms-sender").value = d.config.sender || "";
+    }
+    if (d.balance) {
+      document.getElementById("sms-balance").innerHTML =
+        `잔여: SMS <b>${d.balance.sms_cnt||0}</b>건 / LMS <b>${d.balance.lms_cnt||0}</b>건`;
+    }
+    // 회원 목록 로드
+    loadSmsMemberList();
+  } catch(e) {}
+}
+
+async function loadSmsMemberList() {
+  try {
+    const r = await fetch(PREFIX + "/api/sms/members");
+    const d = await r.json();
+    const el = document.getElementById("sms-member-list");
+    if (!d.ok || !d.members.length) { el.innerHTML = '<div style="color:var(--muted);padding:10px;font-size:0.78rem;">회원 없음</div>'; return; }
+    el.innerHTML = `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:0.78rem;color:var(--accent);cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:4px;">
+      <input type="checkbox" onchange="toggleAllSmsMembers(this.checked)"> 전체 선택 (${d.members.length}명)
+    </label>` + d.members.map(m =>
+      `<label class="filter-chk-item" style="padding:3px 6px;font-size:0.78rem;">
+        <input type="checkbox" class="sms-member-chk" value="${m.phone}" data-name="${m.name}"> ${m.name} (${m.phone})
+      </label>`
+    ).join("");
+  } catch(e) {}
+}
+
+function toggleAllSmsMembers(checked) {
+  document.querySelectorAll('.sms-member-chk').forEach(c => c.checked = checked);
+  updateSmsTargetCount();
+}
+
+function toggleSmsTarget() {
+  const val = document.querySelector('input[name="sms-target"]:checked').value;
+  document.getElementById("sms-target-select").style.display = val === "select" ? "" : "none";
+  document.getElementById("sms-target-manual").style.display = val === "manual" ? "" : "none";
+  updateSmsTargetCount();
+}
+
+function updateSmsTargetCount() {
+  const val = document.querySelector('input[name="sms-target"]:checked').value;
+  let cnt = 0;
+  if (val === "select") cnt = document.querySelectorAll('.sms-member-chk:checked').length;
+  else if (val === "all") cnt = document.querySelectorAll('.sms-member-chk').length;
+  else cnt = (document.getElementById("sms-phones").value.match(/\d{3}[\-\s]?\d{3,4}[\-\s]?\d{4}/g) || []).length;
+  document.getElementById("sms-target-count").textContent = `선택: ${cnt}명`;
+}
+
+function updateSmsCount() {
+  const msg = document.getElementById("sms-msg").value;
+  const bytes = new Blob([msg]).size;
+  const type = bytes > 90 ? "LMS" : "SMS";
+  document.getElementById("sms-byte-count").textContent = `${bytes} byte (${type})`;
+}
+
+function smsTemplate(type) {
+  const templates = {
+    order: "[TheOne Vintage] 고객님의 주문이 확인되었습니다.\n빠른 시일 내 처리하겠습니다.\n감사합니다.",
+    ship: "[TheOne Vintage] 상품이 발송되었습니다!\n배송 추적은 마이페이지에서 확인하세요.\nhttps://vintage.theone-biz.com/shop/mypage",
+    promo: "[TheOne Vintage] 신규 입고 안내\n일본 직소싱 명품 빈티지 신상품이 입고되었습니다.\nhttps://vintage.theone-biz.com",
+  };
+  document.getElementById("sms-msg").value = templates[type] || "";
+  updateSmsCount();
+}
+
+async function saveSmsConfig() {
+  const api_key = document.getElementById("sms-api-key").value.trim();
+  const user_id = document.getElementById("sms-user-id").value.trim();
+  const sender = document.getElementById("sms-sender").value.trim();
+  if (!user_id || !sender) { alert("User ID와 발신번호를 입력해주세요"); return; }
+  const body = {user_id, sender};
+  if (api_key && !api_key.includes("•")) body.api_key = api_key;
+  try {
+    const r = await fetch(PREFIX + "/api/sms/config", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    const d = await r.json();
+    document.getElementById("sms-config-status").innerHTML = d.ok ? '<span style="color:var(--green);">저장 완료</span>' : '<span style="color:var(--red);">저장 실패</span>';
+    loadSmsStatus();
+  } catch(e) { alert("오류: " + e); }
+}
+
+function getSelectedPhones() {
+  const val = document.querySelector('input[name="sms-target"]:checked').value;
+  if (val === "select") {
+    return [...document.querySelectorAll('.sms-member-chk:checked')].map(c => c.value);
+  } else if (val === "all") {
+    return [...document.querySelectorAll('.sms-member-chk')].map(c => c.value);
+  } else {
+    const text = document.getElementById("sms-phones").value;
+    return text.split(/[\n,]+/).map(s => s.trim()).filter(s => s.match(/\d{3}[\-\s]?\d{3,4}[\-\s]?\d{4}/));
+  }
+}
+
+async function sendSms() {
+  const phones = getSelectedPhones();
+  const msg = document.getElementById("sms-msg").value.trim();
+  const title = document.getElementById("sms-title").value.trim();
+  if (!phones.length) { alert("수신자를 선택해주세요"); return; }
+  if (!msg) { alert("메시지를 입력해주세요"); return; }
+  if (!confirm(`${phones.length}명에게 문자를 발송하시겠습니까?`)) return;
+  const el = document.getElementById("sms-result");
+  el.style.display = "block";
+  el.innerHTML = '<span style="color:var(--accent);">발송 중...</span>';
+  try {
+    const r = await fetch(PREFIX + "/api/sms/send", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({receivers:phones, msg, title})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      el.innerHTML = `<span style="color:var(--green);">발송 완료: 성공 ${d.success_cnt||0}건</span>`;
+    } else {
+      el.innerHTML = `<span style="color:var(--red);">발송 실패: ${d.message||''}</span>`;
+    }
+    loadSmsStatus();
+  } catch(e) { el.innerHTML = `<span style="color:var(--red);">오류: ${e}</span>`; }
+}
+
+async function testSms() {
+  const sender = document.getElementById("sms-sender").value.trim();
+  const msg = document.getElementById("sms-msg").value.trim() || "[TheOne Vintage] 테스트 문자입니다.";
+  if (!sender) { alert("발신번호를 먼저 설정해주세요"); return; }
+  if (!confirm(`발신번호(${sender})로 테스트 문자를 발송합니다.`)) return;
+  const el = document.getElementById("sms-result");
+  el.style.display = "block";
+  el.innerHTML = '<span style="color:var(--accent);">테스트 발송 중...</span>';
+  try {
+    const r = await fetch(PREFIX + "/api/sms/send", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({receivers:[sender], msg, title:"테스트"})
+    });
+    const d = await r.json();
+    el.innerHTML = d.ok ? '<span style="color:var(--green);">테스트 발송 성공</span>' : `<span style="color:var(--red);">실패: ${d.message||''}</span>`;
+  } catch(e) { el.innerHTML = `<span style="color:var(--red);">오류: ${e}</span>`; }
+}
+
+// 회원 체크 이벤트
+document.addEventListener("change", e => {
+  if (e.target.classList.contains("sms-member-chk")) updateSmsTargetCount();
+});
+
 // ── 키워드 분석 (SEO) ──
 var _kwResults = [];
 

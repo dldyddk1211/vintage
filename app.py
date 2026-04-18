@@ -1622,6 +1622,26 @@ def update_order(order_id):
         params.append(order_id)
         conn.execute(f"UPDATE orders SET {', '.join(updates)} WHERE id = ?", params)
         conn.commit()
+
+        # 주문 상태 변경 시 자동 문자 발송
+        if "status" in data:
+            new_status = data["status"]
+            if new_status in ("confirmed", "processing", "shipped", "completed"):
+                try:
+                    order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+                    if order:
+                        username = order["username"]
+                        user = conn.execute("SELECT phone FROM users WHERE username=?", (username,)).fetchone()
+                        if user and user["phone"]:
+                            from aligo_sms import send_order_notification, load_config
+                            load_config()
+                            product_name = order.get("product_name", "") or order.get("brand", "")
+                            order_number = order.get("order_number", "")
+                            send_order_notification(user["phone"], order_number, new_status, product_name)
+                            logger.info(f"[SMS] 주문 알림 발송: {username} ({user['phone']}) → {new_status}")
+                except Exception as e:
+                    logger.warning(f"[SMS] 자동 발송 실패: {e}")
+
         return jsonify({"ok": True})
     finally:
         conn.close()
@@ -4428,6 +4448,69 @@ def freshness_stop_api():
     from product_checker import checker_status
     checker_status["stop_requested"] = True
     return jsonify({"ok": True})
+
+
+# ── 문자 발송 API (알리고) ─────────────────────
+@app.route(f"{URL_PREFIX}/api/sms/status", methods=["GET"])
+@admin_required
+def sms_status():
+    from aligo_sms import load_config, check_balance, _config
+    load_config()
+    balance = check_balance() if _config.get("api_key") else {}
+    return jsonify({
+        "ok": True,
+        "config": {"api_key": bool(_config.get("api_key")), "user_id": _config.get("user_id", ""), "sender": _config.get("sender", "")},
+        "balance": balance if balance.get("ok") else {},
+    })
+
+
+@app.route(f"{URL_PREFIX}/api/sms/config", methods=["POST"])
+@admin_required
+def sms_config_save():
+    from aligo_sms import save_config, load_config, _config
+    data = request.get_json() or {}
+    load_config()
+    api_key = data.get("api_key", _config.get("api_key", ""))
+    user_id = data.get("user_id", "")
+    sender = data.get("sender", "")
+    save_config(api_key, user_id, sender)
+    return jsonify({"ok": True})
+
+
+@app.route(f"{URL_PREFIX}/api/sms/members", methods=["GET"])
+@admin_required
+def sms_members():
+    """문자 발송 가능한 회원 목록 (전화번호 있는 회원)"""
+    from user_db import _conn as user_conn
+    conn = user_conn()
+    try:
+        rows = conn.execute("""
+            SELECT username, name, phone FROM users
+            WHERE phone IS NOT NULL AND phone != '' AND phone != '-'
+            ORDER BY name
+        """).fetchall()
+        members = [{"name": r["name"] or r["username"], "phone": r["phone"]} for r in rows]
+        return jsonify({"ok": True, "members": members})
+    except Exception as e:
+        return jsonify({"ok": False, "members": [], "message": str(e)})
+    finally:
+        conn.close()
+
+
+@app.route(f"{URL_PREFIX}/api/sms/send", methods=["POST"])
+@admin_required
+def sms_send():
+    """문자 발송"""
+    from aligo_sms import send_bulk, load_config
+    load_config()
+    data = request.get_json() or {}
+    receivers = data.get("receivers", [])
+    msg = data.get("msg", "")
+    title = data.get("title", "")
+    if not receivers or not msg:
+        return jsonify({"ok": False, "message": "수신자와 메시지를 입력해주세요"})
+    result = send_bulk(receivers, msg, title)
+    return jsonify(result)
 
 
 # ── Kavinet API ─────────────────────
