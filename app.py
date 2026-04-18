@@ -680,20 +680,16 @@ def get_cart():
     try:
         rows = conn.execute("SELECT * FROM cart WHERE username=? ORDER BY created_at DESC", (username,)).fetchall()
         items = [{c: r[c] for c in r.keys()} for r in rows]
-        # 품절 여부 체크
-        try:
-            from product_db import _conn as prod_conn
-            pconn = prod_conn()
-            for item in items:
-                code = item.get("product_code", "")
-                if code:
-                    pr = pconn.execute("SELECT product_status FROM products WHERE internal_code=? OR product_code=? LIMIT 1", (code, code)).fetchone()
-                    item["sold_out"] = (pr and pr["product_status"] == "sold_out") if pr else False
-                else:
-                    item["sold_out"] = False
-            pconn.close()
-        except Exception:
-            pass
+        # 실시간 품절 체크 (DB 수정 없이)
+        for item in items:
+            code = item.get("product_code", "")
+            if code:
+                result = _check_soldout_realtime(code)
+                item["sold_out"] = True if result is True else False
+                item["order_status"] = "품절" if result is True else "주문가능" if result is False else "확인중"
+            else:
+                item["sold_out"] = False
+                item["order_status"] = "확인중"
         return jsonify({"ok": True, "items": items, "count": len(items)})
     finally:
         conn.close()
@@ -1482,7 +1478,7 @@ def _save_order(ntype, username, customer_name, brand, product_name, product_cod
 
 
 def _check_product_soldout(product_code):
-    """상품 품절 여부 빠른 체크 (HTTP 요청) — 백그라운드에서 호출"""
+    """상품 품절 여부 정밀 체크 (Playwright 브라우저) — Windows에서만 DB 업데이트"""
     from product_db import _conn
     conn = _conn()
     try:
@@ -1491,36 +1487,142 @@ def _check_product_soldout(product_code):
             (product_code, product_code)
         ).fetchone()
         if not row or not row["link"]:
-            return None  # 상품 없음
-        # 이미 품절 마킹된 경우
+            return None
+
+        import platform
+        is_windows = platform.system() == "Windows"
+
+        # DB에 이미 품절 마킹된 경우
         if row["product_status"] == "sold_out":
             return True
-        # 2ndstreet URL 접속 체크
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            import asyncio
+            result = asyncio.run(_check_soldout_playwright(row["link"]))
+            # Windows에서만 DB 업데이트
+            if is_windows:
+                if result is True:
+                    conn.execute("UPDATE products SET product_status='sold_out', checked_at=? WHERE id=?", (now, row["id"]))
+                    conn.commit()
+                    logger.info(f"[품절체크] 품절 확인: {product_code}")
+                elif result is False:
+                    conn.execute("UPDATE products SET product_status='available', checked_at=? WHERE id=?", (now, row["id"]))
+                    conn.commit()
+            return result
+        except Exception as e:
+            logger.warning(f"[품절체크] Playwright 오류: {e}")
+            return None
+    finally:
+        conn.close()
+
+
+def _check_soldout_realtime(product_code):
+    """실시간 품절 체크 (DB 수정 없이 결과만 반환) — Mac용"""
+    from product_db import _conn
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT link, product_status FROM products WHERE internal_code=? OR product_code=? LIMIT 1",
+            (product_code, product_code)
+        ).fetchone()
+        if not row or not row["link"]:
+            return None
+        if row["product_status"] == "sold_out":
+            return True
         try:
             import requests as _req
             resp = _req.get(row["link"], timeout=10, allow_redirects=True,
-                           headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0"})
+                           headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0",
+                                    "Accept-Language": "ja,ja-JP;q=0.9"})
             if resp.status_code == 404:
-                conn.execute("UPDATE products SET product_status='sold_out', checked_at=? WHERE id=?",
-                             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), row["id"]))
-                conn.commit()
                 return True
-            # 페이지 내 품절 문구 체크
+            if resp.status_code in (403, 429, 503):
+                return None
             body = resp.text
-            if "売り切れ" in body or "この商品は現在販売しておりません" in body or "ページが見つかりません" in body:
-                conn.execute("UPDATE products SET product_status='sold_out', checked_at=? WHERE id=?",
-                             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), row["id"]))
-                conn.commit()
+            if "売り切れ" in body or "SOLD OUT" in body or "この商品は売切れ" in body or "この商品は現在販売しておりません" in body:
                 return True
-            # 판매중
-            conn.execute("UPDATE products SET product_status='available', checked_at=? WHERE id=?",
-                         (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), row["id"]))
-            conn.commit()
+            if "Access Denied" in body:
+                return None
             return False
         except Exception:
-            return None  # 네트워크 오류 시 알 수 없음
+            return None
     finally:
         conn.close()
+
+
+async def _check_soldout_playwright(url):
+    """Playwright로 단일 상품 품절 체크"""
+    from playwright.async_api import async_playwright
+    playwright = None
+    browser = None
+    try:
+        playwright = await async_playwright().start()
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled", "--lang=ja"],
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            locale="ja-JP",
+            timezone_id="Asia/Tokyo",
+            viewport={"width": 1280, "height": 900},
+            extra_http_headers={"Accept-Language": "ja,ja-JP;q=0.9"},
+        )
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => false});
+            Object.defineProperty(navigator, 'language', {get: () => 'ja'});
+            Object.defineProperty(navigator, 'languages', {get: () => ['ja', 'ja-JP']});
+        """)
+        page = await context.new_page()
+        resp = await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+
+        # 403/503 등 차단 응답 → 확인불가 (품절 아님)
+        if resp is None:
+            return None
+        if resp.status in (403, 429, 503, 520, 521, 522, 523, 524):
+            logger.warning(f"[품절체크] 차단됨 {resp.status}: {url}")
+            return None
+        if resp.status == 404:
+            return True
+
+        import asyncio as _aio
+        await _aio.sleep(2)
+
+        # 페이지 내 품절 문구 + Access Denied 체크
+        result = await page.evaluate("""() => {
+            const body = document.body.innerText || '';
+            // 차단된 경우 → 확인불가
+            if (body.includes('Access Denied') || body.includes("don't have permission")) return 'blocked';
+            // 품절 문구
+            if (body.includes('この商品は売り切れました') ||
+                body.includes('売り切れ') ||
+                body.includes('SOLD OUT') ||
+                body.includes('この商品は売切れ') ||
+                body.includes('この商品は現在販売しておりません') ||
+                body.includes('ページが見つかりません')) return 'sold_out';
+            // 가격 존재 여부
+            const price = document.querySelector('.itemPrice, .price, [class*="price"]');
+            if (!price) return 'no_price';
+            return 'available';
+        }""")
+
+        if result == "blocked":
+            logger.warning(f"[품절체크] Access Denied: {url}")
+            return None  # 차단 = 확인불가 (품절 아님)
+        if result == "sold_out":
+            return True
+        if result == "no_price":
+            return None  # 가격 못 찾음 = 확인불가
+        return False  # available
+    except Exception as e:
+        logger.warning(f"[품절체크] Playwright 예외: {e}")
+        return None
+    finally:
+        if browser:
+            await browser.close()
+        if playwright:
+            await playwright.stop()
 
 
 def _bg_check_and_update_order(order_id, product_code, username):
@@ -4701,9 +4803,8 @@ def freshness_stop_api():
 @app.route(f"{URL_PREFIX}/api/admin/carts", methods=["GET"])
 @admin_required
 def admin_carts():
-    """전체 고객 장바구니 조회 (고객명 + 품절 여부 포함)"""
+    """전체 고객 장바구니 조회 (고객명 + 실시간 품절 체크)"""
     from user_db import _conn
-    from product_db import _conn as prod_conn
     conn = _conn()
     try:
         rows = conn.execute("""
@@ -4712,22 +4813,16 @@ def admin_carts():
             ORDER BY c.created_at DESC
         """).fetchall()
         carts = [{col: r[col] for col in r.keys()} for r in rows]
-        # products DB에서 품절 여부 조회
-        try:
-            pconn = prod_conn()
-            for c in carts:
-                code = c.get("product_code", "")
-                if code:
-                    pr = pconn.execute(
-                        "SELECT product_status FROM products WHERE internal_code=? OR product_code=? LIMIT 1",
-                        (code, code)
-                    ).fetchone()
-                    c["sold_out"] = (pr and pr["product_status"] == "sold_out") if pr else False
-                else:
-                    c["sold_out"] = False
-            pconn.close()
-        except Exception:
-            pass
+        # 실시간 품절 체크 (DB 수정 없이)
+        for c in carts:
+            code = c.get("product_code", "")
+            if code:
+                result = _check_soldout_realtime(code)
+                c["sold_out"] = True if result is True else False
+                c["order_status"] = "품절" if result is True else "주문가능" if result is False else "확인중"
+            else:
+                c["sold_out"] = False
+                c["order_status"] = "확인중"
         return jsonify({"ok": True, "carts": carts})
     except Exception as e:
         return jsonify({"ok": True, "carts": []})

@@ -236,8 +236,8 @@
         <div class="section-title">장바구니</div>
         <!-- Desktop table -->
         <table class="cart-table-desktop">
-          <thead><tr><th></th><th>상품</th><th>브랜드</th><th>고유번호</th><th>가격</th><th></th></tr></thead>
-          <tbody id="my-cart-body"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr></tbody>
+          <thead><tr><th></th><th>주문가능</th><th>상품</th><th>브랜드</th><th>고유번호</th><th>가격</th><th></th></tr></thead>
+          <tbody id="my-cart-body"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr></tbody>
         </table>
         <!-- Mobile cards -->
         <div class="cart-cards-mobile" id="my-cart-mobile">
@@ -802,14 +802,14 @@ async function loadMyCart() {
     const d = await res.json();
     document.getElementById("mp-cart-cnt").textContent = d.count > 0 ? `(${d.count})` : "";
     if (!d.items || !d.items.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px;">장바구니가 비었습니다</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:30px;">장바구니가 비었습니다</td></tr>';
       mobileEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px;font-size:0.82rem;">장바구니가 비었습니다</div>';
       return;
     }
     // Desktop table
     tbody.innerHTML = d.items.map(c => `<tr style="${c.sold_out?'opacity:0.5;':''}">
-      <td style="position:relative;"><img class="cart-img" src="${c.img_url||''}" onerror="this.style.display='none'" style="cursor:pointer;" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}')">
-        ${c.sold_out ? '<span style="position:absolute;top:2px;left:2px;background:var(--red);color:#fff;font-size:0.55rem;padding:1px 4px;border-radius:3px;font-weight:700;">품절</span>' : ''}</td>
+      <td><img class="cart-img" src="${c.img_url||''}" onerror="this.style.display='none'" style="cursor:pointer;" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}')"></td>
+      <td style="text-align:center;font-size:0.72rem;font-weight:700;color:${c.order_status==='품절'?'var(--red)':c.order_status==='주문가능'?'var(--green)':'var(--muted)'};">${c.order_status||'확인중'}</td>
       <td><a href="#" onclick="event.preventDefault();openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}');" style="color:var(--text);text-decoration:underline;text-underline-offset:3px;cursor:pointer;">${c.product_name||''}</a></td>
       <td style="font-weight:600;">${c.brand||''}</td>
       <td style="font-family:monospace;font-size:0.75rem;">${c.product_code||''}</td>
@@ -821,7 +821,7 @@ async function loadMyCart() {
     </tr>`).join("");
     // Mobile cards
     mobileEl.innerHTML = d.items.map(c => `<div class="cart-card" style="${c.sold_out?'opacity:0.5;':''}position:relative;">
-      ${c.sold_out ? '<span style="position:absolute;top:4px;left:4px;background:var(--red);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:3px;font-weight:700;z-index:1;">품절</span>' : ''}
+      <span style="position:absolute;top:4px;left:4px;background:${c.order_status==='품절'?'var(--red)':c.order_status==='주문가능'?'var(--green)':'var(--muted)'};color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:3px;font-weight:700;z-index:1;">${c.order_status||'확인중'}</span>
       <img src="${c.img_url||''}" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}');" style="cursor:pointer;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22><rect fill=%22%23181a22%22 width=%221%22 height=%221%22/></svg>'">
       <div class="cart-card-info" onclick="openCartDetail('${(c.product_code||'').replace(/'/g,"\\'")}');" style="cursor:pointer;">
         <div class="brand">${c.brand||''}</div>

@@ -158,6 +158,8 @@ async def check_products_batch(products, status_callback=None):
                         const body = document.body.innerText || '';
                         if (body.includes('この商品は売り切れました') ||
                             body.includes('売り切れ') ||
+                            body.includes('SOLD OUT') ||
+                            body.includes('この商品は売切れ') ||
                             body.includes('この商品は現在販売しておりません') ||
                             body.includes('ページが見つかりません')) return true;
                         // 상품 가격이 없으면 품절
