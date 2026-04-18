@@ -129,6 +129,7 @@ async def check_products_batch(products, status_callback=None):
 
         conn = _conn()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _batch_start = time.time()
 
         for i, p in enumerate(products):
             if checker_status["stop_requested"]:
@@ -149,6 +150,7 @@ async def check_products_batch(products, status_callback=None):
                         (now, pid)
                     )
                     result["sold_out"] += 1
+                    log(f"   [{i+1}] 품절: {p['brand']} {(p.get('name') or '')[:30]} (404)")
                 elif resp.status == 200:
                     # 페이지 존재 확인 — 실제 상품이 있는지 체크
                     is_sold = await page.evaluate("""() => {
@@ -170,6 +172,7 @@ async def check_products_batch(products, status_callback=None):
                             (now, pid)
                         )
                         result["sold_out"] += 1
+                        log(f"   [{i+1}] 품절: {p['brand']} {(p.get('name') or '')[:30]} (売切)")
                     else:
                         # 가격 변동 체크
                         new_price = await page.evaluate("""() => {
@@ -200,10 +203,16 @@ async def check_products_batch(products, status_callback=None):
                 if i < 3:  # 첫 몇 개만 에러 로그
                     log(f"   체크 오류: {str(e)[:60]}")
 
-            # 진행률
+            # 진행률 (10개마다 로그)
+            if (i + 1) % 10 == 0 or i == len(products) - 1:
+                elapsed = time.time() - _batch_start if '_batch_start' in dir() else 0
+                avg = elapsed / (i + 1) if i > 0 else 0
+                remain = avg * (len(products) - i - 1)
+                remain_min = int(remain // 60)
+                remain_sec = int(remain % 60)
+                log(f"   진행: {i+1}/{len(products)} | 판매중:{result['checked']-result['sold_out']} 품절:{result['sold_out']} 가격변동:{result['price_changed']} 오류:{result['errors']} | 남은시간: ~{remain_min}분{remain_sec}초")
             if (i + 1) % 50 == 0:
                 conn.commit()
-                log(f"   진행: {i+1}/{len(products)} (품절:{result['sold_out']})")
 
             # 봇 감지 방지 대기
             await asyncio.sleep(random.uniform(0.5, 1.5))
@@ -238,4 +247,11 @@ def run_check_batch(chunk_size=300, status_callback=None):
     if status_callback:
         status_callback(f"상태 체크 시작: {len(products)}개 [{brand_summary}]")
 
-    return asyncio.run(check_products_batch(products, status_callback))
+    start = time.time()
+    result = asyncio.run(check_products_batch(products, status_callback))
+    elapsed = time.time() - start
+    mins = int(elapsed // 60)
+    secs = int(elapsed % 60)
+    if status_callback:
+        status_callback(f"배치 완료: {result['checked']}개 체크 | 품절 {result['sold_out']} | 가격변동 {result['price_changed']} | 오류 {result['errors']} | 소요 {mins}분{secs}초")
+    return result
