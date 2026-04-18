@@ -1590,7 +1590,11 @@ def _bg_check_cart_soldout_all():
                     continue
                 result = await page.evaluate("""() => {
                     const body = document.body.innerText || '';
-                    if (body.includes('売り切れ') || body.includes('SOLD OUT') || body.includes('この商品は売切れ') || body.includes('Access Denied')) return 'sold';
+                    // 상품 상세 영역의 SOLD OUT 버튼/텍스트만 체크
+                    const modal = document.querySelector('.modal_cont, .itemDetail, .goodsDetail, [class*="detail"]');
+                    const target = modal ? modal.innerText : body;
+                    if (target.includes('SOLD OUT')) return 'sold';
+                    if (body.includes('Access Denied')) return 'sold';
                     const price = document.querySelector('[itemprop="price"], .priceMain, .priceNum');
                     if (!price) return 'unknown';
                     return 'ok';
@@ -1656,15 +1660,12 @@ async def _check_soldout_playwright(url):
             const body = document.body.innerText || '';
             // 차단된 경우 → 확인불가
             if (body.includes('Access Denied') || body.includes("don't have permission")) return 'blocked';
-            // 품절 문구
-            if (body.includes('この商品は売り切れました') ||
-                body.includes('売り切れ') ||
-                body.includes('SOLD OUT') ||
-                body.includes('この商品は売切れ') ||
-                body.includes('この商品は現在販売しておりません') ||
-                body.includes('ページが見つかりません')) return 'sold_out';
+            // 상품 상세 영역의 SOLD OUT만 체크
+            const modal = document.querySelector('.modal_cont, .itemDetail, .goodsDetail, [class*="detail"]');
+            const target = modal ? modal.innerText : body;
+            if (target.includes('SOLD OUT')) return 'sold_out';
             // 가격 존재 여부
-            const price = document.querySelector('.itemPrice, .price, [class*="price"]');
+            const price = document.querySelector('[itemprop="price"], .priceMain, .priceNum');
             if (!price) return 'no_price';
             return 'available';
         }""")

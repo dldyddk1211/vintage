@@ -156,12 +156,10 @@ async def check_products_batch(products, status_callback=None):
                     is_sold = await page.evaluate("""() => {
                         // 2ndstreet: 판매 종료 시 특정 문구 표시
                         const body = document.body.innerText || '';
-                        if (body.includes('この商品は売り切れました') ||
-                            body.includes('売り切れ') ||
-                            body.includes('SOLD OUT') ||
-                            body.includes('この商品は売切れ') ||
-                            body.includes('この商品は現在販売しておりません') ||
-                            body.includes('ページが見つかりません')) return true;
+                        // 상품 상세 영역의 SOLD OUT만 체크
+                        const modal = document.querySelector('.modal_cont, .itemDetail, .goodsDetail, [class*="detail"]');
+                        const target = modal ? modal.innerText : body;
+                        if (target.includes('SOLD OUT')) return true;
                         // 메인 가격 요소(.priceMain, itemprop=price)가 없으면 품절
                         const price = document.querySelector('[itemprop="price"], .priceMain, .priceNum');
                         if (!price) return true;
