@@ -660,10 +660,19 @@ def _init_cart_db():
             price TEXT DEFAULT '',
             price_jpy INTEGER DEFAULT 0,
             img_url TEXT DEFAULT '',
+            is_sold_out INTEGER DEFAULT 0,
+            checked_at TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now','localtime')),
             UNIQUE(username, product_code)
         )""")
         conn.commit()
+        # 기존 테이블에 컬럼 추가
+        for col, default in [("is_sold_out", "0"), ("checked_at", "''")]:
+            try:
+                conn.execute(f"ALTER TABLE cart ADD COLUMN {col} DEFAULT {default}")
+                conn.commit()
+            except Exception:
+                pass
     except Exception:
         pass
     finally:
@@ -680,16 +689,12 @@ def get_cart():
     try:
         rows = conn.execute("SELECT * FROM cart WHERE username=? ORDER BY created_at DESC", (username,)).fetchall()
         items = [{c: r[c] for c in r.keys()} for r in rows]
-        # 캐시 기반 품절 상태
+        # cart 테이블의 is_sold_out 값 사용
         for item in items:
-            code = item.get("product_code", "")
-            if code and code in _soldout_cache:
-                result = _soldout_cache[code]
-                item["sold_out"] = True if result is True else False
-                item["order_status"] = "품절" if result is True else "주문가능" if result is False else "확인중"
-            else:
-                item["sold_out"] = False
-                item["order_status"] = "확인중"
+            is_sold = item.get("is_sold_out", 0)
+            checked = item.get("checked_at", "")
+            item["sold_out"] = bool(is_sold)
+            item["order_status"] = "품절" if is_sold else ("주문가능" if checked else "확인중")
         return jsonify({"ok": True, "items": items, "count": len(items)})
     finally:
         conn.close()
@@ -1517,50 +1522,32 @@ def _check_product_soldout(product_code):
         conn.close()
 
 
-def _check_soldout_realtime(product_code):
-    """실시간 품절 체크 (DB 수정 없이 결과만 반환)"""
-    from product_db import _conn
-    conn = _conn()
-    try:
-        row = conn.execute(
-            "SELECT link, product_status FROM products WHERE internal_code=? OR product_code=? LIMIT 1",
-            (product_code, product_code)
-        ).fetchone()
-        if not row or not row["link"]:
-            return None
-        if row["product_status"] == "sold_out":
-            return True
-        # 캐시 확인 (이미 체크한 결과가 있으면 재사용)
-        if product_code in _soldout_cache:
-            return _soldout_cache[product_code]
-        return None  # API에서는 캐시만 반환, 실제 체크는 백그라운드
-    finally:
-        conn.close()
-
-
-# 품절 체크 캐시 (서버 재시작 시 초기화)
-_soldout_cache = {}
-
+_cart_check_running = False
 
 def _bg_check_cart_soldout_all():
-    """백그라운드: 장바구니 전체 품절 체크 (Playwright headless=False)"""
+    """백그라운드: 장바구니 전체 품절 체크 → cart 테이블에 저장 (상품DB 미수정)"""
+    global _cart_check_running
+    if _cart_check_running:
+        return
+    _cart_check_running = True
+
     import asyncio
     from user_db import _conn as u_conn
     from product_db import _conn as p_conn
 
-    conn = u_conn()
-    rows = conn.execute("SELECT DISTINCT product_code FROM cart WHERE product_code IS NOT NULL AND product_code != ''").fetchall()
-    codes = [r[0] for r in rows]
-    conn.close()
-
-    if not codes:
-        return
-
-    logger.info(f"[장바구니 체크] {len(codes)}개 상품 품절 체크 시작 (Playwright)")
-
     async def _run():
         from playwright.async_api import async_playwright
-        pconn = p_conn()
+        uc = u_conn()
+        pc = p_conn()
+        rows = uc.execute("SELECT DISTINCT product_code FROM cart WHERE product_code IS NOT NULL AND product_code != ''").fetchall()
+        codes = [r[0] for r in rows]
+
+        if not codes:
+            uc.close(); pc.close()
+            return
+
+        logger.info(f"[장바구니 체크] {len(codes)}개 상품 품절 체크 시작")
+
         pw = await async_playwright().start()
         browser = await pw.chromium.launch(
             headless=False,
@@ -1574,47 +1561,62 @@ def _bg_check_cart_soldout_all():
         await context.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>false});")
         page = await context.new_page()
 
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sold = 0; avail = 0
+
         for i, code in enumerate(codes):
-            r = pconn.execute("SELECT link FROM products WHERE internal_code=? OR product_code=? LIMIT 1", (code, code)).fetchone()
+            r = pc.execute("SELECT link FROM products WHERE internal_code=? OR product_code=? LIMIT 1", (code, code)).fetchone()
             if not r or not r["link"]:
-                _soldout_cache[code] = None
                 continue
             try:
                 resp = await page.goto(r["link"], wait_until="domcontentloaded", timeout=20000)
                 await asyncio.sleep(2)
+                is_sold = 0
                 if resp and resp.status == 404:
-                    _soldout_cache[code] = True
-                    continue
-                if resp and resp.status in (403, 429, 503):
-                    _soldout_cache[code] = None
-                    continue
-                result = await page.evaluate("""() => {
-                    const body = document.body.innerText || '';
-                    // 상품 상세 영역의 SOLD OUT 버튼/텍스트만 체크
-                    const modal = document.querySelector('.modal_cont, .itemDetail, .goodsDetail, [class*="detail"]');
-                    const target = modal ? modal.innerText : body;
-                    if (target.includes('SOLD OUT')) return 'sold';
-                    if (body.includes('Access Denied')) return 'sold';
-                    const price = document.querySelector('[itemprop="price"], .priceMain, .priceNum');
-                    if (!price) return 'unknown';
-                    return 'ok';
-                }""")
-                _soldout_cache[code] = True if result == "sold" else (False if result == "ok" else None)
+                    is_sold = 1
+                elif resp and resp.status in (403, 429, 503):
+                    continue  # 차단 시 스킵
+                else:
+                    result = await page.evaluate("""() => {
+                        const body = document.body.innerText || '';
+                        // 확실한 품절 문구
+                        if (body.includes('※申し訳ございません。この商品は売切れ') ||
+                            body.includes('※申し訳ございません。この商品は売り切れ') ||
+                            body.includes('この商品は現在販売しておりません')) return 'sold';
+                        // 가격 요소 주변의 SOLD OUT 체크 (추천상품 영역 오탐 방지)
+                        const price = document.querySelector('[itemprop="price"], .priceMain, .priceNum');
+                        if (!price) return 'unknown';
+                        let parent = price.parentElement;
+                        for (let i = 0; i < 4 && parent; i++) {
+                            if ((parent.innerText || '').includes('SOLD OUT')) return 'sold';
+                            parent = parent.parentElement;
+                        }
+                        return 'ok';
+                    }""")
+                    is_sold = 1 if result == "sold" else 0
+
+                uc.execute("UPDATE cart SET is_sold_out=?, checked_at=? WHERE product_code=?", (is_sold, now, code))
+                uc.commit()
+                if is_sold:
+                    sold += 1
+                else:
+                    avail += 1
             except Exception:
-                _soldout_cache[code] = None
+                pass
             await asyncio.sleep(1)
 
         await browser.close()
         await pw.stop()
-        pconn.close()
-        sold = sum(1 for v in _soldout_cache.values() if v is True)
-        avail = sum(1 for v in _soldout_cache.values() if v is False)
+        pc.close()
+        uc.close()
         logger.info(f"[장바구니 체크] 완료: 주문가능 {avail}개 / 품절 {sold}개")
 
     try:
         asyncio.run(_run())
     except Exception as e:
         logger.warning(f"[장바구니 체크] 오류: {e}")
+    finally:
+        _cart_check_running = False
 
 
 async def _check_soldout_playwright(url):
@@ -1655,18 +1657,23 @@ async def _check_soldout_playwright(url):
         import asyncio as _aio
         await _aio.sleep(2)
 
-        # 페이지 내 품절 문구 + Access Denied 체크
+        # 페이지 내 품절 문구 체크
         result = await page.evaluate("""() => {
             const body = document.body.innerText || '';
             // 차단된 경우 → 확인불가
             if (body.includes('Access Denied') || body.includes("don't have permission")) return 'blocked';
-            // 상품 상세 영역의 SOLD OUT만 체크
-            const modal = document.querySelector('.modal_cont, .itemDetail, .goodsDetail, [class*="detail"]');
-            const target = modal ? modal.innerText : body;
-            if (target.includes('SOLD OUT')) return 'sold_out';
-            // 가격 존재 여부
+            // 확실한 품절 문구
+            if (body.includes('※申し訳ございません。この商品は売切れ') ||
+                body.includes('※申し訳ございません。この商品は売り切れ') ||
+                body.includes('この商品は現在販売しておりません')) return 'sold_out';
+            // 가격 요소 주변의 SOLD OUT 체크 (추천상품 영역 오탐 방지)
             const price = document.querySelector('[itemprop="price"], .priceMain, .priceNum');
             if (!price) return 'no_price';
+            let parent = price.parentElement;
+            for (let i = 0; i < 4 && parent; i++) {
+                if ((parent.innerText || '').includes('SOLD OUT')) return 'sold_out';
+                parent = parent.parentElement;
+            }
             return 'available';
         }""")
 
@@ -4877,22 +4884,18 @@ def admin_carts():
         """).fetchall()
         carts = [{col: r[col] for col in r.keys()} for r in rows]
 
-        # 캐시에 없는 상품이 있으면 백그라운드 체크 시작
-        codes_to_check = [c.get("product_code", "") for c in carts if c.get("product_code") and c["product_code"] not in _soldout_cache]
-        if codes_to_check:
+        # 미체크 상품이 있으면 백그라운드 체크 시작
+        unchecked = [c for c in carts if not c.get("checked_at")]
+        if unchecked and not _cart_check_running:
             t = threading.Thread(target=_bg_check_cart_soldout_all, daemon=True)
             t.start()
 
-        # 캐시 기반 상태 표시
+        # cart 테이블의 is_sold_out 값 사용
         for c in carts:
-            code = c.get("product_code", "")
-            if code and code in _soldout_cache:
-                result = _soldout_cache[code]
-                c["sold_out"] = True if result is True else False
-                c["order_status"] = "품절" if result is True else "주문가능" if result is False else "확인중"
-            else:
-                c["sold_out"] = False
-                c["order_status"] = "확인중"
+            is_sold = c.get("is_sold_out", 0)
+            checked = c.get("checked_at", "")
+            c["sold_out"] = bool(is_sold)
+            c["order_status"] = "품절" if is_sold else ("주문가능" if checked else "확인중")
         return jsonify({"ok": True, "carts": carts})
     except Exception as e:
         return jsonify({"ok": True, "carts": []})
