@@ -1,0 +1,423 @@
+{% extends "admin_base.html" %}
+{% block sub_title %}🎯 Kabinet{% endblock %}
+{% block sub_menu %}
+<div class="sub-item active" data-page="kv-dashboard" onclick="showPage('kv-dashboard')"><span class="sub-icon">📋</span>대시보드</div>
+<div class="sub-item" data-page="kv-scrape" onclick="showPage('kv-scrape')"><span class="sub-icon">🔍</span>무신사 수집</div>
+<div class="sub-item" data-page="kv-products" onclick="showPage('kv-products')"><span class="sub-icon">📦</span>상품 목록</div>
+<div class="sub-item" data-page="kv-margin" onclick="showPage('kv-margin')"><span class="sub-icon">💰</span>마진 설정</div>
+<div class="sub-item" data-page="kv-csv" onclick="showPage('kv-csv')"><span class="sub-icon">📄</span>바이마 CSV</div>
+{% endblock %}
+{% block topbar_title %}📋 무신사 → 바이마{% endblock %}
+{% block content %}
+
+<!-- 대시보드 -->
+<div class="page-section active" id="page-kv-dashboard">
+  <div class="panel"><div class="panel-title"><span>📋 무신사 → 바이마 대시보드</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:0.72rem;color:var(--muted);">총 상품</div>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--accent);" id="kv-total">-</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:0.72rem;color:var(--muted);">오늘 수집</div>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--green);" id="kv-today">-</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:0.72rem;color:var(--muted);">마진율</div>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--yellow);" id="kv-margin">-</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:0.72rem;color:var(--muted);">수집 상태</div>
+        <div style="font-size:1.3rem;font-weight:800;" id="kv-run-status">대기</div>
+      </div>
+    </div>
+    <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:0.78rem;color:var(--muted);line-height:1.8;">
+      <b style="color:var(--accent);">워크플로우</b><br>
+      1. <b>무신사 수집</b> — 키워드/랭킹/URL로 상품 크롤링 (상세 페이지 방문)<br>
+      2. <b>상품 목록</b> — 수집된 상품 확인, 바이마 출품할 상품 선택<br>
+      3. <b>마진 설정</b> — 마진율, 환율, 배송비, 바이마 수수료 설정<br>
+      4. <b>바이마 CSV</b> — 선택한 상품을 바이마 업로드용 ZIP으로 다운로드
+    </div>
+  </div>
+</div>
+
+<!-- 무신사 수집 -->
+<div class="page-section" id="page-kv-scrape">
+  <div class="panel"><div class="panel-title"><span>🔍 무신사 수집</span></div>
+    <!-- 검색 모드 선택 -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <label style="font-size:0.78rem;display:flex;align-items:center;gap:4px;padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+        <input type="radio" name="search-mode" value="keyword" checked onchange="toggleMode()"> 키워드 검색
+      </label>
+      <label style="font-size:0.78rem;display:flex;align-items:center;gap:4px;padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+        <input type="radio" name="search-mode" value="ranking" onchange="toggleMode()"> 랭킹 TOP
+      </label>
+      <label style="font-size:0.78rem;display:flex;align-items:center;gap:4px;padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+        <input type="radio" name="search-mode" value="url" onchange="toggleMode()"> URL 직접 입력
+      </label>
+    </div>
+    <!-- 키워드 입력 -->
+    <div id="mode-keyword" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <input id="kv-keyword" placeholder="검색 키워드 (예: 나이키 에어포스)" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.82rem;">
+    </div>
+    <!-- URL 입력 -->
+    <div id="mode-url" style="display:none;margin-bottom:12px;">
+      <input id="kv-url" placeholder="https://www.musinsa.com/..." style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.82rem;">
+    </div>
+    <!-- 수집 개수 -->
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+      <label style="font-size:0.75rem;color:var(--muted);">수집 개수:</label>
+      <input id="kv-max" type="number" value="50" min="1" max="500" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.82rem;text-align:center;">
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn b-blue" onclick="startScrape()" id="btn-start">▶ 수집 시작</button>
+      <button class="btn b-red" onclick="stopScrape()" id="btn-stop" style="display:none;">⏹ 중지</button>
+    </div>
+    <div id="kv-log" style="max-height:400px;overflow-y:auto;font-size:0.75rem;font-family:monospace;color:var(--muted);white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;">대기 중...</div>
+  </div>
+</div>
+
+<!-- 상품 목록 -->
+<div class="page-section" id="page-kv-products">
+  <div class="panel"><div class="panel-title">
+    <span>📦 상품 목록 (<span id="kv-prod-count">0</span>개)</span>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <input id="kv-search" placeholder="검색..." style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.78rem;width:140px;" onkeydown="if(event.key==='Enter')loadProducts()">
+      <button class="btn b-gray" onclick="loadProducts()">🔄</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+    <label style="font-size:0.75rem;color:var(--muted);display:flex;align-items:center;gap:4px;">
+      <input type="checkbox" id="kv-check-all" onchange="toggleAll(this.checked)"> 전체 선택
+    </label>
+    <button class="btn b-blue" onclick="downloadCSV()" style="font-size:0.72rem;">📄 선택 CSV 다운로드</button>
+    <button class="btn b-red" onclick="deleteSelected()" style="font-size:0.72rem;">🗑 선택 삭제</button>
+  </div>
+  <div id="kv-product-list" style="text-align:center;padding:30px;color:var(--muted);">로딩 중...</div>
+  <div id="kv-pagination" style="display:flex;justify-content:center;gap:8px;margin-top:12px;"></div>
+  </div>
+</div>
+
+<!-- 마진 설정 -->
+<div class="page-section" id="page-kv-margin">
+  <div class="panel"><div class="panel-title"><span>💰 마진 / 가격 설정</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">마진율 (%)</label>
+        <input id="cfg-margin" type="number" step="0.1" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">원→엔 환율 (1원 = ?엔)</label>
+        <input id="cfg-rate" type="number" step="0.001" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">배송비 (엔)</label>
+        <input id="cfg-shipping" type="number" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">바이마 수수료 (%)</label>
+        <input id="cfg-fee" type="number" step="0.1" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">구매기한 (일)</label>
+        <input id="cfg-deadline" type="number" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">바이마 카테고리 ID</label>
+        <input id="cfg-category" type="text" placeholder="예: 3081" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">바이마 브랜드 ID</label>
+        <input id="cfg-brand" type="text" placeholder="예: 275 (Nike)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">買付可数量</label>
+        <input id="cfg-quantity" type="number" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">コントロール</label>
+        <select id="cfg-control" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+          <option value="下書き">下書き (임시저장)</option>
+          <option value="公開">公開 (즉시 공개)</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">関税込み</label>
+        <select id="cfg-tariff" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+          <option value="0">なし (0)</option>
+          <option value="1">関税込み (1)</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">상품 코멘트 템플릿 (일본어)</label>
+      <textarea id="cfg-comment" rows="6" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.78rem;resize:vertical;"></textarea>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;">
+      <button class="btn b-blue" onclick="saveConfig()">💾 설정 저장</button>
+    </div>
+    <!-- 가격 시뮬레이션 -->
+    <div style="margin-top:20px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+      <div style="font-size:0.82rem;font-weight:700;margin-bottom:10px;">가격 시뮬레이션</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <div>
+          <label style="font-size:0.72rem;color:var(--muted);">무신사 가격 (원)</label>
+          <input id="sim-krw" type="number" value="59000" style="width:120px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:0.82rem;" oninput="simulate()">
+        </div>
+        <div style="font-size:1.2rem;color:var(--muted);padding-top:16px;">→</div>
+        <div>
+          <label style="font-size:0.72rem;color:var(--muted);">바이마 출품가 (엔)</label>
+          <div id="sim-jpy" style="font-size:1.2rem;font-weight:800;color:var(--accent);padding-top:4px;">-</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 바이마 CSV -->
+<div class="page-section" id="page-kv-csv">
+  <div class="panel"><div class="panel-title"><span>📄 바이마 CSV 다운로드</span></div>
+    <div style="font-size:0.78rem;color:var(--muted);margin-bottom:16px;line-height:1.8;">
+      수집된 상품을 바이마 일괄출품용 CSV (ZIP)로 다운로드합니다.<br>
+      ZIP 안에 <b>items.csv</b> (상품정보)와 <b>colorsizes.csv</b> (색/사이즈)가 포함됩니다.<br>
+      바이마 출품자 관리화면 → 一括出品編集 → ZIP 업로드로 등록하세요.
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+      <button class="btn b-blue" onclick="downloadCSVAll()" style="font-size:0.85rem;padding:10px 24px;">📥 전체 상품 CSV 다운로드</button>
+    </div>
+    <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:0.76rem;color:var(--muted);line-height:1.6;">
+      <b>items.csv 포맷:</b> 商品ID, 商品管理番号, コントロール, 公開ステータス, 商品名, ブランド, ブランド名, モデル, カテゴリ, シーズン, テーマ, 単価, 買付可数量, 購入期限, 참고가격, 商品コメント, タグ, 配送方法, 買付エリア/都市, 発送エリア/都市, 関税込み, 商品イメージ1~20, ブランド品番, 買付先 등<br><br>
+      <b>colorsizes.csv 포맷:</b> 商品ID, 商品管理番号, 商品名, 並び順, サイズ名称, サイズ単位, 検索用サイズ, 色名称, 色系統, 在庫ステータス 등
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const pageTitles = {"kv-dashboard":"📋 무신사 → 바이마","kv-scrape":"🔍 무신사 수집","kv-products":"📦 상품 목록","kv-margin":"💰 마진 설정","kv-csv":"📄 바이마 CSV"};
+let _prodPage = 1;
+let _statusTimer = null;
+
+function onPageShow(page) {
+  document.getElementById("topbar-title").textContent = pageTitles[page] || page;
+  if (page === "kv-dashboard") loadDashboard();
+  if (page === "kv-products") loadProducts();
+  if (page === "kv-margin") loadConfig();
+  if (page === "kv-scrape") pollStatus();
+}
+
+function toggleMode() {
+  const mode = document.querySelector('input[name="search-mode"]:checked').value;
+  document.getElementById("mode-keyword").style.display = mode === "url" ? "none" : "flex";
+  document.getElementById("mode-url").style.display = mode === "url" ? "block" : "none";
+}
+
+// ── 대시보드 ──
+async function loadDashboard() {
+  try {
+    const [pr, cr, sr] = await Promise.all([
+      fetch(PREFIX + "/api/kabinet/products"),
+      fetch(PREFIX + "/api/kabinet/config"),
+      fetch(PREFIX + "/api/kabinet/status"),
+    ]);
+    const pd = await pr.json();
+    const cd = await cr.json();
+    const sd = await sr.json();
+    document.getElementById("kv-total").textContent = (pd.total||0).toLocaleString();
+    document.getElementById("kv-today").textContent = (pd.today||0).toLocaleString();
+    document.getElementById("kv-margin").textContent = (cd.config?.margin_pct||30) + "%";
+    const runEl = document.getElementById("kv-run-status");
+    if (sd.running) { runEl.textContent = "수집 중"; runEl.style.color = "var(--green)"; }
+    else { runEl.textContent = "대기"; runEl.style.color = "var(--muted)"; }
+  } catch(e) {}
+}
+
+// ── 수집 ──
+async function startScrape() {
+  const mode = document.querySelector('input[name="search-mode"]:checked').value;
+  const maxItems = parseInt(document.getElementById("kv-max").value) || 50;
+  const body = {search_mode: mode, max_items: maxItems};
+
+  if (mode === "url") {
+    body.url = document.getElementById("kv-url").value.trim();
+    if (!body.url) { alert("URL을 입력해주세요"); return; }
+  } else if (mode === "keyword") {
+    body.keyword = document.getElementById("kv-keyword").value.trim();
+    if (!body.keyword) { alert("키워드를 입력해주세요"); return; }
+  }
+
+  const r = await fetch(PREFIX + "/api/kabinet/scrape", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  const d = await r.json();
+  if (!d.ok) { alert(d.message); return; }
+  document.getElementById("btn-start").style.display = "none";
+  document.getElementById("btn-stop").style.display = "";
+  pollStatus();
+}
+
+async function stopScrape() {
+  await fetch(PREFIX + "/api/kabinet/stop", {method:"POST"});
+}
+
+function pollStatus() {
+  if (_statusTimer) clearInterval(_statusTimer);
+  _statusTimer = setInterval(async () => {
+    try {
+      const r = await fetch(PREFIX + "/api/kabinet/status");
+      const d = await r.json();
+      document.getElementById("kv-log").textContent = d.log || "대기 중...";
+      document.getElementById("kv-log").scrollTop = 999999;
+      if (!d.running) {
+        clearInterval(_statusTimer); _statusTimer = null;
+        document.getElementById("btn-start").style.display = "";
+        document.getElementById("btn-stop").style.display = "none";
+      }
+    } catch(e) {}
+  }, 2000);
+}
+
+// ── 상품 목록 ──
+async function loadProducts(page) {
+  if (page) _prodPage = page;
+  const q = document.getElementById("kv-search")?.value || "";
+  try {
+    const r = await fetch(PREFIX + `/api/kabinet/products?page=${_prodPage}&per_page=50&q=${encodeURIComponent(q)}`);
+    const d = await r.json();
+    document.getElementById("kv-prod-count").textContent = (d.total||0).toLocaleString();
+    const list = document.getElementById("kv-product-list");
+    if (!d.products || d.products.length === 0) {
+      list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);">상품이 없습니다.</div>';
+      document.getElementById("kv-pagination").innerHTML = "";
+      return;
+    }
+    let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;">';
+    d.products.forEach(p => {
+      html += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;position:relative;">
+        <div style="position:absolute;top:8px;left:8px;z-index:1;">
+          <input type="checkbox" class="kv-cb" data-id="${p.id}" data-name="${p.name}">
+        </div>
+        <div style="display:flex;gap:10px;">
+          <div style="width:80px;height:80px;flex-shrink:0;border-radius:6px;overflow:hidden;background:var(--card);">
+            ${p.img_url ? `<img src="${p.img_url}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">` : ''}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:0.72rem;color:var(--accent);font-weight:600;margin-bottom:2px;">${p.brand||''}</div>
+            <div style="font-size:0.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${p.name}">${p.name}</div>
+            <div style="font-size:0.75rem;margin-top:4px;">
+              <span style="color:var(--muted);">무신사</span> <b>${(p.price_krw||0).toLocaleString()}원</b>
+            </div>
+            <div style="font-size:0.75rem;">
+              <span style="color:var(--muted);">바이마</span> <b style="color:var(--green);">¥${(p.price_jpy||0).toLocaleString()}</b>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:6px;font-size:0.68rem;color:var(--dim);display:flex;justify-content:space-between;">
+          <span>${p.product_code}</span>
+          ${p.link ? `<a href="${p.link}" target="_blank" style="color:var(--accent);">원본↗</a>` : ''}
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+    list.innerHTML = html;
+    let pgHtml = '';
+    for (let i = 1; i <= (d.pages||1); i++) {
+      pgHtml += `<button class="btn ${i===_prodPage?'b-blue':'b-gray'}" onclick="loadProducts(${i})" style="font-size:0.72rem;min-width:32px;">${i}</button>`;
+    }
+    document.getElementById("kv-pagination").innerHTML = pgHtml;
+  } catch(e) {}
+}
+
+function toggleAll(checked) { document.querySelectorAll(".kv-cb").forEach(cb => cb.checked = checked); }
+function getSelectedIds() { return [...document.querySelectorAll(".kv-cb:checked")].map(cb => parseInt(cb.dataset.id)); }
+
+async function deleteSelected() {
+  const ids = getSelectedIds();
+  if (!ids.length) { alert("삭제할 상품을 선택해주세요"); return; }
+  if (!confirm(`${ids.length}개 상품을 삭제하시겠습니까?`)) return;
+  await fetch(PREFIX + "/api/kabinet/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ids})});
+  loadProducts();
+}
+
+// ── CSV 다운로드 ──
+async function downloadCSV() {
+  const ids = getSelectedIds();
+  if (!ids.length) { alert("CSV로 내보낼 상품을 선택해주세요"); return; }
+  _downloadCSVRequest(ids);
+}
+async function downloadCSVAll() {
+  if (!confirm("전체 상품을 바이마 CSV로 다운로드하시겠습니까?")) return;
+  _downloadCSVRequest([]);
+}
+async function _downloadCSVRequest(ids) {
+  try {
+    const r = await fetch(PREFIX + "/api/kabinet/csv", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ids})});
+    if (r.headers.get("content-type")?.includes("application/zip")) {
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = r.headers.get("content-disposition")?.split("filename=")[1] || "buyma_upload.zip";
+      a.click();
+    } else {
+      const d = await r.json();
+      alert(d.message || "오류가 발생했습니다");
+    }
+  } catch(e) { alert("다운로드 오류: " + e); }
+}
+
+// ── 마진 설정 ──
+async function loadConfig() {
+  try {
+    const r = await fetch(PREFIX + "/api/kabinet/config");
+    const d = await r.json();
+    if (d.ok && d.config) {
+      const c = d.config;
+      document.getElementById("cfg-margin").value = c.margin_pct || 30;
+      document.getElementById("cfg-rate").value = c.krw_to_jpy_rate || 0.11;
+      document.getElementById("cfg-shipping").value = c.shipping_jpy || 800;
+      document.getElementById("cfg-fee").value = c.buyma_fee_pct || 5;
+      document.getElementById("cfg-deadline").value = c.purchase_deadline || 10;
+      document.getElementById("cfg-category").value = c.category_id || "";
+      document.getElementById("cfg-brand").value = c.brand_id || "";
+      document.getElementById("cfg-quantity").value = c.quantity || 100;
+      document.getElementById("cfg-control").value = c.control || "下書き";
+      document.getElementById("cfg-tariff").value = String(c.tariff_included || 0);
+      document.getElementById("cfg-comment").value = c.comment_template || "";
+      simulate();
+    }
+  } catch(e) {}
+}
+
+async function saveConfig() {
+  const cfg = {
+    margin_pct: parseFloat(document.getElementById("cfg-margin").value),
+    krw_to_jpy_rate: parseFloat(document.getElementById("cfg-rate").value),
+    shipping_jpy: parseInt(document.getElementById("cfg-shipping").value),
+    buyma_fee_pct: parseFloat(document.getElementById("cfg-fee").value),
+    purchase_deadline: parseInt(document.getElementById("cfg-deadline").value),
+    category_id: document.getElementById("cfg-category").value.trim(),
+    brand_id: document.getElementById("cfg-brand").value.trim(),
+    quantity: parseInt(document.getElementById("cfg-quantity").value),
+    control: document.getElementById("cfg-control").value,
+    tariff_included: parseInt(document.getElementById("cfg-tariff").value),
+    comment_template: document.getElementById("cfg-comment").value,
+  };
+  const r = await fetch(PREFIX + "/api/kabinet/config", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(cfg)});
+  const d = await r.json();
+  if (d.ok) alert("설정이 저장되었습니다");
+  else alert("저장 실패");
+}
+
+function simulate() {
+  const krw = parseInt(document.getElementById("sim-krw").value) || 0;
+  const margin = parseFloat(document.getElementById("cfg-margin")?.value) || 30;
+  const rate = parseFloat(document.getElementById("cfg-rate")?.value) || 0.11;
+  const shipping = parseInt(document.getElementById("cfg-shipping")?.value) || 800;
+  const fee = parseFloat(document.getElementById("cfg-fee")?.value) || 5;
+  const jpy = Math.ceil(krw * (1 + margin/100) * (1 + fee/100) * rate + shipping);
+  const rounded = Math.ceil(jpy / 100) * 100;
+  document.getElementById("sim-jpy").textContent = "¥" + rounded.toLocaleString();
+}
+
+loadDashboard();
+</script>
+{% endblock %}

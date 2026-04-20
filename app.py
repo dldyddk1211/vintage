@@ -5213,11 +5213,11 @@ def admin_brand():
     return render_template("admin_brand.html", url_prefix=URL_PREFIX, env=APP_ENV, active_menu="brand", default_page="brand-dashboard")
 
 
-@app.route(f"{URL_PREFIX}/admin/kavinet")
+@app.route(f"{URL_PREFIX}/admin/kabinet")
 @admin_required
-def admin_kavinet():
+def admin_kabinet():
     """캐비넷 관리 페이지 (경량)"""
-    return render_template("admin_kavinet.html", url_prefix=URL_PREFIX, env=APP_ENV, active_menu="kavinet", default_page="kv-dashboard")
+    return render_template("admin_kabinet.html", url_prefix=URL_PREFIX, env=APP_ENV, active_menu="kabinet", default_page="kv-dashboard")
 
 
 @app.route(f"{URL_PREFIX}/admin/setting")
@@ -5762,101 +5762,638 @@ def sms_send():
     return jsonify(result)
 
 
-# ── Kavinet API ─────────────────────
-_kavinet_status = {"running": False, "stop_requested": False, "log": []}
+# ── Kabinet API (무신사 → 바이마 워크플로우) ─────────────────────
+_kabinet_status = {"running": False, "stop_requested": False, "log": []}
+
+# 마진 설정 파일
+_MUSINSA_CONFIG_PATH = os.path.join(get_path("db"), "musinsa_config.json")
+
+def _load_musinsa_config() -> dict:
+    """무신사→바이마 마진 설정 로드"""
+    defaults = {
+        "margin_pct": 30.0,           # 마진율 (%)
+        "krw_to_jpy_rate": 0.11,      # 원→엔 환율 (1원 = 0.11엔 기본)
+        "shipping_jpy": 800,          # 배송비 (엔)
+        "buyma_fee_pct": 5.0,         # 바이마 수수료 (%)
+        "category_id": "",            # 바이마 カテゴリ ID
+        "brand_id": "",               # 바이마 ブランド ID
+        "shipping_method": "1062886_1061293",  # 配送方法 ID
+        "buying_area": "2002003",     # 買付エリア (한국)
+        "buying_city": "000",         # 買付都市 (한국)
+        "shipping_area": "2002003",   # 発送エリア (한국)
+        "shipping_city": "001",       # 発送都市 (서울)
+        "purchase_deadline": 10,      # 구매기한 (일)
+        "tariff_included": 0,         # 関税込み (0=なし, 1=込み)
+        "tags": "",                   # タグ ID (언더스코어 구분)
+        "quantity": 100,              # 買付可数量
+        "control": "下書き",           # コントロール (下書き/公開)
+        "comment_template": """KABINETのすべての商品は、韓国の現地バイヤーと各ブランドの担当者を通じて
+直接買い付けを行いた100%正規品となりますのでご安心してお買い物くださいませ。
+
+※あまりにも安価な商品につきましては、
+トラブル防止のため、正規品であるかを十分にご確認の上ご購入ください。
+当店では、鑑定基準を満たした正規品のみを取り扱っております。
+
+※安心してお買い物いただくために
+価格が安すぎる商品にはご注意ください。
+当店は正規店・公式ルートからのみ買い付けを行っており、
+全商品100%正規品を保証しております。""",
+        "max_items": 50,              # 무신사 수집 최대 개수
+    }
+    if os.path.exists(_MUSINSA_CONFIG_PATH):
+        try:
+            with open(_MUSINSA_CONFIG_PATH, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                defaults.update(saved)
+        except Exception:
+            pass
+    return defaults
+
+def _save_musinsa_config(cfg: dict):
+    """무신사→바이마 마진 설정 저장"""
+    os.makedirs(os.path.dirname(_MUSINSA_CONFIG_PATH), exist_ok=True)
+    with open(_MUSINSA_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 def _kv_log(msg):
     ts = datetime.now().strftime("%H:%M:%S")
-    _kavinet_status["log"].append(f"[{ts}] {msg}")
-    if len(_kavinet_status["log"]) > 300:
-        _kavinet_status["log"] = _kavinet_status["log"][-200:]
-    logger.info(f"[Kavinet] {msg}")
+    _kabinet_status["log"].append(f"[{ts}] {msg}")
+    if len(_kabinet_status["log"]) > 300:
+        _kabinet_status["log"] = _kabinet_status["log"][-200:]
+    logger.info(f"[Musinsa] {msg}")
 
 
-@app.route(f"{URL_PREFIX}/api/kavinet/products", methods=["GET"])
+def _calc_buyma_price(price_krw: int, cfg: dict) -> int:
+    """KRW 가격 → 바이마 출품가 (JPY) 계산"""
+    margin = 1 + cfg.get("margin_pct", 30) / 100
+    fee = 1 + cfg.get("buyma_fee_pct", 5) / 100
+    rate = cfg.get("krw_to_jpy_rate", 0.11)
+    shipping = cfg.get("shipping_jpy", 800)
+    jpy = math.ceil(price_krw * margin * fee * rate + shipping)
+    # 100엔 단위 올림
+    return math.ceil(jpy / 100) * 100
+
+
+@app.route(f"{URL_PREFIX}/api/kabinet/products", methods=["GET"])
 @admin_required
-def kavinet_products():
-    """Kavinet 상품 목록"""
+def kabinet_products():
+    """무신사 수집 상품 목록"""
     from product_db import _conn
     conn = _conn()
     try:
-        total = conn.execute("SELECT COUNT(*) FROM products WHERE site_id='kavinet'").fetchone()[0]
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 100))
+        q = request.args.get("q", "").strip()
+        offset = (page - 1) * per_page
+
+        where = "WHERE site_id='musinsa'"
+        params = []
+        if q:
+            where += " AND (name LIKE ? OR brand LIKE ? OR product_code LIKE ?)"
+            params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
+
+        total = conn.execute(f"SELECT COUNT(*) FROM products {where}", params).fetchone()[0]
         today = conn.execute(
-            "SELECT COUNT(*) FROM products WHERE site_id='kavinet' AND date(created_at)=date('now','localtime')"
+            f"SELECT COUNT(*) FROM products {where} AND date(created_at)=date('now','localtime')", params
         ).fetchone()[0]
-        last = conn.execute(
-            "SELECT MAX(scraped_at) FROM products WHERE site_id='kavinet'"
-        ).fetchone()[0] or ""
         rows = conn.execute(
-            "SELECT * FROM products WHERE site_id='kavinet' ORDER BY created_at DESC LIMIT 100"
+            f"SELECT * FROM products {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            params + [per_page, offset]
         ).fetchall()
         products = []
+        cfg = _load_musinsa_config()
         for r in rows:
+            price_krw = r["price_jpy"]  # musinsa는 KRW를 price_jpy 컬럼에 저장
             products.append({
-                "name": r["name"], "brand": r["brand"],
-                "price_jpy": r["price_jpy"], "img_url": r["img_url"],
-                "link": r["link"], "created_at": r["created_at"],
+                "id": r["id"],
+                "name": r["name"],
+                "brand": r["brand"],
+                "price_krw": price_krw,
+                "price_jpy": _calc_buyma_price(price_krw, cfg),
+                "img_url": r["img_url"],
+                "link": r["link"],
+                "created_at": r["created_at"],
                 "product_code": r["product_code"],
+                "sizes": json.loads(r["sizes"]) if r["sizes"] and r["sizes"] != "[]" else [],
+                "category_id": r["category_id"],
+                "description": r["description"] or "",
             })
-        return jsonify({"ok": True, "products": products, "total": total, "today": today, "last_scrape": last})
+        return jsonify({
+            "ok": True, "products": products,
+            "total": total, "today": today,
+            "page": page, "pages": (total + per_page - 1) // per_page,
+        })
     except Exception as e:
-        return jsonify({"ok": True, "products": [], "total": 0, "today": 0, "last_scrape": ""})
+        logger.error(f"무신사 상품 목록 오류: {e}")
+        return jsonify({"ok": True, "products": [], "total": 0, "today": 0, "page": 1, "pages": 0})
     finally:
         conn.close()
 
 
-@app.route(f"{URL_PREFIX}/api/kavinet/scrape", methods=["POST"])
+@app.route(f"{URL_PREFIX}/api/kabinet/config", methods=["GET"])
 @admin_required
-def kavinet_scrape():
-    """Kavinet 수집 시작"""
-    if _kavinet_status["running"]:
+def kabinet_config_get():
+    """무신사→바이마 마진 설정 조회"""
+    return jsonify({"ok": True, "config": _load_musinsa_config()})
+
+
+@app.route(f"{URL_PREFIX}/api/kabinet/config", methods=["POST"])
+@admin_required
+def kabinet_config_set():
+    """무신사→바이마 마진 설정 저장"""
+    data = request.get_json() or {}
+    cfg = _load_musinsa_config()
+    for key in ["margin_pct", "krw_to_jpy_rate", "shipping_jpy", "buyma_fee_pct",
+                "category_id", "brand_id", "shipping_method", "buying_area", "buying_city",
+                "shipping_area", "shipping_city", "purchase_deadline", "tariff_included",
+                "tags", "quantity", "control", "comment_template", "max_items"]:
+        if key in data:
+            val = data[key]
+            if key in ("margin_pct", "krw_to_jpy_rate", "buyma_fee_pct"):
+                val = float(val)
+            elif key in ("shipping_jpy", "purchase_deadline", "tariff_included", "quantity", "max_items"):
+                val = int(val)
+            cfg[key] = val
+    _save_musinsa_config(cfg)
+    return jsonify({"ok": True, "config": cfg})
+
+
+@app.route(f"{URL_PREFIX}/api/kabinet/scrape", methods=["POST"])
+@admin_required
+def kabinet_scrape():
+    """무신사 수집 시작"""
+    if _kabinet_status["running"]:
         return jsonify({"ok": False, "message": "이미 수집 중입니다"})
     data = request.get_json() or {}
-    url = data.get("url", "")
-    pages = data.get("pages", "")
-    if not url:
-        return jsonify({"ok": False, "message": "URL을 입력해주세요"})
-    t = threading.Thread(target=_run_kavinet_scrape, args=(url, pages), daemon=True)
+    keyword = data.get("keyword", "").strip()
+    search_mode = data.get("search_mode", "keyword")  # keyword / ranking / url
+    url = data.get("url", "").strip()
+    cfg = _load_musinsa_config()
+    max_items = int(data.get("max_items", cfg.get("max_items", 50)))
+    if search_mode == "url":
+        if not url:
+            return jsonify({"ok": False, "message": "URL을 입력해주세요"})
+        if "musinsa.com" not in url:
+            return jsonify({"ok": False, "message": "무신사 URL을 입력해주세요"})
+    elif search_mode == "keyword" and not keyword:
+        return jsonify({"ok": False, "message": "키워드를 입력해주세요"})
+    t = threading.Thread(target=_run_musinsa_scrape, args=(keyword, max_items, search_mode, url), daemon=True)
     t.start()
     return jsonify({"ok": True})
 
 
-@app.route(f"{URL_PREFIX}/api/kavinet/stop", methods=["POST"])
+@app.route(f"{URL_PREFIX}/api/kabinet/stop", methods=["POST"])
 @admin_required
-def kavinet_stop():
-    """Kavinet 수집 중지"""
-    _kavinet_status["stop_requested"] = True
+def kabinet_stop():
+    """무신사 수집 중지"""
+    _kabinet_status["stop_requested"] = True
     return jsonify({"ok": True})
 
 
-@app.route(f"{URL_PREFIX}/api/kavinet/status", methods=["GET"])
+@app.route(f"{URL_PREFIX}/api/kabinet/status", methods=["GET"])
 @admin_required
-def kavinet_scrape_status():
-    """Kavinet 수집 상태"""
+def kabinet_scrape_status():
+    """무신사 수집 상태"""
     return jsonify({
         "ok": True,
-        "running": _kavinet_status["running"],
-        "log": "\n".join(_kavinet_status["log"][-100:]),
+        "running": _kabinet_status["running"],
+        "log": "\n".join(_kabinet_status["log"][-100:]),
     })
 
 
-def _run_kavinet_scrape(url, pages=""):
-    """Kavinet 크롤링 (백그라운드)"""
-    _kavinet_status["running"] = True
-    _kavinet_status["stop_requested"] = False
-    _kavinet_status["log"] = []
-    _kv_log(f"Kavinet 수집 시작: {url}")
-    _kv_log(f"페이지: {pages or '자동'}")
+@app.route(f"{URL_PREFIX}/api/kabinet/delete", methods=["POST"])
+@admin_required
+def kabinet_delete():
+    """무신사 수집 상품 삭제"""
+    data = request.get_json() or {}
+    ids = data.get("ids", [])
+    if not ids:
+        return jsonify({"ok": False, "message": "삭제할 상품을 선택해주세요"})
+    from product_db import delete_by_ids
+    deleted = delete_by_ids(ids)
+    return jsonify({"ok": True, "deleted": deleted})
 
+
+@app.route(f"{URL_PREFIX}/api/kabinet/csv", methods=["POST"])
+@admin_required
+def kabinet_csv():
+    """바이마 업로드용 CSV 생성 (items.csv + colorsizes.csv → ZIP) — 실제 바이마 포맷"""
+    import csv
+    import io
+    import zipfile
+
+    data = request.get_json() or {}
+    ids = data.get("ids", [])
+
+    from product_db import _conn
+    conn = _conn()
     try:
-        # TODO: Kavinet 사이트 구조에 맞는 크롤러 구현
-        _kv_log("Kavinet 크롤러를 구현해주세요")
-        _kv_log("사이트 URL 구조를 확인 후 크롤러를 작성합니다")
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            rows = conn.execute(
+                f"SELECT * FROM products WHERE id IN ({placeholders}) ORDER BY created_at DESC", ids
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM products WHERE site_id='musinsa' ORDER BY created_at DESC LIMIT 500"
+            ).fetchall()
+
+        if not rows:
+            return jsonify({"ok": False, "message": "상품이 없습니다"})
+
+        cfg = _load_musinsa_config()
+        deadline_days = int(cfg.get("purchase_deadline", 10))
+        from datetime import timedelta
+        deadline = (datetime.now() + timedelta(days=deadline_days)).strftime("%Y-%m-%d")
+        control = cfg.get("control", "下書き")
+        comment_tpl = cfg.get("comment_template", "")
+
+        # ── items.csv (바이마 실제 포맷) ──
+        ITEMS_HEADER = [
+            "商品ID", "商品管理番号", "コントロール", "公開ステータス", "商品名",
+            "ブランド", "ブランド名", "モデル", "カテゴリ", "シーズン", "テーマ",
+            "単価", "買付可数量", "購入期限", "参考価格/通常出品価格", "参考価格",
+            "商品コメント", "色サイズ補足", "タグ", "配送方法",
+            "買付エリア", "買付都市", "買付ショップ", "発送エリア", "発送都市",
+            "関税込み", "出品メモ",
+            "商品イメージ1", "商品イメージ2", "商品イメージ3", "商品イメージ4", "商品イメージ5",
+            "商品イメージ6", "商品イメージ7", "商品イメージ8", "商品イメージ9", "商品イメージ10",
+            "商品イメージ11", "商品イメージ12", "商品イメージ13", "商品イメージ14", "商品イメージ15",
+            "商品イメージ16", "商品イメージ17", "商品イメージ18", "商品イメージ19", "商品イメージ20",
+            "ブランド品番1", "ブランド品番識別メモ1",
+            "買付先名1", "買付先URL1", "買付先説明1",
+        ]
+        CS_HEADER = [
+            "商品ID", "商品管理番号", "商品名", "並び順",
+            "サイズ名称", "サイズ単位", "検索用サイズ", "色名称", "色系統",
+            "在庫ステータス", "手元に在庫あり数量", "色サイズリプレイス",
+        ]
+
+        items_buf = io.StringIO()
+        items_writer = csv.writer(items_buf, quoting=csv.QUOTE_ALL)
+        items_writer.writerow(ITEMS_HEADER)
+
+        cs_buf = io.StringIO()
+        cs_writer = csv.writer(cs_buf, quoting=csv.QUOTE_ALL)
+        cs_writer.writerow(CS_HEADER)
+
+        for r in rows:
+            price_krw = r["price_jpy"]
+            buyma_price = _calc_buyma_price(price_krw, cfg)
+            mgmt_no = f"MS-{r['product_code']}"
+            name = r["name"] or ""
+            brand_name = r["brand"] or ""
+            brand_id = cfg.get("brand_id", "")
+            img = r["img_url"] or ""
+            link = r["link"] or ""
+            desc = r["description"] or ""
+            product_code = r["product_code"] or ""
+            detail_images = json.loads(r["detail_images"]) if r.get("detail_images") and r["detail_images"] != "[]" else []
+
+            # 상품 코멘트 구성
+            comment = comment_tpl
+            if desc:
+                comment = f"{comment}\n\n{desc}" if comment else desc
+            if not comment:
+                comment = name
+
+            # 이미지 리스트 (최대 20개)
+            all_images = [img] if img else []
+            for di in detail_images[:19]:
+                if isinstance(di, str) and di:
+                    all_images.append(di)
+            while len(all_images) < 20:
+                all_images.append("")
+
+            items_writer.writerow([
+                "",                                     # 商品ID (신규=공백)
+                mgmt_no,                                # 商品管理番号
+                control,                                # コントロール
+                "",                                     # 公開ステータス
+                name,                                   # 商品名
+                brand_id,                               # ブランド (ID)
+                brand_name,                             # ブランド名
+                "0",                                    # モデル
+                cfg.get("category_id", ""),              # カテゴリ
+                "0",                                    # シーズン
+                "0",                                    # テーマ
+                buyma_price,                            # 単価
+                cfg.get("quantity", 100),                # 買付可数量
+                deadline,                               # 購入期限
+                "0",                                    # 参考価格/通常出品価格
+                "",                                     # 参考価格
+                comment,                                # 商品コメント
+                "",                                     # 色サイズ補足
+                cfg.get("tags", ""),                     # タグ
+                cfg.get("shipping_method", "1062886_1061293"),  # 配送方法
+                cfg.get("buying_area", "2002003"),       # 買付エリア
+                cfg.get("buying_city", "000"),            # 買付都市
+                "",                                     # 買付ショップ
+                cfg.get("shipping_area", "2002003"),      # 発送エリア
+                cfg.get("shipping_city", "001"),          # 発送都市
+                cfg.get("tariff_included", 0),            # 関税込み
+                "",                                     # 出品メモ
+                *all_images,                            # 商品イメージ1~20
+                product_code,                           # ブランド品番1
+                "",                                     # ブランド品番識別メモ1
+                "MUSINSA",                              # 買付先名1
+                link,                                   # 買付先URL1
+                "",                                     # 買付先説明1
+            ])
+
+            # ── colorsizes.csv ──
+            sizes = json.loads(r["sizes"]) if r["sizes"] and r["sizes"] != "[]" else []
+            if not sizes:
+                sizes = [{"name": "f", "search_size": "0"}]
+            for idx, sz in enumerate(sizes):
+                if isinstance(sz, str):
+                    sz_name = sz
+                    sz_search = "0"
+                else:
+                    sz_name = sz.get("name", str(sz))
+                    sz_search = sz.get("search_size", "0")
+                cs_writer.writerow([
+                    "",             # 商品ID
+                    mgmt_no,        # 商品管理番号
+                    name,           # 商品名
+                    idx + 1,        # 並び順
+                    sz_name,        # サイズ名称
+                    "",             # サイズ単位
+                    sz_search,      # 検索用サイズ
+                    "",             # 色名称
+                    "",             # 色系統
+                    2,              # 在庫ステータス (2=買付可能)
+                    "",             # 手元に在庫あり数量
+                    "",             # 色サイズリプレイス
+                ])
+
+        # ZIP 생성 (UTF-8)
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("items.csv", items_buf.getvalue())
+            zf.writestr("colorsizes.csv", cs_buf.getvalue())
+        zip_buf.seek(0)
+
+        resp = make_response(zip_buf.read())
+        resp.headers["Content-Type"] = "application/zip"
+        resp.headers["Content-Disposition"] = f"attachment; filename=buyma_upload_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        return resp
+    except Exception as e:
+        logger.error(f"바이마 CSV 생성 오류: {e}")
+        return jsonify({"ok": False, "message": str(e)})
+    finally:
+        conn.close()
+
+
+def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
+    """무신사 크롤링 — 포이즌서치 방식 (키워드/랭킹 → 무한스크롤 → 상세 페이지 방문)"""
+    _kabinet_status["running"] = True
+    _kabinet_status["stop_requested"] = False
+    _kabinet_status["log"] = []
+
+    mode_label = {"keyword": "키워드 검색", "ranking": "랭킹", "url": "URL 직접"}
+    _kv_log(f"무신사 수집 시작 ({mode_label.get(search_mode, search_mode)})")
+    if search_mode == "keyword":
+        _kv_log(f"키워드: {keyword}")
+    elif search_mode == "url":
+        _kv_log(f"URL: {url}")
+    _kv_log(f"최대 {max_items}개")
+
+    collected = []
+    try:
+        from playwright.sync_api import sync_playwright
+        import time
+        import re as re_mod
+        import random
+
+        MUSINSA_SEARCH_URL = "https://www.musinsa.com/search/musinsa/goods"
+        MUSINSA_RANKING_URL = (
+            "https://www.musinsa.com/main/musinsa/ranking"
+            "?gf=A&storeCode=musinsa&sectionId=200&contentsId="
+            "&categoryCode=103000&ageBand=AGE_BAND_ALL&subPan=product"
+        )
+        COOKIE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "musinsa_data", "musinsa_cookies.json")
+        if not os.path.exists(COOKIE_FILE):
+            COOKIE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "musinsa_cookies.json")
+
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=True, channel="chrome",
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+            )
+            context = browser.new_context(
+                viewport={"width": 960, "height": 648},
+                locale="ko-KR", timezone_id="Asia/Seoul",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            )
+            # 쿠키 로드
+            if os.path.exists(COOKIE_FILE):
+                try:
+                    with open(COOKIE_FILE, "r", encoding="utf-8") as f:
+                        cookies = json.load(f)
+                    musinsa_cookies = [c for c in cookies if "musinsa.com" in c.get("domain", "")]
+                    if musinsa_cookies:
+                        context.add_cookies(cookies)
+                        _kv_log("쿠키 로드 완료")
+                except Exception:
+                    pass
+
+            page = context.new_page()
+            page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+                Object.defineProperty(navigator, 'languages', {get: () => ['ko-KR','ko','en-US','en']});
+            """)
+
+            # 검색 URL 결정
+            if search_mode == "url":
+                search_url = url
+            elif search_mode == "ranking":
+                search_url = MUSINSA_RANKING_URL
+            else:
+                search_url = f"{MUSINSA_SEARCH_URL}?q={keyword}"
+
+            _kv_log(f"검색 페이지 로딩...")
+            page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+            time.sleep(2)
+
+            # ── 1단계: 무한 스크롤로 상품 링크 수집 ──
+            _kv_log("무한 스크롤로 상품 링크 수집 중...")
+            product_links = []
+            scroll_count = 0
+            max_scrolls = 200
+            no_new = 0
+
+            while len(product_links) < max_items and scroll_count < max_scrolls:
+                if _kabinet_status["stop_requested"]:
+                    _kv_log("사용자 요청으로 중지")
+                    break
+                scroll_count += 1
+
+                current_links = page.evaluate("""() => {
+                    const links = [];
+                    document.querySelectorAll('a[href*="/products/"]').forEach(a => {
+                        if (a.href && !links.includes(a.href)) links.push(a.href);
+                    });
+                    return links;
+                }""")
+                new_links = [lk for lk in current_links if lk not in product_links]
+
+                if new_links:
+                    product_links.extend(new_links)
+                    no_new = 0
+                    _kv_log(f"  스크롤 {scroll_count}: {len(product_links)}/{max_items}개 (+{len(new_links)})")
+                else:
+                    no_new += 1
+                    if no_new >= 5:
+                        _kv_log("  더 이상 새 상품 없음")
+                        break
+
+                if len(product_links) >= max_items:
+                    break
+
+                # 단계적 스크롤
+                try:
+                    sh = page.evaluate("document.body.scrollHeight")
+                    cy = page.evaluate("window.pageYOffset")
+                    vh = page.evaluate("window.innerHeight")
+                    step = cy
+                    while step < sh:
+                        step = min(step + vh, sh)
+                        page.evaluate(f"window.scrollTo(0, {step})")
+                        time.sleep(0.5)
+                except Exception:
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(random.uniform(2.0, 3.0))
+
+            product_links = product_links[:max_items]
+            _kv_log(f"수집 링크: {len(product_links)}개")
+
+            # ── 2단계: 각 상품 상세 페이지 방문하여 정보 추출 ──
+            _kv_log("상세 페이지 방문 시작...")
+            for idx, product_url in enumerate(product_links, 1):
+                if _kabinet_status["stop_requested"]:
+                    _kv_log("사용자 요청으로 중지")
+                    break
+
+                try:
+                    page.goto(product_url, wait_until="domcontentloaded", timeout=30000)
+                    time.sleep(3)
+
+                    # 팝업 닫기
+                    try:
+                        btn = page.locator("button:has-text('오늘 그만보기')").first
+                        if btn.count() > 0 and btn.is_visible():
+                            btn.click()
+                            time.sleep(0.3)
+                    except Exception:
+                        pass
+
+                    # 상품 정보 추출 (포이즌 서치 로직 기반)
+                    info = page.evaluate("""() => {
+                        const result = {name:'', price:0, brand:'', product_code:'', image_url:''};
+
+                        // 제품명
+                        const nameEl = document.querySelector('span[class*="GoodsName"]')
+                            || document.querySelector('span.text-title_18px_med');
+                        if (nameEl) result.name = nameEl.textContent.trim();
+
+                        // 가격 (최대혜택가 우선)
+                        const allText = document.body.innerText;
+                        const pm = allText.match(/([0-9]{1,3}(?:,?[0-9]{3})*)\\s*원\\s*최대혜택가/);
+                        if (pm && pm[1]) {
+                            result.price = parseInt(pm[1].replace(/,/g,''));
+                        } else {
+                            const pe = document.querySelector('span.text-title_18px_semi.text-red');
+                            if (pe) {
+                                const nums = pe.textContent.replace(/[^0-9]/g,'');
+                                if (nums) result.price = parseInt(nums);
+                            }
+                        }
+                        if (!result.price) {
+                            const reds = document.querySelectorAll('span.text-red');
+                            for (const s of reds) {
+                                const t = s.textContent;
+                                if (t && t.includes('원') && t.length < 20) {
+                                    const n = parseInt(t.replace(/[^0-9]/g,''));
+                                    if (n >= 10000 && n <= 10000000) { result.price = n; break; }
+                                }
+                            }
+                        }
+
+                        // 브랜드
+                        const brandEl = document.querySelector('a[href*="/brands/"]');
+                        if (brandEl) result.brand = brandEl.textContent.trim();
+
+                        // 품번 (라벨 기반)
+                        const cm = allText.match(/(품번|모델번호|상품코드)\\s*[:：\\s]+([A-Z0-9][A-Z0-9-]+)/i);
+                        if (cm && cm[2] && cm[2].length >= 5) result.product_code = cm[2].trim();
+
+                        // 이미지
+                        const img1 = document.querySelector('img[alt="Thumbnail 0"]');
+                        if (img1 && img1.src && img1.src.includes('image.msscdn.net')) {
+                            result.image_url = img1.src.split('?')[0];
+                        } else {
+                            const swiper = document.querySelector('div[class*="Swiper"] img');
+                            if (swiper && swiper.src) result.image_url = swiper.src.split('?')[0];
+                        }
+
+                        return result;
+                    }""")
+
+                    if not info or not info.get("name"):
+                        _kv_log(f"  [{idx}/{len(product_links)}] 정보 추출 실패 — 건너뜀")
+                        continue
+
+                    # product_code가 없으면 URL에서 추출
+                    code = info.get("product_code", "")
+                    if not code:
+                        m = re_mod.search(r"/products/(\d+)", product_url)
+                        code = m.group(1) if m else str(idx)
+
+                    # 이미지 URL 정제
+                    img_url = info.get("image_url", "")
+                    if img_url:
+                        if "/thumbnails/" in img_url:
+                            img_url = img_url.replace("/thumbnails/", "/images/")
+
+                    collected.append({
+                        "site_id": "musinsa",
+                        "source_type": "musinsa",
+                        "product_code": code,
+                        "name": info.get("name", ""),
+                        "brand": info.get("brand", ""),
+                        "price_jpy": info.get("price", 0),
+                        "img_url": img_url,
+                        "link": product_url,
+                        "category_id": "",
+                        "scraped_at": datetime.now().isoformat(),
+                    })
+                    _kv_log(f"  [{idx}/{len(product_links)}] {info.get('brand','')} {info.get('name','')[:40]} — {info.get('price',0):,}원")
+
+                    time.sleep(random.uniform(1.0, 2.0))
+
+                except Exception as e:
+                    _kv_log(f"  [{idx}/{len(product_links)}] 오류: {e}")
+
+            browser.close()
+
+        # DB 저장
+        if collected:
+            _kv_log(f"DB 저장 시작: {len(collected)}개")
+            from product_db import insert_products
+            saved = insert_products(collected)
+            _kv_log(f"DB 저장 완료: {saved}개")
+        else:
+            _kv_log("수집된 상품 없음")
+
     except Exception as e:
         _kv_log(f"오류: {e}")
+        import traceback
+        _kv_log(traceback.format_exc())
     finally:
-        _kavinet_status["running"] = False
-        _kv_log("수집 종료")
+        _kabinet_status["running"] = False
+        _kv_log(f"수집 종료 (총 {len(collected)}개)")
 
 
 @app.route(f"{URL_PREFIX}/api/vintage-db-stats", methods=["GET"])

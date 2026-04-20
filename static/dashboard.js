@@ -57,9 +57,9 @@ const pageTitles = {
   "sns-upload": "Vintage \u203A \uD83D\uDCE2 SNS \uC5C5\uB85C\uB4DC",
   "nas-sync": "Vintage \u203A \uD83D\uDCC2 \uC0C1\uD488 \uB9AC\uC2A4\uD2B8 (NAS)",
   "db-update": "Vintage \u203A \uD83D\uDD04 \uC0C1\uD488DB \uC5C5\uB370\uC774\uD2B8",
-  "kavinet": "\uD83C\uDFAF Kavinet \u203A \uB300\uC2DC\uBCF4\uB4DC",
-  "kavinet-products": "\uD83C\uDFAF Kavinet \u203A \uC0C1\uD488 \uBAA9\uB85D",
-  "kavinet-scrape": "\uD83C\uDFAF Kavinet \u203A \uC218\uC9D1",
+  "kabinet": "\uD83C\uDFAF Kabinet \u203A \uB300\uC2DC\uBCF4\uB4DC",
+  "kabinet-products": "\uD83C\uDFAF Kabinet \u203A \uC0C1\uD488 \uBAA9\uB85D",
+  "kabinet-scrape": "\uD83C\uDFAF Kabinet \u203A \uC218\uC9D1",
   "sms": "Setting \u203A \uD83D\uDCF1 \uBB38\uC790 \uBC1C\uC1A1",
   "seo-keyword": "Setting \u203A \uD83D\uDD0D \uD0A4\uC6CC\uB4DC \uBD84\uC11D",
 };
@@ -5903,12 +5903,12 @@ async function stopFreshnessCheck() {
   loadFreshnessStatus();
 }
 
-// ── Kavinet ──
-async function loadKavinetProducts() {
+// ── Kabinet ──
+async function loadKabinetProducts() {
   const el = document.getElementById("kv-product-list");
   el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;">로딩 중...</div>';
   try {
-    const r = await fetch(PREFIX + "/api/kavinet/products");
+    const r = await fetch(PREFIX + "/api/kabinet/products");
     const ct = r.headers.get("content-type") || "";
     if (!ct.includes("application/json")) { el.innerHTML = '<div style="color:var(--muted);text-align:center;padding:30px;">데이터 없음</div>'; return; }
     const d = await r.json();
@@ -5932,14 +5932,14 @@ async function loadKavinetProducts() {
 }
 
 let _kvLogTimer = null;
-async function startKavinetScrape() {
+async function startKabinetScrape() {
   const url = document.getElementById("kv-scrape-url").value.trim();
   const pages = document.getElementById("kv-scrape-pages").value.trim();
   if (!url) { alert("수집 URL을 입력해주세요"); return; }
   const btn = document.getElementById("btn-kv-scrape");
   btn.disabled = true; btn.textContent = "⏳ 시작 중...";
   try {
-    const r = await fetch(PREFIX + "/api/kavinet/scrape", {
+    const r = await fetch(PREFIX + "/api/kabinet/scrape", {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({url, pages})
     });
@@ -5953,8 +5953,8 @@ async function startKavinetScrape() {
   finally { btn.textContent = "▶ 수집 시작"; btn.disabled = false; }
 }
 
-async function stopKavinetScrape() {
-  try { await fetch(PREFIX + "/api/kavinet/stop", {method:"POST"}); } catch(e) {}
+async function stopKabinetScrape() {
+  try { await fetch(PREFIX + "/api/kabinet/stop", {method:"POST"}); } catch(e) {}
   document.getElementById("btn-kv-stop").style.display = "none";
   document.getElementById("btn-kv-scrape").style.display = "";
   if (_kvLogTimer) { clearInterval(_kvLogTimer); _kvLogTimer = null; }
@@ -5962,7 +5962,7 @@ async function stopKavinetScrape() {
 
 async function pollKvLog() {
   try {
-    const r = await fetch(PREFIX + "/api/kavinet/status");
+    const r = await fetch(PREFIX + "/api/kabinet/status");
     const d = await r.json();
     if (d.log) {
       const el = document.getElementById("kv-scrape-log");
@@ -5973,7 +5973,7 @@ async function pollKvLog() {
       document.getElementById("btn-kv-stop").style.display = "none";
       document.getElementById("btn-kv-scrape").style.display = "";
       if (_kvLogTimer) { clearInterval(_kvLogTimer); _kvLogTimer = null; }
-      loadKavinetProducts();
+      loadKabinetProducts();
     }
   } catch(e) {}
 }

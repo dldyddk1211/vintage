@@ -101,7 +101,8 @@ _SITE_CODE = {
     "brandoff": "B",
     "komehyo": "KM",
     "xebio": "X",
-    "kavinet": "KV",
+    "kabinet": "KV",
+    "musinsa": "MS",
 }
 
 # 같은 배치 내에서 번호 중복 방지용 카운터

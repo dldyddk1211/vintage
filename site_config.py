@@ -142,8 +142,8 @@ SITES = {
         },
         "brands": {},
     },
-    "kavinet": {
-        "name": "카비넷 (KAVINET)",
+    "kabinet": {
+        "name": "카비넷 (KABINET)",
         "domain": "",
         "base_url": "",
         "source_type": "vintage",
