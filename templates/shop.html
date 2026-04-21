@@ -780,7 +780,10 @@
         <button onclick="loadShop(1)" style="padding:8px 14px;border-radius:8px;background:var(--accent);border:none;color:#000;font-size:0.8rem;font-weight:700;cursor:pointer;white-space:nowrap;">검색</button>
       </div>
       <div style="font-size:0.65rem;color:var(--dim);margin-top:4px;">예: 숄더백 가죽, PRADA 블랙, No.S-260402 | 📷 사진으로 검색</div>
-      <button class="reset-btn" onclick="resetFilters()" style="margin-top:8px;">필터 초기화</button>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button class="reset-btn" onclick="resetFilters()" style="flex:1;">필터 초기화</button>
+        <button class="reset-btn" onclick="togglePriceDropPanel()" id="price-drop-btn" style="flex:1;background:rgba(46,204,113,0.12);border-color:rgba(46,204,113,0.3);color:var(--green);">💰 가격할인</button>
+      </div>
     </div>
 
     <!-- 브랜드 -->
@@ -948,6 +951,24 @@
     <div class="content-header" id="content-header">
       <div class="result-info" id="result-info">상품을 불러오는 중...</div>
       <div class="active-filters" id="active-filters"></div>
+    </div>
+    <!-- 가격 할인 패널 -->
+    <div id="price-drop-panel" style="display:none;margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <span style="font-weight:700;font-size:0.88rem;color:var(--green);">💰 가격 인하 상품</span>
+        <button onclick="togglePriceDropPanel()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;">✕</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
+          <thead><tr style="border-bottom:1px solid var(--border);">
+            <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">업데이트</th>
+            <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">브랜드</th>
+            <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">카테고리</th>
+            <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">변경내용</th>
+          </tr></thead>
+          <tbody id="price-drop-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">로딩 중...</td></tr></tbody>
+        </table>
+      </div>
     </div>
     <div class="product-grid" id="product-grid">
       <div class="loading"><div class="spinner"></div>상품을 불러오는 중...</div>
@@ -2138,6 +2159,41 @@ function clickBrandStrip(name) {
 }
 
 loadShop(1);
+
+// ── 가격 할인 패널 ──
+function togglePriceDropPanel() {
+  const panel = document.getElementById("price-drop-panel");
+  if (panel.style.display === "none") {
+    panel.style.display = "block";
+    loadPriceDrops();
+  } else {
+    panel.style.display = "none";
+  }
+}
+async function loadPriceDrops() {
+  try {
+    const r = await fetch(PREFIX + "/api/price-changes/shop");
+    const d = await r.json();
+    const tb = document.getElementById("price-drop-tbody");
+    if (!d.ok || !d.changes || d.changes.length === 0) {
+      tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">가격 인하 상품 없음</td></tr>';
+      return;
+    }
+    tb.innerHTML = d.changes.map(c => {
+      const diff = c.old_price - c.new_price;
+      const pct = c.old_price > 0 ? Math.round(diff / c.old_price * 100) : 0;
+      return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="if('${c.link}')window.open('${c.link}','_blank')">
+        <td style="padding:6px 8px;white-space:nowrap;">${(c.updated_at||'').slice(5,16)}</td>
+        <td style="padding:6px 8px;">${c.brand_ko||'-'}</td>
+        <td style="padding:6px 8px;">${c.category_id||'-'}</td>
+        <td style="padding:6px 8px;color:var(--green);font-weight:600;white-space:nowrap;">
+          ¥${(c.old_price||0).toLocaleString()} → ¥${(c.new_price||0).toLocaleString()}
+          <span style="font-size:0.65rem;color:var(--accent);">(-${pct}%)</span>
+        </td>
+      </tr>`;
+    }).join("");
+  } catch(e) {}
+}
 
 // 접속 로그 전송
 try {

@@ -9613,6 +9613,25 @@ def db_update_targets():
     return jsonify({"ok": True, "targets": targets})
 
 
+@app.route(f"{URL_PREFIX}/api/price-changes", methods=["GET"])
+@admin_required
+def api_price_changes():
+    """가격 변경 이력 조회 (관리자)"""
+    from product_db import get_price_changes
+    change_type = request.args.get("type", "")  # 가격인하 / 가격인상 / 빈값=전체
+    limit = int(request.args.get("limit", 200))
+    changes = get_price_changes(change_type=change_type, limit=limit)
+    return jsonify({"ok": True, "changes": changes, "total": len(changes)})
+
+
+@app.route(f"{URL_PREFIX}/api/price-changes/shop", methods=["GET"])
+def api_price_changes_shop():
+    """가격 인하 이력 조회 (쇼핑몰 — 로그인 불필요)"""
+    from product_db import get_price_changes
+    changes = get_price_changes(change_type="가격인하", limit=100)
+    return jsonify({"ok": True, "changes": changes})
+
+
 def _register_db_update_job():
     """DB 업데이트 스케줄러 등록"""
     job_id = "db_update_auto"

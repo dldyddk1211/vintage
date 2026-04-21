@@ -89,6 +89,27 @@ def init_db():
         # site_id + product_code 유니크 인덱스 (중복 검열 강화)
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_site_code ON products(site_id, product_code)")
 
+        # ── 가격 변경 이력 테이블 ──
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS price_changes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER NOT NULL,
+                site_id TEXT DEFAULT '',
+                product_code TEXT DEFAULT '',
+                internal_code TEXT DEFAULT '',
+                brand_ko TEXT DEFAULT '',
+                category_id TEXT DEFAULT '',
+                old_price INTEGER DEFAULT 0,
+                new_price INTEGER DEFAULT 0,
+                change_type TEXT DEFAULT '',
+                updated_at TEXT DEFAULT (datetime('now','localtime')),
+                synced_at TEXT DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_pc_updated ON price_changes(updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_pc_type ON price_changes(change_type);
+        """)
+        conn.commit()
+
         logger.info(f"빅데이터 DB 초기화 완료: {_DB_PATH}")
     finally:
         conn.close()
@@ -218,6 +239,33 @@ def insert_products(products: list) -> int:
                 ).fetchone()
 
                 if existing:
+                    # ── 가격 변경 감지 & 이력 저장 ──
+                    old_price = existing["price_jpy"]
+                    new_price = p.get("price_jpy", 0)
+                    if old_price != new_price and new_price > 0 and old_price > 0:
+                        change_type = "가격인하" if new_price < old_price else "가격인상"
+                        try:
+                            # internal_code 조회
+                            ic_row = conn.execute(
+                                "SELECT internal_code, brand_ko, category_id FROM products WHERE id=?",
+                                (existing["id"],)
+                            ).fetchone()
+                            conn.execute("""
+                                INSERT INTO price_changes
+                                (product_id, site_id, product_code, internal_code, brand_ko, category_id,
+                                 old_price, new_price, change_type, updated_at)
+                                VALUES (?,?,?,?,?,?,?,?,?,?)
+                            """, (
+                                existing["id"], site_id, code,
+                                ic_row["internal_code"] if ic_row else "",
+                                ic_row["brand_ko"] if ic_row else "",
+                                ic_row["category_id"] if ic_row else "",
+                                old_price, new_price, change_type,
+                                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            ))
+                        except Exception as e:
+                            logger.debug(f"가격 변경 이력 저장 오류: {e}")
+
                     # 중복 — 가격/이미지/상세 정보만 업데이트 (cafe_status 유지)
                     conn.execute("""
                         UPDATE products SET
@@ -871,5 +919,46 @@ def get_products_by_status(status: str) -> list:
                 "from_db": True,
             })
         return products
+    finally:
+        conn.close()
+
+
+def get_price_changes(change_type="", limit=200) -> list:
+    """가격 변경 이력 조회"""
+    conn = _conn()
+    try:
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if "price_changes" not in tables:
+            return []
+        where = ""
+        params = []
+        if change_type:
+            where = "WHERE pc.change_type = ?"
+            params.append(change_type)
+        rows = conn.execute(f"""
+            SELECT pc.*, p.name_ko, p.name, p.img_url, p.link,
+                   p.brand_ko as p_brand_ko, p.category_id as p_category,
+                   p.internal_code as p_internal_code
+            FROM price_changes pc
+            LEFT JOIN products p ON pc.product_id = p.id
+            {where}
+            ORDER BY pc.updated_at DESC LIMIT ?
+        """, params + [limit]).fetchall()
+        result = []
+        for r in rows:
+            result.append({
+                "id": r["id"], "product_id": r["product_id"],
+                "internal_code": r["internal_code"] or (r["p_internal_code"] if "p_internal_code" in r.keys() else "") or "",
+                "brand_ko": r["brand_ko"] or (r["p_brand_ko"] if "p_brand_ko" in r.keys() else "") or "",
+                "category_id": r["category_id"] or (r["p_category"] if "p_category" in r.keys() else "") or "",
+                "product_code": r["product_code"],
+                "old_price": r["old_price"], "new_price": r["new_price"],
+                "change_type": r["change_type"],
+                "updated_at": r["updated_at"], "synced_at": r["synced_at"] or "",
+                "name": (r["name_ko"] if "name_ko" in r.keys() else "") or (r["name"] if "name" in r.keys() else "") or "",
+                "img_url": r["img_url"] if "img_url" in r.keys() else "",
+                "link": r["link"] if "link" in r.keys() else "",
+            })
+        return result
     finally:
         conn.close()

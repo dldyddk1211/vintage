@@ -143,7 +143,46 @@
 <div class="page-section" id="page-scrape-tasks"><div class="panel"><div style="text-align:center;padding:40px;color:var(--muted);">수집 작업리스트 — <a href="{{ url_prefix }}/dashboard#scrape-tasks" style="color:var(--accent);">전체 대시보드에서 보기</a></div></div></div>
 <div class="page-section" id="page-sns-upload"><div class="panel"><div style="text-align:center;padding:40px;color:var(--muted);">SNS 업로드 — <a href="{{ url_prefix }}/dashboard#sns-upload" style="color:var(--accent);">전체 대시보드에서 보기</a></div></div></div>
 <div class="page-section" id="page-nas-sync"><div class="panel"><div style="text-align:center;padding:40px;color:var(--muted);">NAS 동기화 — <a href="{{ url_prefix }}/dashboard#nas-sync" style="color:var(--accent);">전체 대시보드에서 보기</a></div></div></div>
-<div class="page-section" id="page-db-update"><div class="panel"><div style="text-align:center;padding:40px;color:var(--muted);">상품DB 업데이트 — <a href="{{ url_prefix }}/dashboard#db-update" style="color:var(--accent);">전체 대시보드에서 보기</a></div></div></div>
+<div class="page-section" id="page-db-update">
+  <!-- 변경 이력 테이블 -->
+  <div class="panel">
+    <div class="panel-title">
+      <span>📋 가격 변경 이력</span>
+      <div style="display:flex;gap:6px;">
+        <select id="dbu-filter" onchange="loadPriceChanges()" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.75rem;">
+          <option value="">전체</option>
+          <option value="가격인하" selected>가격인하</option>
+          <option value="가격인상">가격인상</option>
+        </select>
+        <button class="btn b-gray" onclick="loadPriceChanges()">🔄</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="tbl" style="width:100%;font-size:0.75rem;">
+        <thead><tr>
+          <th>업데이트 일자</th>
+          <th>쇼핑몰 노출일</th>
+          <th>고유번호</th>
+          <th>브랜드</th>
+          <th>카테고리</th>
+          <th>변경내용</th>
+        </tr></thead>
+        <tbody id="dbu-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">로딩 중...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- 실시간 로그 -->
+  <div class="panel" style="margin-top:12px;">
+    <div class="panel-title"><span>📝 실시간 로그</span>
+      <div style="display:flex;gap:6px;">
+        <button class="btn b-blue" onclick="runDbUpdate()">▶ 수동 실행</button>
+        <button class="btn b-red" onclick="stopDbUpdate()">⏹ 중지</button>
+        <a href="{{ url_prefix }}/dashboard#db-update" class="btn b-gray">상세 설정 →</a>
+      </div>
+    </div>
+    <div id="dbu-log" style="max-height:300px;overflow-y:auto;font-size:0.72rem;font-family:monospace;color:var(--muted);white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;">대기 중...</div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -162,6 +201,7 @@ function onPageShow(page) {
   if (page === "vt-todo") loadVtTodo();
   if (page === "members") loadMembers();
   if (page === "orders") loadOrders();
+  if (page === "db-update") { loadPriceChanges(); pollDbLog(); }
 }
 
 // ── 접속 통계 ──
@@ -275,6 +315,56 @@ async function loadOrders() {
 async function chgOrderSt(id,st) {
   await fetch(PREFIX+"/orders/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:st})});
   loadOrders();
+}
+
+// ── 가격 변경 이력 ──
+async function loadPriceChanges() {
+  const filter = document.getElementById("dbu-filter")?.value || "";
+  try {
+    const r = await fetch(PREFIX+"/api/price-changes?type="+encodeURIComponent(filter));
+    const d = await r.json();
+    const tb = document.getElementById("dbu-tbody");
+    if (!d.ok || !d.changes || d.changes.length === 0) {
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">변경 이력 없음</td></tr>';
+      return;
+    }
+    tb.innerHTML = d.changes.map(c => {
+      const arrow = c.new_price < c.old_price ? '↓' : '↑';
+      const color = c.new_price < c.old_price ? 'var(--green)' : 'var(--red)';
+      const diff = Math.abs(c.new_price - c.old_price);
+      return `<tr>
+        <td style="white-space:nowrap;">${(c.updated_at||'').slice(0,16)}</td>
+        <td style="white-space:nowrap;">${(c.synced_at||'-').slice(0,16)}</td>
+        <td><a href="${c.link||'#'}" target="_blank" style="color:var(--accent);cursor:pointer;" title="${c.name}">${c.internal_code||c.product_code||'-'}</a></td>
+        <td>${c.brand_ko||'-'}</td>
+        <td>${c.category_id||'-'}</td>
+        <td style="color:${color};font-weight:600;white-space:nowrap;">
+          ¥${(c.old_price||0).toLocaleString()} → ¥${(c.new_price||0).toLocaleString()}
+          <span style="font-size:0.68rem;">(${arrow}${diff.toLocaleString()})</span>
+        </td>
+      </tr>`;
+    }).join("");
+  } catch(e) {}
+}
+
+let _dbuTimer = null;
+function pollDbLog() {
+  if (_dbuTimer) clearInterval(_dbuTimer);
+  _dbuTimer = setInterval(async () => {
+    try {
+      const r = await fetch(PREFIX+"/api/db-update/status");
+      const d = await r.json();
+      document.getElementById("dbu-log").textContent = d.log || "대기 중...";
+      document.getElementById("dbu-log").scrollTop = 999999;
+    } catch(e) {}
+  }, 3000);
+}
+async function runDbUpdate() {
+  await fetch(PREFIX+"/api/db-update/run", {method:"POST"});
+  pollDbLog();
+}
+async function stopDbUpdate() {
+  await fetch(PREFIX+"/api/db-update/stop", {method:"POST"});
 }
 
 // 초기 로드
