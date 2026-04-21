@@ -1633,6 +1633,7 @@ function renderPagination(cur, total) {
 function openModal(idx) {
   const p = allProducts[idx];
   if (!p) return;
+  _priceDropModalMode = false;  // 일반 모달로 전환
   currentModalIdx = idx;
   // 패널 초기화
   const cbp = document.getElementById("cost-breakdown-panel"); if (cbp) cbp.style.display = "none";
@@ -2063,6 +2064,16 @@ function shareProduct() {
 }
 
 function navModal(dir) {
+  if (_priceDropModalMode && _priceDropProducts.length > 0) {
+    // 가격할인 모드: 할인 상품끼리만 이동
+    const curCode = allProducts[currentModalIdx]?.product_code || '';
+    const pdIdx = _priceDropProducts.indexOf(curCode);
+    const newPdIdx = pdIdx + dir;
+    if (newPdIdx >= 0 && newPdIdx < _priceDropProducts.length) {
+      _loadAndOpenPriceDropProduct(_priceDropProducts[newPdIdx]);
+    }
+    return;
+  }
   const newIdx = currentModalIdx + dir;
   if (newIdx >= 0 && newIdx < allProducts.length) {
     openModal(newIdx);
@@ -2325,27 +2336,67 @@ function onPriceDropSearchInput() {
   }, 250);
 }
 
-// 가격 인하 상품 클릭 시 상품 상세 모달 표시
+// 가격 인하 상품 모달 — 할인 상품끼리만 화살표 이동
+let _priceDropProducts = [];  // 할인 상품 product_code 리스트
+let _priceDropModalMode = false;
+
 async function openPriceDropModal(productCode) {
   if (!productCode) return;
+
+  // 현재 필터/정렬된 가격할인 리스트에서 product_code 목록 구성
+  let list = _priceDropAll.slice();
+  if (_priceDropKeyword) {
+    const kw = _priceDropKeyword.toLowerCase();
+    list = list.filter(c => [c.internal_code||'',c.product_code||'',c.brand_ko||'',c.name||''].join(' ').toLowerCase().includes(kw));
+  }
+  list.sort((a,b) => {
+    const pa = _priceDropDiscountPct(a), pb = _priceDropDiscountPct(b);
+    return _priceDropSortDesc ? (pb-pa) : (pa-pb);
+  });
+  _priceDropProducts = list.map(c => c.internal_code || c.product_code).filter(Boolean);
+  _priceDropModalMode = true;
+
+  await _loadAndOpenPriceDropProduct(productCode);
+}
+
+async function _loadAndOpenPriceDropProduct(code) {
+  if (!code) return;
   try {
-    // allProducts에서 찾기
-    let idx = allProducts.findIndex(p => p.product_code === productCode);
-    if (idx >= 0) {
-      openModal(idx);
-      return;
+    let idx = allProducts.findIndex(p => p.product_code === code);
+    if (idx < 0) {
+      const r = await fetch(PREFIX + "/shop/api/product-by-code?code=" + encodeURIComponent(code));
+      const d = await r.json();
+      if (d.ok && d.product) {
+        d.product.product_code = code;
+        allProducts.unshift(d.product);
+        idx = 0;
+      } else {
+        alert('상품 정보를 찾을 수 없습니다.');
+        return;
+      }
     }
-    // 없으면 API로 조회 후 allProducts에 추가
-    const r = await fetch(PREFIX + "/shop/api/product-by-code?code=" + encodeURIComponent(productCode));
-    const d = await r.json();
-    if (d.ok && d.product) {
-      const p = d.product;
-      p.product_code = productCode;
-      allProducts.unshift(p);
-      openModal(0);
-    } else {
-      alert('상품 정보를 찾을 수 없습니다.');
-    }
+    currentModalIdx = idx;
+    const p = allProducts[idx];
+    if (!p) return;
+    // 패널 초기화
+    const cbp = document.getElementById("cost-breakdown-panel"); if (cbp) cbp.style.display = "none";
+    const aip = document.getElementById("ai-result"); if (aip) aip.style.display = "none";
+    // 화살표: 가격할인 리스트 기준
+    const pdIdx = _priceDropProducts.indexOf(code);
+    document.getElementById("modal-prev").style.display = pdIdx > 0 ? "" : "none";
+    document.getElementById("modal-next").style.display = pdIdx < _priceDropProducts.length - 1 ? "" : "none";
+    // 나머지는 openModal과 동일하게 렌더
+    document.getElementById("modal-brand").textContent = p.brand;
+    document.getElementById("modal-name").textContent = transJa(p.name);
+    document.getElementById("modal-price").innerHTML = renderModalPrice(p);
+    const detailImgs = (p.detail_images && p.detail_images.length) ? p.detail_images : [];
+    const firstImg = detailImgs.length ? detailImgs[0] : (p.img_url ? p.img_url.replace("_tn.jpg", ".jpg") : "");
+    document.getElementById("modal-main-img").src = firstImg;
+    document.getElementById("modal-main-img").onerror = function() { if (p.img_url && this.src !== p.img_url) this.src = p.img_url; };
+    renderThumbnails(detailImgs, p.img_url);
+    renderProductInfo(p);
+    document.getElementById("product-modal").classList.add("show");
+    document.body.style.overflow = "hidden";
   } catch(e) {
     alert('상품 로딩 오류: ' + e);
   }
