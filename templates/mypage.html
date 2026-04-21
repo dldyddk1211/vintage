@@ -177,7 +177,7 @@
           <label>아이디</label><input id="my-username" value="{{ username }}" disabled style="color:var(--dim);">
           <label>이름</label><input id="my-name" placeholder="이름">
           <label>이메일</label><input id="my-email" type="email" placeholder="example@email.com">
-          <label>연락처</label><input id="my-phone" placeholder="010-0000-0000">
+          <label>연락처</label><input id="my-phone" placeholder="01012345678" maxlength="13" oninput="fmtPh(this)">
         </div>
       </div>
       <div class="panel">
@@ -697,6 +697,14 @@ function switchTab(tab) {
 const hash = location.hash.replace("#","");
 if (hash) switchTab(hash);
 
+function fmtPh(el) {
+  let v = el.value.replace(/[^0-9]/g, '');
+  if (v.length > 11) v = v.slice(0, 11);
+  if (v.length >= 8) el.value = v.slice(0,3)+'-'+v.slice(3,7)+'-'+v.slice(7);
+  else if (v.length >= 4) el.value = v.slice(0,3)+'-'+v.slice(3);
+  else el.value = v;
+}
+
 // 회원정보 로드
 async function loadMyInfo() {
   try {
@@ -706,7 +714,9 @@ async function loadMyInfo() {
     const u = d.user;
     document.getElementById("my-name").value = u.name || "";
     document.getElementById("my-email").value = u.email || "";
-    document.getElementById("my-phone").value = u.phone || "";
+    const phEl = document.getElementById("my-phone");
+    phEl.value = u.phone || "";
+    fmtPh(phEl);
     document.getElementById("my-postal").value = u.postal_code || "";
     document.getElementById("my-address").value = u.address || "";
     document.getElementById("my-address2").value = u.address_detail || "";

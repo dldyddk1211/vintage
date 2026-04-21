@@ -113,7 +113,7 @@
         </div>
         <div class="form-group">
           <label>연락처</label>
-          <input type="tel" name="phone" placeholder="010-0000-0000 (선택)">
+          <input type="tel" name="phone" id="signup-phone" placeholder="01012345678" maxlength="13" oninput="formatPhone(this)">
         </div>
 
         <div style="border-top:1px solid var(--border);margin:20px 0 14px;padding-top:14px;">
@@ -171,6 +171,13 @@ function signupPostcode() {
       document.getElementById("signup-address2").focus();
     }
   }).open();
+}
+function formatPhone(el) {
+  let v = el.value.replace(/[^0-9]/g, '');
+  if (v.length > 11) v = v.slice(0, 11);
+  if (v.length >= 8) el.value = v.slice(0,3)+'-'+v.slice(3,7)+'-'+v.slice(7);
+  else if (v.length >= 4) el.value = v.slice(0,3)+'-'+v.slice(3);
+  else el.value = v;
 }
 </script>
 </body>

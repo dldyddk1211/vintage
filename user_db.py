@@ -57,6 +57,8 @@ def init_db():
             ("email", "''"),
             # 마지막 접속
             ("last_login", "''"),
+            # 네이버 소셜 연동
+            ("naver_id", "''"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}")
@@ -74,7 +76,7 @@ def create_user(username: str, password: str, name: str = "", phone: str = "") -
     try:
         conn.execute(
             "INSERT INTO users (username, password_hash, name, phone, status) VALUES (?,?,?,?,?)",
-            (username, generate_password_hash(password), name, phone, "pending"),
+            (username, generate_password_hash(password), name, phone, "approved"),
         )
         conn.commit()
         logger.info(f"회원가입: {username}")

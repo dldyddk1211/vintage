@@ -92,6 +92,47 @@ def admin_required(f):
     return decorated
 
 
+# ── 전화번호 정규화 ──────────────────────────
+def _normalize_phone(phone: str) -> str:
+    """전화번호에서 숫자만 추출 (010-1234-5678 → 01012345678)"""
+    if not phone:
+        return ""
+    import re
+    return re.sub(r"[^0-9]", "", phone)
+
+
+def _format_phone(phone: str) -> str:
+    """전화번호 표시용 포맷 (01012345678 → 010-1234-5678)"""
+    if not phone:
+        return ""
+    p = _normalize_phone(phone)
+    if len(p) == 11 and p.startswith("010"):
+        return f"{p[:3]}-{p[3:7]}-{p[7:]}"
+    elif len(p) == 10:
+        return f"{p[:3]}-{p[3:6]}-{p[6:]}"
+    return p
+
+
+def _find_user_by_phone(phone: str):
+    """전화번호로 기존 회원 찾기 (정규화된 번호 비교)"""
+    if not phone:
+        return None
+    normalized = _normalize_phone(phone)
+    if not normalized:
+        return None
+    from user_db import _conn
+    conn = _conn()
+    try:
+        rows = conn.execute("SELECT * FROM users").fetchall()
+        for r in rows:
+            db_phone = _normalize_phone(r["phone"] or "")
+            if db_phone and db_phone == normalized:
+                return {c: r[c] for c in r.keys()}
+        return None
+    finally:
+        conn.close()
+
+
 # ── 네이버 소셜 로그인 ──────────────────────────
 NAVER_CLIENT_ID = "CH3HgXly53mIV7WYrg_c"
 NAVER_CLIENT_SECRET = "yPrHZRAHNH"
@@ -159,53 +200,73 @@ def naver_callback():
         naver_id = profile.get("id", "")
         name = profile.get("name", "") or profile.get("nickname", "")
         email = profile.get("email", "")
-        phone = profile.get("mobile", "")
+        phone = _normalize_phone(profile.get("mobile", ""))
 
         if not naver_id:
             return redirect(f"{URL_PREFIX}/login")
 
-        # 네이버 ID로 기존 회원 확인
+        # 1) 네이버 ID로 기존 소셜 회원 확인
         social_username = f"naver_{naver_id[:12]}"
         customer = get_customer(social_username)
 
+        # 2) 소셜 계정이 없으면 → 전화번호로 기존 일반 회원 찾기 (통합)
+        login_username = social_username
+        if not customer and phone:
+            existing = _find_user_by_phone(phone)
+            if existing:
+                # 기존 회원 계정으로 통합 로그인
+                login_username = existing["username"]
+                customer = existing
+                # 네이버 ID를 기존 계정에 연결 (naver_id 컬럼 저장)
+                try:
+                    from user_db import _conn as _uc
+                    conn = _uc()
+                    conn.execute("UPDATE users SET naver_id=?, email=COALESCE(NULLIF(email,''),?) WHERE username=?",
+                                 (naver_id, email, login_username))
+                    conn.commit()
+                    conn.close()
+                except Exception:
+                    pass
+                logger.info(f"네이버 로그인 → 기존 회원 통합: {login_username} (네이버: {social_username})")
+
+        # 3) 둘 다 없으면 → 신규 소셜 회원가입
         if not customer:
-            # 자동 회원가입
             try:
                 from user_db import _conn as _uc
                 conn = _uc()
-                conn.execute("""INSERT OR IGNORE INTO users (username, password_hash, name, email, phone, status, level)
-                                VALUES (?,?,?,?,?,?,?)""",
-                             (social_username, "", name, email, phone, "approved", "b2c"))
+                conn.execute("""INSERT OR IGNORE INTO users (username, password_hash, name, email, phone, status, level, naver_id)
+                                VALUES (?,?,?,?,?,?,?,?)""",
+                             (social_username, "", name, email, phone, "approved", "b2c", naver_id))
                 conn.commit()
                 conn.close()
+                login_username = social_username
                 logger.info(f"네이버 소셜 회원가입: {social_username} ({name})")
-                # 텔레그램 알림
                 try:
                     from notifier import send_telegram
-                    send_telegram(f"👤 <b>네이버 소셜 회원가입</b>\n이름: {name}\n아이디: {social_username}")
+                    send_telegram(f"👤 <b>네이버 소셜 회원가입</b>\n이름: {name}\n아이디: {social_username}\n📞 {_format_phone(phone)}")
                 except Exception:
                     pass
             except Exception as e:
                 logger.warning(f"네이버 회원가입 실패: {e}")
                 return redirect(f"{URL_PREFIX}/login")
-            customer = get_customer(social_username)
+            customer = get_customer(login_username)
 
         # 로그인 처리
         session["logged_in"] = True
-        session["username"] = social_username
+        session["username"] = login_username
         session["role"] = "customer"
         session["level"] = customer["level"] if customer and "level" in customer.keys() else "b2c"
-        session["name"] = name
+        session["name"] = customer.get("name", "") or name if customer else name
         # 마지막 접속 시간 업데이트
         try:
             from user_db import _conn as _uc
             uc = _uc()
-            uc.execute("UPDATE users SET last_login=datetime('now','localtime') WHERE username=?", (social_username,))
+            uc.execute("UPDATE users SET last_login=datetime('now','localtime') WHERE username=?", (login_username,))
             uc.commit()
             uc.close()
         except Exception:
             pass
-        logger.info(f"네이버 소셜 로그인: {social_username} ({name})")
+        logger.info(f"네이버 소셜 로그인: {login_username} ({name})")
         return redirect(f"{URL_PREFIX}/shop")
     except Exception as e:
         logger.error(f"네이버 로그인 오류: {e}")
@@ -291,7 +352,7 @@ def signup():
         password = request.form.get("password", "")
         email = request.form.get("email", "").strip()
         name = request.form.get("name", "").strip()
-        phone = request.form.get("phone", "").strip()
+        phone = _normalize_phone(request.form.get("phone", ""))
         if not username or not password:
             error = "아이디와 비밀번호는 필수입니다"
         elif len(password) < 4:
@@ -300,6 +361,9 @@ def signup():
             error = "사용할 수 없는 아이디입니다"
         elif username_exists(username):
             error = "이미 존재하는 아이디입니다"
+        elif phone and _find_user_by_phone(phone):
+            existing = _find_user_by_phone(phone)
+            error = f"이미 가입된 전화번호입니다 (아이디: {existing['username'][:3]}***)"
         else:
             if create_user(username, password, name, phone):
                 # 추가 정보 저장 (배송/통관)
@@ -817,7 +881,9 @@ def get_myinfo():
         row = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
         if not row:
             return jsonify({"ok": False})
-        return jsonify({"ok": True, "user": {c: (row[c] or "") for c in row.keys() if c != "password_hash"}})
+        user = {c: (row[c] or "") for c in row.keys() if c != "password_hash"}
+        user["phone"] = _format_phone(user.get("phone", ""))
+        return jsonify({"ok": True, "user": user})
     finally:
         conn.close()
 
@@ -836,6 +902,9 @@ def update_myinfo():
                   if k in data and data[k] is not None}
         if not fields:
             return jsonify({"ok": False, "message": "변경할 정보 없음"})
+        # 전화번호 정규화
+        if "phone" in fields:
+            fields["phone"] = _normalize_phone(fields["phone"])
         sets = ", ".join(f"{k}=?" for k in fields)
         conn.execute(f"UPDATE users SET {sets} WHERE username=?", list(fields.values()) + [username])
         conn.commit()
