@@ -2214,7 +2214,9 @@ async function loadPriceDrops() {
 }
 
 function _priceDropDiscountPct(c) {
-  return c.old_price > 0 ? (c.old_price - c.new_price) / c.old_price : 0;
+  const oldK = c.old_krw || 0;
+  const newK = c.new_krw || 0;
+  return oldK > 0 ? (oldK - newK) / oldK : 0;
 }
 
 function renderPriceDrops() {
@@ -2254,8 +2256,8 @@ function renderPriceDrops() {
   const pageItems = list.slice(start, start + _priceDropSize);
 
   tb.innerHTML = pageItems.map(c => {
-    const diff = c.old_price - c.new_price;
-    const pct = c.old_price > 0 ? Math.round(diff / c.old_price * 100) : 0;
+    const diff = (c.old_krw||0) - (c.new_krw||0);
+    const pct = (c.old_krw||0) > 0 ? Math.round(diff / c.old_krw * 100) : 0;
     const code = c.internal_code || '';
     const displayCode = code || '<span style="color:var(--muted);">-</span>';
     const catName = PRICE_DROP_CAT_MAP[c.category_id] || c.category_id || '-';
@@ -2270,7 +2272,7 @@ function renderPriceDrops() {
       <td style="padding:6px 8px;">${c.brand_ko||'-'}</td>
       <td style="padding:6px 8px;">${catName}</td>
       <td style="padding:6px 8px;color:var(--green);font-weight:600;white-space:nowrap;">
-        ¥${(c.old_price||0).toLocaleString()} → ¥${(c.new_price||0).toLocaleString()}
+        ${(c.old_krw||0).toLocaleString()}원 → ${(c.new_krw||0).toLocaleString()}원
         <span style="font-size:0.65rem;color:var(--accent);">(-${pct}%)</span>
       </td>
     </tr>`;

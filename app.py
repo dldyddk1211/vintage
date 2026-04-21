@@ -9917,9 +9917,17 @@ def api_price_changes():
 
 @app.route(f"{URL_PREFIX}/api/price-changes/shop", methods=["GET"])
 def api_price_changes_shop():
-    """가격 인하 이력 조회 (쇼핑몰 — 로그인 불필요)"""
+    """가격 인하 이력 조회 (쇼핑몰 — 로그인 불필요, 원화 변환)"""
     from product_db import get_price_changes
     changes = get_price_changes(change_type="가격인하", limit=100)
+    # 고객 레벨 (로그인 시)
+    lvl = session.get("level", "b2c") if session.get("logged_in") else "b2c"
+    for c in changes:
+        c["old_krw"] = _calc_vintage_price(c.get("old_price", 0), lvl)
+        c["new_krw"] = _calc_vintage_price(c.get("new_price", 0), lvl)
+        # 고객에게 원가(엔화) 노출 금지
+        c.pop("old_price", None)
+        c.pop("new_price", None)
     return jsonify({"ok": True, "changes": changes})
 
 
