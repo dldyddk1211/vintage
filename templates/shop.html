@@ -962,11 +962,12 @@
         <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
           <thead><tr style="border-bottom:1px solid var(--border);">
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">업데이트</th>
+            <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">고유번호</th>
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">브랜드</th>
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">카테고리</th>
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">변경내용</th>
           </tr></thead>
-          <tbody id="price-drop-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">로딩 중...</td></tr></tbody>
+          <tbody id="price-drop-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">로딩 중...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -2176,7 +2177,7 @@ async function loadPriceDrops() {
     const d = await r.json();
     const tb = document.getElementById("price-drop-tbody");
     if (!d.ok || !d.changes || d.changes.length === 0) {
-      tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">가격 인하 상품 없음</td></tr>';
+      tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">가격 인하 상품 없음</td></tr>';
       return;
     }
     tb.innerHTML = d.changes.map(c => {
@@ -2184,6 +2185,7 @@ async function loadPriceDrops() {
       const pct = c.old_price > 0 ? Math.round(diff / c.old_price * 100) : 0;
       return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="if('${c.link}')window.open('${c.link}','_blank')">
         <td style="padding:6px 8px;white-space:nowrap;">${(c.updated_at||'').slice(5,16)}</td>
+        <td style="padding:6px 8px;color:var(--accent);font-weight:600;">${c.internal_code||c.product_code||'-'}</td>
         <td style="padding:6px 8px;">${c.brand_ko||'-'}</td>
         <td style="padding:6px 8px;">${c.category_id||'-'}</td>
         <td style="padding:6px 8px;color:var(--green);font-weight:600;white-space:nowrap;">
