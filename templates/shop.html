@@ -973,6 +973,7 @@
         <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
           <thead><tr style="border-bottom:1px solid var(--border);">
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">업데이트</th>
+            <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;"></th>
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">고유번호</th>
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">상품명</th>
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">브랜드</th>
@@ -981,7 +982,7 @@
               변경내용 <span id="price-drop-sort-arrow">▼</span>
             </th>
           </tr></thead>
-          <tbody id="price-drop-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px;">로딩 중...</td></tr></tbody>
+          <tbody id="price-drop-tbody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px;">로딩 중...</td></tr></tbody>
         </table>
       </div>
       <div id="price-drop-pagination" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:0.75rem;"></div>
@@ -2255,7 +2256,7 @@ function renderPriceDrops() {
   });
 
   if (!list.length) {
-    tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px;">검색 결과 없음</td></tr>';
+    tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px;">검색 결과 없음</td></tr>';
     if (pg) pg.innerHTML = '';
     return;
   }
@@ -2276,8 +2277,10 @@ function renderPriceDrops() {
     const clickCode = (c.internal_code || c.product_code || '').replace(/'/g, "\\'");
     const pname = (c.name || '-').replace(/</g, '&lt;');
     const shortName = pname.length > 30 ? pname.slice(0,30)+'…' : pname;
+    const imgUrl = c.img_url || '';
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="openPriceDropModal('${clickCode}')">
       <td style="padding:6px 8px;white-space:nowrap;">${(c.updated_at||'').slice(5,16)}</td>
+      <td style="padding:4px 6px;width:40px;">${imgUrl ? `<img src="${imgUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">` : ''}</td>
       <td style="padding:6px 8px;color:var(--accent);font-weight:600;white-space:nowrap;">${displayCode}</td>
       <td style="padding:6px 8px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${pname}">${shortName}</td>
       <td style="padding:6px 8px;">${c.brand_ko||'-'}</td>
