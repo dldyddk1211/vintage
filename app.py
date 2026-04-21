@@ -700,7 +700,7 @@ def _init_cart_db():
         )""")
         conn.commit()
         # 기존 테이블에 컬럼 추가
-        for col, default in [("is_sold_out", "0"), ("checked_at", "''")]:
+        for col, default in [("is_sold_out", "0"), ("checked_at", "''"), ("exchange_rate", "''")]:
             try:
                 conn.execute(f"ALTER TABLE cart ADD COLUMN {col} DEFAULT {default}")
                 conn.commit()
@@ -762,10 +762,11 @@ def add_to_cart():
             except Exception:
                 pass
 
-        conn.execute("""INSERT INTO cart (username, product_code, brand, product_name, price, price_jpy, img_url)
-                        VALUES (?,?,?,?,?,?,?)""",
+        cart_rate = str(get_cached_rate() or 9.23)
+        conn.execute("""INSERT INTO cart (username, product_code, brand, product_name, price, price_jpy, img_url, exchange_rate)
+                        VALUES (?,?,?,?,?,?,?,?)""",
                      (username, product_code, data.get("brand",""), data.get("name",""),
-                      cart_price, cart_jpy, data.get("img_url","")))
+                      cart_price, cart_jpy, data.get("img_url",""), cart_rate))
         conn.commit()
         count = conn.execute("SELECT count(*) FROM cart WHERE username=?", (username,)).fetchone()[0]
 
@@ -1489,8 +1490,8 @@ def _init_orders_db():
             conn.commit()
         except Exception:
             pass
-        # 마이그레이션: 택배사/송장번호 컬럼 추가
-        for col in ["courier", "tracking_no"]:
+        # 마이그레이션: 택배사/송장번호/환율 컬럼 추가
+        for col in ["courier", "tracking_no", "exchange_rate"]:
             try:
                 conn.execute(f"ALTER TABLE orders ADD COLUMN {col} TEXT DEFAULT ''")
                 conn.commit()
@@ -1583,7 +1584,8 @@ def bulk_order():
 
 def _save_order(ntype, username, customer_name, brand, product_name, product_code, price, price_jpy):
     _init_orders_db()
-    # 가격을 고객 레벨에 맞게 재계산
+    # 가격을 고객 레벨에 맞게 계산 (주문 시점 환율로 고정)
+    current_rate = get_cached_rate() or 9.23
     if price_jpy and price_jpy > 0:
         try:
             from user_db import _conn as _ulc
@@ -1619,9 +1621,9 @@ def _save_order(ntype, username, customer_name, brand, product_name, product_cod
     conn = user_conn()
     try:
         order_number = _generate_order_number(conn)
-        conn.execute("""INSERT INTO orders (type, username, customer_name, brand, product_name, product_code, price, price_jpy, order_number)
-                        VALUES (?,?,?,?,?,?,?,?,?)""",
-                     (ntype, username, customer_name, brand, product_name, product_code, price, price_jpy, order_number))
+        conn.execute("""INSERT INTO orders (type, username, customer_name, brand, product_name, product_code, price, price_jpy, order_number, exchange_rate)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                     (ntype, username, customer_name, brand, product_name, product_code, price, price_jpy, order_number, str(current_rate)))
         conn.commit()
 
         # 주문 접수 시 고객에게 자동 문자 발송
@@ -2050,14 +2052,15 @@ def get_orders():
         for o in orders:
             lvl = user_levels.get(o.get("username",""), "b2c")
             o["user_level"] = lvl
-            # 판매가를 레벨별로 재계산
+            # 주문 시점 환율이 있으면 저장된 가격 사용 (재계산 안 함)
+            # 환율 기록이 없는 기존 주문만 현재 환율로 재계산
+            saved_rate = o.get("exchange_rate", "") or ""
             pjpy = o.get("price_jpy", 0) or 0
             pname = o.get("product_name", "") or ""
-            if pjpy > 0 and "다중주문" not in pname and "일괄결제" not in pname:
+            if not saved_rate and pjpy > 0 and "다중주문" not in pname and "일괄결제" not in pname:
                 recalc = _calc_vintage_price(pjpy, lvl)
                 if recalc > 0:
                     o["price"] = f"{recalc:,}원"
-                    # 마진도 재계산
                     cost = o.get("cost_krw", 0) or 0
                     o["margin_krw"] = recalc - cost if recalc > 0 and cost > 0 else 0
         return jsonify({"ok": True, "orders": orders, "rate": current_rate})
