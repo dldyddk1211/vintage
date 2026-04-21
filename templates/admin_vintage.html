@@ -77,13 +77,17 @@
       </div>
     </div>
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;">
-      <div style="font-size:0.78rem;font-weight:600;margin-bottom:8px;">📋 최근 접속</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:0.78rem;font-weight:600;">📋 최근 접속</span>
+        <span id="an-log-info" style="font-size:0.68rem;color:var(--muted);"></span>
+      </div>
       <div style="overflow-x:auto;">
         <table class="tbl" style="font-size:0.73rem;">
           <thead><tr><th>시간</th><th>회원</th><th>IP</th><th>페이지</th><th>유입</th><th>기기</th></tr></thead>
           <tbody id="an-log-body"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">로딩 중...</td></tr></tbody>
         </table>
       </div>
+      <div id="an-log-paging" style="display:flex;justify-content:center;gap:6px;margin-top:10px;"></div>
     </div>
   </div>
 </div>
@@ -205,10 +209,12 @@ function onPageShow(page) {
 }
 
 // ── 접속 통계 ──
-async function loadAnalytics() {
+let _anLogPage = 1;
+async function loadAnalytics(logPage) {
+  if (logPage) _anLogPage = logPage;
   const period = document.getElementById("analytics-period")?.value || "today";
   try {
-    const r = await fetch(PREFIX + "/api/analytics?period=" + period);
+    const r = await fetch(PREFIX + "/api/analytics?period=" + period + "&log_page=" + _anLogPage);
     const d = await r.json();
     if (!d.ok) return;
     document.getElementById("an-total").textContent = (d.total||0).toLocaleString();
@@ -222,7 +228,29 @@ async function loadAnalytics() {
     document.getElementById("an-keywords").innerHTML = (d.keywords||[]).map(k=>row(k.keyword,k.count,'var(--yellow)')).join("") || '<span style="color:var(--muted);">없음</span>';
     document.getElementById("an-members").innerHTML = (d.members||[]).map(m=>row(`${m.name||m.username}`,m.count+'회','var(--blue)')).join("") || '<span style="color:var(--muted);">없음</span>';
     document.getElementById("an-devices").innerHTML = (d.devices||[]).map(v=>row(v.name,v.count,'var(--green)')).join("") || '<span style="color:var(--muted);">없음</span>';
-    document.getElementById("an-log-body").innerHTML = (d.logs||[]).map(l=>`<tr><td>${l.time}</td><td style="font-weight:600;color:${l.member_type==='회원'?'var(--accent)':'var(--dim)'};">${l.name||l.username||'비회원'}</td><td>${l.ip}</td><td>${l.path}</td><td>${l.referrer||'직접'}</td><td>${l.device}</td></tr>`).join("") || '<tr><td colspan="6" style="text-align:center;color:var(--muted);">없음</td></tr>';
+    // 로그 테이블 (지역 + IP)
+    document.getElementById("an-log-body").innerHTML = (d.logs||[]).map(l=>{
+      const ipDisplay = l.region ? `${l.region} <span style="font-size:0.62rem;color:var(--dim);">(${l.ip})</span>` : l.ip;
+      return `<tr><td>${l.time}</td><td style="font-weight:600;color:${l.member_type==='회원'?'var(--accent)':'var(--dim)'};">${l.name||l.username||'비회원'}</td><td>${ipDisplay}</td><td>${l.path}</td><td>${l.referrer||'직접'}</td><td>${l.device}</td></tr>`;
+    }).join("") || '<tr><td colspan="6" style="text-align:center;color:var(--muted);">없음</td></tr>';
+    // 로그 페이지네이션
+    const info = document.getElementById("an-log-info");
+    const paging = document.getElementById("an-log-paging");
+    if (d.log_pages > 1) {
+      info.textContent = `${d.log_total}건 중 ${(_anLogPage-1)*30+1}~${Math.min(_anLogPage*30, d.log_total)}`;
+      let pgHtml = '';
+      if (_anLogPage > 1) pgHtml += `<button class="btn b-gray" onclick="loadAnalytics(${_anLogPage-1})" style="font-size:0.68rem;padding:3px 8px;">◀</button>`;
+      const start = Math.max(1, _anLogPage - 3);
+      const end = Math.min(d.log_pages, _anLogPage + 3);
+      for (let i = start; i <= end; i++) {
+        pgHtml += `<button class="btn ${i===_anLogPage?'b-blue':'b-gray'}" onclick="loadAnalytics(${i})" style="font-size:0.68rem;padding:3px 8px;min-width:28px;">${i}</button>`;
+      }
+      if (_anLogPage < d.log_pages) pgHtml += `<button class="btn b-gray" onclick="loadAnalytics(${_anLogPage+1})" style="font-size:0.68rem;padding:3px 8px;">▶</button>`;
+      paging.innerHTML = pgHtml;
+    } else {
+      info.textContent = d.log_total ? `${d.log_total}건` : '';
+      paging.innerHTML = '';
+    }
   } catch(e) {}
 }
 

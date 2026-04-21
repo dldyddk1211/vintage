@@ -5278,6 +5278,55 @@ def save_todos():
     return jsonify({"ok": True})
 
 
+# ── IP 지역 조회 ─────────────────────
+_ip_region_cache = {}  # {ip: {"region": "서울", "ts": timestamp}}
+
+def _get_ip_region(ip: str) -> str:
+    """IP 주소에서 지역 정보 조회 (캐시 24시간)"""
+    import time as _time
+    if not ip or ip in ("127.0.0.1", "::1", "localhost"):
+        return "로컬"
+
+    # 사설 IP 체크
+    if ip.startswith(("10.", "192.168.", "172.")):
+        return "내부망"
+
+    # 캐시 확인 (24시간)
+    cached = _ip_region_cache.get(ip)
+    if cached and (_time.time() - cached["ts"]) < 86400:
+        return cached["region"]
+
+    region = ""
+    try:
+        r = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,regionName,city&lang=ko", timeout=3)
+        if r.status_code == 200:
+            d = r.json()
+            if d.get("status") == "success":
+                city = d.get("city", "")
+                region_name = d.get("regionName", "")
+                country = d.get("country", "")
+                if city:
+                    region = city
+                elif region_name:
+                    region = region_name
+                elif country:
+                    region = country
+    except Exception:
+        pass
+
+    if not region:
+        region = "알수없음"
+
+    _ip_region_cache[ip] = {"region": region, "ts": _time.time()}
+    # 캐시 크기 제한
+    if len(_ip_region_cache) > 1000:
+        oldest = sorted(_ip_region_cache.items(), key=lambda x: x[1]["ts"])[:500]
+        for k, _ in oldest:
+            del _ip_region_cache[k]
+
+    return region
+
+
 # ── 접속 통계 ─────────────────────
 @app.route(f"{URL_PREFIX}/api/analytics/log", methods=["POST"])
 def analytics_log():
@@ -5337,9 +5386,13 @@ def analytics_log():
         except Exception:
             logs = []
 
+    # IP 지역 조회 (캐시 사용)
+    region = _get_ip_region(ip)
+
     logs.append({
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "ip": ip,
+        "region": region,
         "path": path,
         "referrer": ref_source or referrer[:80],
         "keyword": keyword,
@@ -5427,13 +5480,20 @@ def analytics_stats():
     members = [{"username": k, "name": filtered_names.get(k, k), "count": len(v), "last": max(v) if v else ""}
                for k, v in sorted(member_visits.items(), key=lambda x: -len(x[1]))]
 
-    # 최근 로그
-    recent = filtered[-50:]
-    recent.reverse()
-    log_list = [{"time": l.get("time", "")[11:19], "ip": l.get("ip", ""), "path": l.get("path", ""),
+    # 최근 로그 (페이지네이션)
+    log_page = int(request.args.get("log_page", 1))
+    log_per = 30
+    all_recent = list(reversed(filtered))
+    log_total = len(all_recent)
+    log_pages = (log_total + log_per - 1) // log_per
+    log_offset = (log_page - 1) * log_per
+    paged = all_recent[log_offset:log_offset + log_per]
+
+    log_list = [{"time": l.get("time", "")[11:19], "ip": l.get("ip", ""),
+                 "region": l.get("region", ""), "path": l.get("path", ""),
                  "referrer": l.get("referrer", ""), "device": l.get("device", ""),
                  "username": l.get("username", ""), "name": l.get("name", ""),
-                 "member_type": l.get("member_type", "비회원")} for l in recent]
+                 "member_type": l.get("member_type", "비회원")} for l in paged]
 
     return jsonify({
         "ok": True,
@@ -5449,6 +5509,9 @@ def analytics_stats():
         "daily": daily,
         "members": members,
         "logs": log_list,
+        "log_page": log_page,
+        "log_pages": log_pages,
+        "log_total": log_total,
     })
 
 
