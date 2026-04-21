@@ -2729,14 +2729,24 @@ def serve_blog_image(filename):
 
 @app.route(f"{URL_PREFIX}/shop/api/product-by-code")
 def shop_api_product_by_code():
-    """internal_code(고유번호)로 상품 1건 정확 조회"""
+    """internal_code(고유번호) 또는 product_code(원본코드)로 상품 1건 조회"""
     code = request.args.get("code", "").strip()
     if not code:
         return jsonify({"ok": False})
     from product_db import _conn
     conn = _conn()
     try:
-        row = conn.execute("SELECT * FROM products WHERE internal_code=? AND source_type='vintage' LIMIT 1", (code,)).fetchone()
+        # 1) internal_code 우선 매칭
+        row = conn.execute(
+            "SELECT * FROM products WHERE internal_code=? AND source_type='vintage' LIMIT 1",
+            (code,)
+        ).fetchone()
+        # 2) 없으면 product_code(원본)로 재조회
+        if not row:
+            row = conn.execute(
+                "SELECT * FROM products WHERE product_code=? AND source_type='vintage' LIMIT 1",
+                (code,)
+            ).fetchone()
         if not row:
             return jsonify({"ok": False})
         import json as _json

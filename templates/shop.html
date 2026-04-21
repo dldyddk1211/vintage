@@ -954,22 +954,37 @@
     </div>
     <!-- 가격 할인 패널 -->
     <div id="price-drop-panel" style="display:none;margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <span style="font-weight:700;font-size:0.88rem;color:var(--green);">💰 가격 인하 상품</span>
-        <button onclick="togglePriceDropPanel()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;">✕</button>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <input id="price-drop-search" type="text" placeholder="🔍 브랜드/상품명/고유번호 검색" oninput="onPriceDropSearchInput()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.72rem;min-width:200px;">
+          <label style="font-size:0.72rem;color:var(--muted);">한 페이지당:
+            <select id="price-drop-size" onchange="changePriceDropSize()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px;font-size:0.72rem;margin-left:4px;">
+              <option value="10" selected>10</option>
+              <option value="30">30</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <button onclick="togglePriceDropPanel()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;">✕</button>
+        </div>
       </div>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:0.75rem;">
           <thead><tr style="border-bottom:1px solid var(--border);">
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">업데이트</th>
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">고유번호</th>
+            <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">상품명</th>
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">브랜드</th>
             <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">카테고리</th>
-            <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;">변경내용</th>
+            <th style="padding:6px 8px;text-align:left;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;" onclick="togglePriceDropSort()" id="price-drop-sort-th">
+              변경내용 <span id="price-drop-sort-arrow">▼</span>
+            </th>
           </tr></thead>
-          <tbody id="price-drop-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">로딩 중...</td></tr></tbody>
+          <tbody id="price-drop-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px;">로딩 중...</td></tr></tbody>
         </table>
       </div>
+      <div id="price-drop-pagination" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:0.75rem;"></div>
     </div>
     <div class="product-grid" id="product-grid">
       <div class="loading"><div class="spinner"></div>상품을 불러오는 중...</div>
@@ -2169,30 +2184,169 @@ function togglePriceDropPanel() {
     panel.style.display = "none";
   }
 }
+let _priceDropAll = [];
+let _priceDropPage = 1;
+let _priceDropSize = 10;
+let _priceDropSortDesc = true;  // true: 할인율 큰 것부터
+let _priceDropKeyword = "";
+let _priceDropSearchTimer = null;
+
+// 카테고리 ID → 한글 매핑
+const PRICE_DROP_CAT_MAP = {
+  "951001": "의류", "951002": "가방", "951003": "신발",
+  "951004": "시계", "951005": "악세서리",
+  "950001": "가방", "950002": "의류", "950003": "신발",
+  "950004": "시계", "950005": "악세서리",
+};
+
 async function loadPriceDrops() {
   try {
     const r = await fetch(PREFIX + "/api/price-changes/shop");
     const d = await r.json();
-    const tb = document.getElementById("price-drop-tbody");
-    if (!d.ok || !d.changes || d.changes.length === 0) {
-      tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">가격 인하 상품 없음</td></tr>';
+    if (!d.ok || !d.changes) {
+      _priceDropAll = [];
+    } else {
+      _priceDropAll = d.changes;
+    }
+    _priceDropPage = 1;
+    renderPriceDrops();
+  } catch(e) {}
+}
+
+function _priceDropDiscountPct(c) {
+  return c.old_price > 0 ? (c.old_price - c.new_price) / c.old_price : 0;
+}
+
+function renderPriceDrops() {
+  const tb = document.getElementById("price-drop-tbody");
+  const pg = document.getElementById("price-drop-pagination");
+
+  // 1) 검색 필터
+  let list = _priceDropAll.slice();
+  if (_priceDropKeyword) {
+    const kw = _priceDropKeyword.toLowerCase();
+    list = list.filter(c => {
+      const text = [
+        c.internal_code||'', c.product_code||'', c.brand_ko||'',
+        c.name||'', PRICE_DROP_CAT_MAP[c.category_id]||''
+      ].join(' ').toLowerCase();
+      return text.includes(kw);
+    });
+  }
+
+  // 2) 할인율 정렬 (가격인하만 그리고 할인율 큰 순)
+  list.sort((a, b) => {
+    const pa = _priceDropDiscountPct(a);
+    const pb = _priceDropDiscountPct(b);
+    return _priceDropSortDesc ? (pb - pa) : (pa - pb);
+  });
+
+  if (!list.length) {
+    tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px;">검색 결과 없음</td></tr>';
+    if (pg) pg.innerHTML = '';
+    return;
+  }
+
+  const total = list.length;
+  const totalPages = Math.ceil(total / _priceDropSize);
+  if (_priceDropPage > totalPages) _priceDropPage = totalPages;
+  const start = (_priceDropPage - 1) * _priceDropSize;
+  const pageItems = list.slice(start, start + _priceDropSize);
+
+  tb.innerHTML = pageItems.map(c => {
+    const diff = c.old_price - c.new_price;
+    const pct = c.old_price > 0 ? Math.round(diff / c.old_price * 100) : 0;
+    const code = c.internal_code || '';
+    const displayCode = code || '<span style="color:var(--muted);">-</span>';
+    const catName = PRICE_DROP_CAT_MAP[c.category_id] || c.category_id || '-';
+    // 클릭 시 전달할 code: internal_code 우선, 없으면 product_code
+    const clickCode = (c.internal_code || c.product_code || '').replace(/'/g, "\\'");
+    const pname = (c.name || '-').replace(/</g, '&lt;');
+    const shortName = pname.length > 30 ? pname.slice(0,30)+'…' : pname;
+    return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="openPriceDropModal('${clickCode}')">
+      <td style="padding:6px 8px;white-space:nowrap;">${(c.updated_at||'').slice(5,16)}</td>
+      <td style="padding:6px 8px;color:var(--accent);font-weight:600;white-space:nowrap;">${displayCode}</td>
+      <td style="padding:6px 8px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${pname}">${shortName}</td>
+      <td style="padding:6px 8px;">${c.brand_ko||'-'}</td>
+      <td style="padding:6px 8px;">${catName}</td>
+      <td style="padding:6px 8px;color:var(--green);font-weight:600;white-space:nowrap;">
+        ¥${(c.old_price||0).toLocaleString()} → ¥${(c.new_price||0).toLocaleString()}
+        <span style="font-size:0.65rem;color:var(--accent);">(-${pct}%)</span>
+      </td>
+    </tr>`;
+  }).join("");
+
+  // 정렬 화살표 업데이트
+  const arrow = document.getElementById("price-drop-sort-arrow");
+  if (arrow) arrow.textContent = _priceDropSortDesc ? "▼" : "▲";
+
+  // 페이지네이션 렌더
+  if (!pg) return;
+  if (totalPages <= 1) { pg.innerHTML = `<span style="color:var(--muted);">전체 ${total}건</span>`; return; }
+  const btn = (p, label, disabled) => {
+    if (disabled) return `<span style="color:var(--dim);padding:4px 8px;">${label}</span>`;
+    return `<button onclick="goPriceDropPage(${p})" style="padding:4px 10px;background:${p===_priceDropPage?'var(--accent)':'var(--card)'};color:${p===_priceDropPage?'#000':'var(--text)'};border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:0.72rem;">${label}</button>`;
+  };
+  let html = btn(_priceDropPage - 1, '‹', _priceDropPage === 1);
+  const maxShow = 7;
+  let sp = Math.max(1, _priceDropPage - 3);
+  let ep = Math.min(totalPages, sp + maxShow - 1);
+  if (ep - sp < maxShow - 1) sp = Math.max(1, ep - maxShow + 1);
+  for (let i = sp; i <= ep; i++) html += btn(i, i, false);
+  html += btn(_priceDropPage + 1, '›', _priceDropPage === totalPages);
+  html += `<span style="margin-left:10px;color:var(--muted);">전체 ${total}건</span>`;
+  pg.innerHTML = html;
+}
+
+function goPriceDropPage(p) {
+  _priceDropPage = p;
+  renderPriceDrops();
+}
+
+function changePriceDropSize() {
+  const v = parseInt(document.getElementById('price-drop-size').value);
+  if (v > 0) { _priceDropSize = v; _priceDropPage = 1; renderPriceDrops(); }
+}
+
+function togglePriceDropSort() {
+  _priceDropSortDesc = !_priceDropSortDesc;
+  _priceDropPage = 1;
+  renderPriceDrops();
+}
+
+function onPriceDropSearchInput() {
+  clearTimeout(_priceDropSearchTimer);
+  _priceDropSearchTimer = setTimeout(() => {
+    _priceDropKeyword = (document.getElementById('price-drop-search').value || '').trim();
+    _priceDropPage = 1;
+    renderPriceDrops();
+  }, 250);
+}
+
+// 가격 인하 상품 클릭 시 상품 상세 모달 표시
+async function openPriceDropModal(productCode) {
+  if (!productCode) return;
+  try {
+    // allProducts에서 찾기
+    let idx = allProducts.findIndex(p => p.product_code === productCode);
+    if (idx >= 0) {
+      openModal(idx);
       return;
     }
-    tb.innerHTML = d.changes.map(c => {
-      const diff = c.old_price - c.new_price;
-      const pct = c.old_price > 0 ? Math.round(diff / c.old_price * 100) : 0;
-      return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="if('${c.link}')window.open('${c.link}','_blank')">
-        <td style="padding:6px 8px;white-space:nowrap;">${(c.updated_at||'').slice(5,16)}</td>
-        <td style="padding:6px 8px;color:var(--accent);font-weight:600;">${c.internal_code||c.product_code||'-'}</td>
-        <td style="padding:6px 8px;">${c.brand_ko||'-'}</td>
-        <td style="padding:6px 8px;">${c.category_id||'-'}</td>
-        <td style="padding:6px 8px;color:var(--green);font-weight:600;white-space:nowrap;">
-          ¥${(c.old_price||0).toLocaleString()} → ¥${(c.new_price||0).toLocaleString()}
-          <span style="font-size:0.65rem;color:var(--accent);">(-${pct}%)</span>
-        </td>
-      </tr>`;
-    }).join("");
-  } catch(e) {}
+    // 없으면 API로 조회 후 allProducts에 추가
+    const r = await fetch(PREFIX + "/shop/api/product-by-code?code=" + encodeURIComponent(productCode));
+    const d = await r.json();
+    if (d.ok && d.product) {
+      const p = d.product;
+      p.product_code = productCode;
+      allProducts.unshift(p);
+      openModal(0);
+    } else {
+      alert('상품 정보를 찾을 수 없습니다.');
+    }
+  } catch(e) {
+    alert('상품 로딩 오류: ' + e);
+  }
 }
 
 // 접속 로그 전송

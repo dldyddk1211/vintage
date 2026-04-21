@@ -125,7 +125,8 @@ def get_unchecked_products(limit=300):
     conn = _conn()
     try:
         rows = conn.execute("""
-            SELECT id, site_id, product_code, brand, name, link, price_jpy, checked_at
+            SELECT id, site_id, product_code, brand, brand_ko, name, link, price_jpy, checked_at,
+                   internal_code, category_id
             FROM products
             WHERE source_type='vintage'
               AND (product_status IS NULL OR product_status = 'available' OR product_status = '')
@@ -296,14 +297,16 @@ async def check_products_batch(products, status_callback=None):
                                 old_price = p["price_jpy"] or 0
                                 change_type = "가격인하" if new_price < old_price else "가격인상"
                                 conn.execute("""INSERT INTO price_changes
-                                    (product_id, site_id, product_code, brand_ko, category_id,
+                                    (product_id, site_id, product_code, internal_code, brand_ko, category_id,
                                      old_price, new_price, change_type, updated_at)
-                                    VALUES (?,?,?,?,?,?,?,?,?)""",
+                                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
                                     (pid, p.get("site_id", ""), p.get("product_code", ""),
-                                     p.get("brand", ""), "",
+                                     p.get("internal_code", ""),
+                                     p.get("brand_ko", "") or p.get("brand", ""),
+                                     p.get("category_id", ""),
                                      old_price, new_price, change_type, now))
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.warning(f"price_changes 기록 실패: {e}")
                             # 장바구니 고객 할인 상품 누적 (배치 종료 시 1회 SMS 발송)
                             if new_price < p["price_jpy"]:
                                 try:

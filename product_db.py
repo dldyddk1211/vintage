@@ -729,14 +729,18 @@ def merge_products(csv_rows: list) -> dict:
                 else:
                     result["skipped"] += 1
             else:
-                # 신규 데이터 삽입
+                # 신규 데이터 삽입 — internal_code 자동 발급
+                csv_int_code = (row.get("internal_code") or "").strip()
+                if not csv_int_code:
+                    csv_int_code = _generate_internal_code(conn, site_id)
                 conn.execute("""
                     INSERT INTO products
                     (site_id, category_id, product_code, name, name_ko,
                      brand, brand_ko, price_jpy, link, img_url,
                      original_price, discount_rate, in_stock,
-                     cafe_status, cafe_uploaded_at, created_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                     cafe_status, cafe_uploaded_at, created_at,
+                     internal_code, source_type)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     site_id,
                     row.get("category_id", ""),
@@ -754,6 +758,8 @@ def merge_products(csv_rows: list) -> dict:
                     row.get("cafe_status", ""),
                     row.get("cafe_uploaded_at", ""),
                     csv_created or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    csv_int_code,
+                    row.get("source_type", "vintage"),
                 ))
                 result["inserted"] += 1
 
