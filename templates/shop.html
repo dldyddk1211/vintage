@@ -1512,16 +1512,14 @@ function renderBrandList(brands) {
     </li>`;
   });
   if (etcBrands.length > 0) {
-    html += `<li class="filter-item" style="color:var(--dim);cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+    html += `<li class="filter-item" style="color:var(--dim);cursor:pointer;" onclick="document.querySelectorAll('.etc-brand').forEach(e=>e.style.display=e.style.display==='none'?'list-item':'none')">
       <span>ETC (${etcBrands.length}개 브랜드)</span><span class="filter-count">${etcTotal}</span>
     </li>`;
-    html += `<div style="display:${hasEtcSelected?'block':'none'};">`;
     etcBrands.forEach(b => {
-      html += `<li class="filter-item ${selected.includes(b.name)?'active':''}" data-val="${b.name}" onclick="selectFilter('brand',this)" style="padding-left:18px;font-size:0.78rem;">
+      html += `<li class="filter-item etc-brand ${selected.includes(b.name)?'active':''}" data-val="${b.name}" onclick="selectFilter('brand',this)" style="display:${hasEtcSelected?'list-item':'none'};padding-left:18px;font-size:0.78rem;">
         <span>${b.name}</span><span class="filter-count">${b.count}</span>
       </li>`;
     });
-    html += `</div>`;
   }
   el.innerHTML = html;
 }
