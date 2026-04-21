@@ -2375,28 +2375,14 @@ async function _loadAndOpenPriceDropProduct(code) {
         return;
       }
     }
-    currentModalIdx = idx;
-    const p = allProducts[idx];
-    if (!p) return;
-    // 패널 초기화
-    const cbp = document.getElementById("cost-breakdown-panel"); if (cbp) cbp.style.display = "none";
-    const aip = document.getElementById("ai-result"); if (aip) aip.style.display = "none";
-    // 화살표: 가격할인 리스트 기준
+    // openModal로 렌더링 (내부에서 _priceDropModalMode=false로 리셋되므로 복원)
+    _priceDropModalMode = true;
+    openModal(idx);
+    _priceDropModalMode = true;
+    // 화살표를 가격할인 리스트 기준으로 재조정
     const pdIdx = _priceDropProducts.indexOf(code);
     document.getElementById("modal-prev").style.display = pdIdx > 0 ? "" : "none";
     document.getElementById("modal-next").style.display = pdIdx < _priceDropProducts.length - 1 ? "" : "none";
-    // 나머지는 openModal과 동일하게 렌더
-    document.getElementById("modal-brand").textContent = p.brand;
-    document.getElementById("modal-name").textContent = transJa(p.name);
-    document.getElementById("modal-price").innerHTML = renderModalPrice(p);
-    const detailImgs = (p.detail_images && p.detail_images.length) ? p.detail_images : [];
-    const firstImg = detailImgs.length ? detailImgs[0] : (p.img_url ? p.img_url.replace("_tn.jpg", ".jpg") : "");
-    document.getElementById("modal-main-img").src = firstImg;
-    document.getElementById("modal-main-img").onerror = function() { if (p.img_url && this.src !== p.img_url) this.src = p.img_url; };
-    renderThumbnails(detailImgs, p.img_url);
-    renderProductInfo(p);
-    document.getElementById("product-modal").classList.add("show");
-    document.body.style.overflow = "hidden";
   } catch(e) {
     alert('상품 로딩 오류: ' + e);
   }
