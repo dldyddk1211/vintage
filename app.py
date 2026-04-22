@@ -6580,57 +6580,123 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                     except Exception:
                         pass
 
-                    # 상품 정보 추출 (포이즌 서치 로직 기반)
-                    info = page.evaluate("""() => {
-                        const result = {name:'', price:0, brand:'', product_code:'', image_url:''};
+                    # 상품 정보 추출 (포이즌 서치 원본 로직 — Playwright locator)
+                    info = {"name": "", "price": 0, "brand": "", "product_code": "", "image_url": ""}
 
-                        // 제품명
-                        const nameEl = document.querySelector('span[class*="GoodsName"]')
-                            || document.querySelector('span.text-title_18px_med');
-                        if (nameEl) result.name = nameEl.textContent.trim();
+                    # ── 제품명 추출 ──
+                    try:
+                        ne = page.locator('span[class*="GoodsName"]').first
+                        if ne.count() > 0:
+                            info["name"] = ne.text_content().strip()
+                    except Exception:
+                        pass
+                    if not info["name"]:
+                        try:
+                            ne2 = page.locator('span.text-title_18px_med').first
+                            if ne2.count() > 0:
+                                info["name"] = ne2.text_content().strip()
+                        except Exception:
+                            pass
 
-                        // 가격 (최대혜택가 우선)
-                        const allText = document.body.innerText;
-                        const pm = allText.match(/([0-9]{1,3}(?:,?[0-9]{3})*)\\s*원\\s*최대혜택가/);
-                        if (pm && pm[1]) {
-                            result.price = parseInt(pm[1].replace(/,/g,''));
-                        } else {
-                            const pe = document.querySelector('span.text-title_18px_semi.text-red');
-                            if (pe) {
-                                const nums = pe.textContent.replace(/[^0-9]/g,'');
-                                if (nums) result.price = parseInt(nums);
-                            }
-                        }
-                        if (!result.price) {
-                            const reds = document.querySelectorAll('span.text-red');
-                            for (const s of reds) {
-                                const t = s.textContent;
-                                if (t && t.includes('원') && t.length < 20) {
-                                    const n = parseInt(t.replace(/[^0-9]/g,''));
-                                    if (n >= 10000 && n <= 10000000) { result.price = n; break; }
-                                }
-                            }
-                        }
+                    # ── 가격 추출 (포이즌 서치 4단계 로직) ──
+                    price = None
+                    # 1순위: span.text-title_18px_semi.text-red (최대혜택가)
+                    try:
+                        pe = page.locator('span.text-title_18px_semi.text-red').first
+                        if pe.count() > 0 and pe.is_visible(timeout=3000):
+                            pt = pe.text_content()
+                            if pt and '원' in pt:
+                                nums = re_mod.findall(r'\d+', pt.replace(',', ''))
+                                if nums:
+                                    price = int(''.join(nums))
+                    except Exception:
+                        pass
+                    # 2순위: "XX,XXX원 최대혜택가" 텍스트 패턴
+                    if not price:
+                        try:
+                            price = page.evaluate("""() => {
+                                const t = document.body.innerText;
+                                const m = t.match(/([0-9]{1,3}(?:,?[0-9]{3})*)\\s*원\\s*최대혜택가/);
+                                if (m && m[1]) return parseInt(m[1].replace(/,/g,''));
+                                return null;
+                            }""")
+                            if not price or price <= 0:
+                                price = None
+                        except Exception:
+                            pass
+                    # 3순위: span.text-red 중에서 "원" 포함
+                    if not price:
+                        try:
+                            reds = page.locator('span.text-red').all()
+                            for sp in reds:
+                                try:
+                                    t = sp.text_content()
+                                    if t and '원' in t:
+                                        nums = re_mod.findall(r'\d+', t.replace(',', ''))
+                                        if nums:
+                                            tp = int(''.join(nums))
+                                            if 10000 <= tp <= 10000000:
+                                                price = tp
+                                                break
+                                except Exception:
+                                    continue
+                        except Exception:
+                            pass
+                    # 4순위: 모든 span에서 "원" 포함
+                    if not price:
+                        try:
+                            spans = page.locator('span').all()
+                            for sp in spans[:100]:
+                                try:
+                                    t = sp.text_content()
+                                    if t and '원' in t and len(t) < 20:
+                                        nums = re_mod.findall(r'\d+', t.replace(',', ''))
+                                        if nums:
+                                            tp = int(''.join(nums))
+                                            if 10000 <= tp <= 10000000:
+                                                price = tp
+                                                break
+                                except Exception:
+                                    continue
+                        except Exception:
+                            pass
+                    info["price"] = price or 0
 
-                        // 브랜드
-                        const brandEl = document.querySelector('a[href*="/brands/"]');
-                        if (brandEl) result.brand = brandEl.textContent.trim();
+                    # ── 브랜드 추출 ──
+                    try:
+                        be = page.locator('a[href*="/brands/"]').first
+                        if be.count() > 0:
+                            info["brand"] = be.text_content().strip()
+                    except Exception:
+                        pass
 
-                        // 품번 (라벨 기반)
-                        const cm = allText.match(/(품번|모델번호|상품코드)\\s*[:：\\s]+([A-Z0-9][A-Z0-9-]+)/i);
-                        if (cm && cm[2] && cm[2].length >= 5) result.product_code = cm[2].trim();
+                    # ── 품번 추출 ──
+                    try:
+                        all_text = page.evaluate("() => document.body.innerText")
+                        cm = re_mod.search(r'(품번|모델번호|상품코드)\s*[:：\s]+([A-Z0-9][A-Z0-9-]+)', all_text, re_mod.IGNORECASE)
+                        if cm and cm.group(2) and len(cm.group(2)) >= 5:
+                            info["product_code"] = cm.group(2).strip()
+                    except Exception:
+                        pass
 
-                        // 이미지
-                        const img1 = document.querySelector('img[alt="Thumbnail 0"]');
-                        if (img1 && img1.src && img1.src.includes('image.msscdn.net')) {
-                            result.image_url = img1.src.split('?')[0];
-                        } else {
-                            const swiper = document.querySelector('div[class*="Swiper"] img');
-                            if (swiper && swiper.src) result.image_url = swiper.src.split('?')[0];
-                        }
-
-                        return result;
-                    }""")
+                    # ── 이미지 추출 ──
+                    try:
+                        img1 = page.locator('img[alt="Thumbnail 0"]').first
+                        if img1.count() > 0:
+                            src = img1.get_attribute('src')
+                            if src and 'image.msscdn.net' in src:
+                                info["image_url"] = src.split('?')[0]
+                    except Exception:
+                        pass
+                    if not info["image_url"]:
+                        try:
+                            sw = page.locator('div[class*="Swiper"] img').first
+                            if sw.count() > 0:
+                                src = sw.get_attribute('src')
+                                if src:
+                                    info["image_url"] = src.split('?')[0]
+                        except Exception:
+                            pass
 
                     if not info or not info.get("name"):
                         _kv_log(f"  [{idx}/{len(product_links)}] 정보 추출 실패 — 건너뜀")
