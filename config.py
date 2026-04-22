@@ -78,6 +78,14 @@ APP_ENV = "production" if platform.system() == "Darwin" else "test"
 
 LOGIN_USERS = {
     "admin": "0000",            # 관리자 계정 (기본값)
+    "kabinet": "0000",          # 부관리자 — 카비넷 전용
+}
+
+# 부관리자 메뉴 권한 (admin은 전체, 나머지는 지정된 메뉴만)
+ADMIN_MENU_ACCESS = {
+    "admin": ["vintage", "brand", "kabinet", "setting"],  # 전체
+    "kabinet": ["kabinet"],                                # 카비넷만
+    # 추가 예: "partner1": ["brand", "kabinet"],
 }
 
 # 관리자 비밀번호 로드: NAS 공유 설정 → .env 순서

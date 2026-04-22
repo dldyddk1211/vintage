@@ -22,7 +22,7 @@ from config import (
     SERVER_HOST, SERVER_PORT, URL_PREFIX,
     AUTO_SCHEDULE_HOUR, AUTO_SCHEDULE_MINUTE,
     LOGIN_USERS, SECRET_KEY, APP_ENV,
-    OUTPUT_DIR, DB_DIR,
+    OUTPUT_DIR, DB_DIR, ADMIN_MENU_ACCESS,
 )
 from data_manager import get_status as get_data_status, set_data_root, get_data_root, get_path, ensure_dirs, is_connected
 from xebio_search import scrape_nike_sale, load_latest_products, set_app_status, force_close_browser
@@ -78,15 +78,16 @@ def login_required(f):
 
 
 def admin_required(f):
-    """관리자 전용 데코레이터"""
+    """관리자/부관리자 전용 데코레이터"""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("logged_in"):
             if "/api/" in request.path or "/scrape/" in request.path or "/orders" in request.path or request.is_json or request.headers.get("Accept","").startswith("application/json"):
                 return jsonify({"ok": False, "error": "로그인이 필요합니다"}), 401
             return redirect(f"{URL_PREFIX}/login")
-        # 기존 세션(role 없음)은 admin으로 간주
-        if session.get("role", "admin") != "admin":
+        # admin 또는 sub_admin(부관리자) 허용
+        role = session.get("role", "")
+        if role not in ("admin", "sub_admin"):
             return redirect(f"{URL_PREFIX}/shop")
         return f(*args, **kwargs)
     return decorated
@@ -286,14 +287,25 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        # 1) 관리자 확인
+        # 1) 관리자/부관리자 확인
         if username in LOGIN_USERS and LOGIN_USERS[username] == password:
             session["logged_in"] = True
             session["username"] = username
-            session["role"] = "admin"
             session["level"] = "b2b"
-            logger.info(f"관리자 로그인: {username}")
-            return redirect(f"{URL_PREFIX}/dashboard")
+            # 메뉴 권한 설정
+            menus = ADMIN_MENU_ACCESS.get(username, [])
+            all_menus = ["vintage", "brand", "kabinet", "setting"]
+            if username == "admin" or set(menus) >= set(all_menus):
+                session["role"] = "admin"
+                session["admin_menus"] = all_menus
+            else:
+                session["role"] = "sub_admin"
+                session["admin_menus"] = menus
+            logger.info(f"{'관리자' if session['role']=='admin' else '부관리자'} 로그인: {username} (메뉴: {menus})")
+            # 부관리자는 첫 허용 메뉴로 이동
+            if session["role"] == "sub_admin" and menus:
+                return redirect(f"{URL_PREFIX}/admin/{menus[0]}")
+            return redirect(f"{URL_PREFIX}/admin/vintage")
         # 2) 고객 확인
         customer = get_customer(username)
         if customer and check_customer_pw(customer, password):
@@ -4768,8 +4780,10 @@ except Exception as e:
 @app.route(f"{URL_PREFIX}/")
 def root_redirect():
     """루트: 비로그인/일반회원 → 쇼핑몰 직접 렌더링, 관리자 → 대시보드"""
-    if session.get("logged_in") and session.get("role", "admin") == "admin":
-        return redirect(f"{URL_PREFIX}/admin/vintage")
+    role = session.get("role", "")
+    if session.get("logged_in") and role in ("admin", "sub_admin"):
+        menus = session.get("admin_menus", ["vintage"])
+        return redirect(f"{URL_PREFIX}/admin/{menus[0]}")
     # 302 리다이렉트 대신 직접 렌더링 (네이버 검색 로봇 대응)
     return shop()
 
@@ -5426,11 +5440,25 @@ def freshness_stop_api():
     return jsonify({"ok": True})
 
 
+def _check_menu_access(menu_name):
+    """부관리자 메뉴 접근 권한 확인"""
+    menus = session.get("admin_menus", ["vintage", "brand", "kabinet", "setting"])
+    if menu_name not in menus:
+        # 허용된 첫 메뉴로 리다이렉트
+        if menus:
+            return redirect(f"{URL_PREFIX}/admin/{menus[0]}")
+        return redirect(f"{URL_PREFIX}/login")
+    return None
+
+
 # ── To Do List ─────────────────────
 @app.route(f"{URL_PREFIX}/admin/vintage")
 @admin_required
 def admin_vintage():
     """빈티지 관리 페이지 (경량)"""
+    blocked = _check_menu_access("vintage")
+    if blocked:
+        return blocked
     return render_template("admin_vintage.html", url_prefix=URL_PREFIX, env=APP_ENV, active_menu="vintage", default_page="analytics")
 
 
@@ -5438,6 +5466,9 @@ def admin_vintage():
 @admin_required
 def admin_brand():
     """브랜드 관리 페이지 (경량)"""
+    blocked = _check_menu_access("brand")
+    if blocked:
+        return blocked
     return render_template("admin_brand.html", url_prefix=URL_PREFIX, env=APP_ENV, active_menu="brand", default_page="brand-dashboard")
 
 
@@ -5445,6 +5476,9 @@ def admin_brand():
 @admin_required
 def admin_kabinet():
     """캐비넷 관리 페이지 (경량)"""
+    blocked = _check_menu_access("kabinet")
+    if blocked:
+        return blocked
     return render_template("admin_kabinet.html", url_prefix=URL_PREFIX, env=APP_ENV, active_menu="kabinet", default_page="kv-dashboard")
 
 
@@ -5452,6 +5486,9 @@ def admin_kabinet():
 @admin_required
 def admin_setting():
     """설정 페이지 (경량)"""
+    blocked = _check_menu_access("setting")
+    if blocked:
+        return blocked
     return render_template("admin_setting.html", url_prefix=URL_PREFIX, env=APP_ENV, active_menu="setting", default_page="st-account")
 
 

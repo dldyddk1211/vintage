@@ -134,18 +134,26 @@
 <!-- 아이콘 사이드바 -->
 <div class="icon-bar">
   <div class="icon-bar-logo">TheOne<span>Vintage</span></div>
+  {% if 'vintage' in session.get('admin_menus', ['vintage','brand','kabinet','setting']) %}
   <a class="icon-item {{ 'active' if active_menu=='vintage' }}" href="{{ url_prefix }}/admin/vintage">
     <span class="icon-emoji">🎺</span><span>빈티지</span>
   </a>
+  {% endif %}
+  {% if 'brand' in session.get('admin_menus', ['vintage','brand','kabinet','setting']) %}
   <a class="icon-item {{ 'active' if active_menu=='brand' }}" href="{{ url_prefix }}/admin/brand">
     <span class="icon-emoji">🏷️</span><span>브랜드</span>
   </a>
+  {% endif %}
+  {% if 'kabinet' in session.get('admin_menus', ['vintage','brand','kabinet','setting']) %}
   <a class="icon-item {{ 'active' if active_menu=='kabinet' }}" href="{{ url_prefix }}/admin/kabinet">
     <span class="icon-emoji">🎯</span><span>카비넷</span>
   </a>
+  {% endif %}
+  {% if 'setting' in session.get('admin_menus', ['vintage','brand','kabinet','setting']) %}
   <a class="icon-item {{ 'active' if active_menu=='setting' }}" href="{{ url_prefix }}/admin/setting">
     <span class="icon-emoji">⚙️</span><span>설정</span>
   </a>
+  {% endif %}
 </div>
 
 <!-- 세부 사이드바 -->
