@@ -2089,7 +2089,7 @@ async function loadKeywordStats(tags) {
             <td style="padding:6px 8px;text-align:right;">${(r.monthlyPcQcCnt||0).toLocaleString()}</td>
             <td style="padding:6px 8px;text-align:right;">${(r.monthlyMobileQcCnt||0).toLocaleString()}</td>
             <td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--accent);">${(r.total||0).toLocaleString()}</td>
-            <td style="padding:6px 8px;text-align:center;color:${{'높음':'var(--red)','중간':'var(--yellow)','낮음':'var(--green)'}[r.compIdx]||'var(--muted)'};">${r.compIdx || '-'}</td>
+            <td style="padding:6px 8px;text-align:center;color:${r.compIdx==='높음'?'var(--red)':r.compIdx==='중간'?'var(--yellow)':r.compIdx==='낮음'?'var(--green)':'var(--muted)'};">${r.compIdx || '-'}</td>
           </tr>
         `).join('')}
         </tbody>
