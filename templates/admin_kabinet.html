@@ -238,22 +238,22 @@ async function startScrape() {
   const maxItems = parseInt(document.getElementById("kv-max").value) || 50;
   const body = {max_items: maxItems};
 
-  // 키워드/URL 자동 감지
-  const input = (mode === "url")
-    ? document.getElementById("kv-url").value.trim()
-    : document.getElementById("kv-keyword").value.trim();
+  // 두 입력란 모두 확인 (어디에 넣었든 동작하게)
+  const kwVal = (document.getElementById("kv-keyword")?.value || "").trim();
+  const urlVal = (document.getElementById("kv-url")?.value || "").trim();
+  const input = urlVal || kwVal;
 
   if (mode === "ranking") {
     body.search_mode = "ranking";
+  } else if (!input) {
+    alert("키워드 또는 무신사 URL을 입력해주세요");
+    return;
   } else if (input.startsWith("http") && input.includes("musinsa.com")) {
     body.search_mode = "url";
     body.url = input;
-  } else if (input) {
+  } else {
     body.search_mode = "keyword";
     body.keyword = input;
-  } else {
-    alert("키워드 또는 무신사 URL을 입력해주세요");
-    return;
   }
 
   const r = await fetch(PREFIX + "/api/kabinet/scrape", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
