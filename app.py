@@ -7067,6 +7067,32 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                     info["image_url"] = detail_imgs[0] if detail_imgs else ""
                     info["detail_images"] = detail_imgs
 
+                    # ── 색상/사이즈 옵션 추출 (무신사 API) ──
+                    try:
+                        goods_id = re_mod.search(r"/products/(\d+)", product_url)
+                        if goods_id:
+                            opt_r = requests.get(
+                                f"https://goods-detail.musinsa.com/api2/goods/{goods_id.group(1)}/options",
+                                headers={"User-Agent": "Mozilla/5.0"}, timeout=5
+                            )
+                            if opt_r.status_code == 200:
+                                opt_data = opt_r.json().get("data", {}).get("basic", [])
+                                colors = []
+                                sizes = []
+                                for opt in opt_data:
+                                    opt_name = opt.get("name", "").upper()
+                                    vals = [v["name"] for v in opt.get("optionValues", []) if not v.get("isDeleted")]
+                                    if opt_name in ("색상", "컬러", "COLOR", "C"):
+                                        colors = vals
+                                    elif opt_name in ("사이즈", "SIZE", "S"):
+                                        sizes = vals
+                                    elif not colors and not sizes:
+                                        sizes = vals  # 이름 없는 단일 옵션은 사이즈로
+                                info["colors"] = colors
+                                info["sizes"] = sizes
+                    except Exception:
+                        pass
+
                     if not info or not info.get("name"):
                         _kv_log(f"  [{idx}/{len(product_links)}] 정보 추출 실패 — 건너뜀")
                         continue
@@ -7085,6 +7111,8 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                         # /images/images/ 중복 제거
                         img_url = img_url.replace("/images/images/", "/images/")
 
+                    colors = info.get("colors", [])
+                    sizes = info.get("sizes", [])
                     collected.append({
                         "site_id": "musinsa",
                         "source_type": "musinsa",
@@ -7095,6 +7123,8 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                         "original_price": info.get("original_price", 0),  # 정가
                         "img_url": img_url,
                         "detail_images": info.get("detail_images", []),
+                        "sizes": sizes,
+                        "color": ", ".join(colors) if colors else "",
                         "link": product_url,
                         "category_id": "",
                         "scraped_at": datetime.now().isoformat(),
@@ -7102,8 +7132,11 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                     op = info.get("original_price", 0)
                     bp = info.get("price", 0)
                     img_cnt = len(info.get("detail_images", []))
+                    opt_info = ""
+                    if colors: opt_info += f" 컬러:{','.join(colors[:3])}"
+                    if sizes: opt_info += f" 사이즈:{','.join(sizes[:5])}"
                     price_info = f"{bp:,}원" if op == bp else f"정가 {op:,}원 → 최대혜택가 {bp:,}원"
-                    _kv_log(f"  [{idx}/{len(product_links)}] {info.get('brand','')} {info.get('name','')[:40]} — {price_info} (이미지 {img_cnt}장)")
+                    _kv_log(f"  [{idx}/{len(product_links)}] {info.get('brand','')} {info.get('name','')[:35]} — {price_info} (이미지 {img_cnt}장{opt_info})")
 
                     time.sleep(random.uniform(1.0, 2.0))
 
