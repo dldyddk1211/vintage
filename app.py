@@ -6757,24 +6757,40 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                     except Exception:
                         pass
 
-                    # ── 이미지 추출 ──
+                    # ── 이미지 추출 (대표 + 상세 이미지 전체) ──
+                    detail_imgs = []
                     try:
-                        img1 = page.locator('img[alt="Thumbnail 0"]').first
-                        if img1.count() > 0:
-                            src = img1.get_attribute('src')
-                            if src and 'image.msscdn.net' in src:
-                                info["image_url"] = src.split('?')[0]
+                        # 썸네일 리스트에서 모든 이미지 URL 수집 (Thumbnail 0, 1, 2...)
+                        thumb_imgs = page.locator('img[alt^="Thumbnail"]').all()
+                        for ti in thumb_imgs:
+                            try:
+                                src = ti.get_attribute('src')
+                                if src and 'image.msscdn.net' in src:
+                                    clean = src.split('?')[0].replace('/thumbnails/', '/images/').replace('/images/images/', '/images/')
+                                    if clean not in detail_imgs:
+                                        detail_imgs.append(clean)
+                            except Exception:
+                                continue
                     except Exception:
                         pass
-                    if not info["image_url"]:
+                    # Swiper 이미지 폴백
+                    if not detail_imgs:
                         try:
-                            sw = page.locator('div[class*="Swiper"] img').first
-                            if sw.count() > 0:
-                                src = sw.get_attribute('src')
-                                if src:
-                                    info["image_url"] = src.split('?')[0]
+                            swiper_imgs = page.locator('div[class*="Swiper"] img').all()
+                            for si in swiper_imgs:
+                                try:
+                                    src = si.get_attribute('src')
+                                    if src and 'image.msscdn.net' in src:
+                                        clean = src.split('?')[0].replace('/thumbnails/', '/images/').replace('/images/images/', '/images/')
+                                        if clean not in detail_imgs:
+                                            detail_imgs.append(clean)
+                                except Exception:
+                                    continue
                         except Exception:
                             pass
+                    # 대표 이미지
+                    info["image_url"] = detail_imgs[0] if detail_imgs else ""
+                    info["detail_images"] = detail_imgs
 
                     if not info or not info.get("name"):
                         _kv_log(f"  [{idx}/{len(product_links)}] 정보 추출 실패 — 건너뜀")
@@ -6803,14 +6819,16 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                         "price_jpy": info.get("price", 0),          # 최대혜택가 (KRW)
                         "original_price": info.get("original_price", 0),  # 정가
                         "img_url": img_url,
+                        "detail_images": info.get("detail_images", []),
                         "link": product_url,
                         "category_id": "",
                         "scraped_at": datetime.now().isoformat(),
                     })
                     op = info.get("original_price", 0)
                     bp = info.get("price", 0)
+                    img_cnt = len(info.get("detail_images", []))
                     price_info = f"{bp:,}원" if op == bp else f"정가 {op:,}원 → 최대혜택가 {bp:,}원"
-                    _kv_log(f"  [{idx}/{len(product_links)}] {info.get('brand','')} {info.get('name','')[:40]} — {price_info}")
+                    _kv_log(f"  [{idx}/{len(product_links)}] {info.get('brand','')} {info.get('name','')[:40]} — {price_info} (이미지 {img_cnt}장)")
 
                     time.sleep(random.uniform(1.0, 2.0))
 
