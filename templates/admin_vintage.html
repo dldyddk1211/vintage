@@ -140,10 +140,30 @@
         <button class="btn b-gray" onclick="loadOrders()">🔄</button>
       </div>
     </div>
+    <!-- 일괄 작업 바 -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+      <span style="font-size:0.78rem;color:var(--muted);">선택: <b id="order-sel-cnt" style="color:var(--accent)">0</b>건</span>
+      <select id="bulk-order-status" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:0.75rem;">
+        <option value="">상태 일괄 변경</option>
+        <option value="confirmed">확인</option><option value="processing">처리중</option><option value="shipped">배송중</option>
+        <option value="completed">완료</option><option value="sold_out">품절취소</option><option value="cancelled">취소</option>
+      </select>
+      <button onclick="bulkChangeOrderStatus()" class="btn b-blue" style="padding:4px 10px;font-size:0.72rem;">적용</button>
+      <span style="color:var(--border)">|</span>
+      <button onclick="bulkDeleteOrders()" class="btn b-red" style="padding:4px 10px;font-size:0.72rem;">선택 삭제</button>
+      <span style="color:var(--border)">|</span>
+      <button onclick="copyOrderInfo()" class="btn b-blue" style="padding:4px 10px;font-size:0.72rem;">📋 주문복사</button>
+      <button onclick="downloadQuote()" class="btn b-blue" style="padding:4px 10px;font-size:0.72rem;">📄 견적서</button>
+    </div>
     <div style="overflow-x:auto;">
-      <table class="tbl">
-        <thead><tr><th style="width:28px"><input type="checkbox" onchange="document.querySelectorAll('.oc').forEach(c=>c.checked=this.checked)"></th><th>주문번호</th><th>고객</th><th>레벨</th><th>이미지</th><th>브랜드</th><th>상품명</th><th>상품코드</th><th>판매가</th><th>상태</th></tr></thead>
-        <tbody id="order-tbody"><tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr></tbody>
+      <table class="tbl" style="width:100%;font-size:0.78rem;">
+        <thead><tr>
+          <th style="width:28px"><input type="checkbox" onchange="toggleAllOrderChk(this.checked)"></th>
+          <th>주문번호</th><th>고객</th><th>레벨</th><th>이름</th><th style="width:44px">이미지</th>
+          <th>브랜드</th><th>상품명</th><th>상품코드</th><th>판매가</th><th>원가</th><th>마진</th>
+          <th>상태</th><th>택배사</th><th>송장번호</th><th style="width:80px">메모</th>
+        </tr></thead>
+        <tbody id="order-tbody"><tr><td colspan="16" style="text-align:center;color:var(--muted);padding:30px;">로딩 중...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -384,47 +404,58 @@ async function chgMemberLvl(user,lvl) {
   loadMembers(true);
 }
 
-// ── 주문확인 ──
+// ── 주문확인 (전체 기능: 원가/마진/택배/송장/견적서/주문복사) ──
 const SL={"new":"신규","confirmed":"확인","processing":"처리중","shipped":"배송중","completed":"완료","cancel_request":"취소요청","sold_out":"품절취소","cancelled":"취소"};
 const SC={"new":"var(--yellow)","confirmed":"var(--blue)","processing":"var(--accent)","shipped":"#6cf","completed":"var(--green)","cancel_request":"#ff9800","sold_out":"var(--red)","cancelled":"var(--red)"};
 async function loadOrders() {
   const q=document.getElementById("order-search")?.value?.trim()||"";
   const st=document.getElementById("order-status-filter")?.value||"";
-  const params=new URLSearchParams({type:"order"});
+  const params=new URLSearchParams();
   if(q) params.set("q",q); if(st) params.set("status",st);
   try{
     const r=await fetch(PREFIX+"/orders?"+params);
     if(r.status===401){location.href=PREFIX+"/login";return;}
     const d=await r.json();
     const tbody=document.getElementById("order-tbody");
-    if(!d.orders||!d.orders.length){tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px;">주문 없음</td></tr>';return;}
+    if(!d.orders||!d.orders.length){tbody.innerHTML='<tr><td colspan="16" style="text-align:center;color:var(--muted);padding:30px;">주문 없음</td></tr>';return;}
+    const currentRate=d.rate?d.rate.toFixed(2):'';
     const hide=new Set();
     d.orders.forEach(o=>{if((o.product_name||'').includes('다중주문')||(o.product_name||'').includes('일괄결제'))(o.product_code||'').split(',').forEach(n=>{if(n.trim().startsWith('ORD'))hide.add(n.trim());});});
     const list=d.orders.filter(o=>!hide.has(o.order_number));
     tbody.innerHTML=list.map(o=>{const sc=SC[o.status]||'var(--muted)';
-      return `<tr><td><input type="checkbox" class="oc" data-id="${o.id}"></td>
+      return `<tr>
+      <td><input type="checkbox" class="order-chk" data-id="${o.id}" onchange="updateOrderSelCnt()"></td>
       <td style="font-family:monospace;font-size:0.68rem;color:var(--accent);">${o.order_number||''}</td>
-      <td style="font-weight:600;">${o.customer_name||o.username||''}</td>
+      <td style="font-weight:600;">${o.username||''}</td>
       <td style="font-size:0.7rem;font-weight:700;color:${o.user_level==='b2b'?'var(--blue)':'var(--green)'};">${(o.user_level||'b2c').toUpperCase()}</td>
+      <td><a href="#" onclick="event.preventDefault();openMemberDetail('${o.username||''}')" style="color:var(--accent);text-decoration:underline;">${o.customer_name||'-'}</a></td>
       <td><img src="${o.product_img||''}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'"></td>
       <td>${o.brand||''}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${o.product_name||''}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(o.product_name||'').includes('다중주문')||(o.product_name||'').includes('일괄결제')?`<a href="#" onclick="event.preventDefault();toggleBatchDetail(${o.id},this)" style="color:var(--yellow);text-decoration:underline;">${o.product_name} ▼</a>`:(o.product_name||'')}</td>
       <td style="font-family:monospace;font-size:0.68rem;">${o.product_code||''}</td>
-      <td style="font-weight:700;color:var(--accent);">${o.price||''}</td>
-      <td><select onchange="chgOrderSt(${o.id},this.value)" style="background:var(--bg);border:1px solid var(--border);color:${sc};padding:2px 4px;border-radius:4px;font-size:0.68rem;font-weight:600;">${Object.entries(SL).map(([k,v])=>`<option value="${k}" ${k===o.status?'selected':''}>${v}</option>`).join('')}</select>${o.status==='cancel_request'?`<div style="margin-top:4px;display:flex;gap:4px;"><button onclick="approveCancel(${o.id},'approve')" style="padding:2px 6px;font-size:0.62rem;background:var(--green);color:#fff;border:none;border-radius:3px;cursor:pointer;">승인</button><button onclick="approveCancel(${o.id},'reject')" style="padding:2px 6px;font-size:0.62rem;background:var(--red);color:#fff;border:none;border-radius:3px;cursor:pointer;">거절</button></div>`:''}</td></tr>`;
+      <td style="font-weight:700;color:var(--accent);">${o.price||''}${currentRate?`<br><span style="font-size:0.6rem;color:var(--dim);">@${currentRate}</span>`:''}</td>
+      <td style="font-size:0.72rem;color:var(--muted);">${o.cost_krw?o.cost_krw.toLocaleString()+'원':''}<br><span style="font-size:0.62rem;color:var(--dim);">${o.price_jpy?'¥'+o.price_jpy.toLocaleString():''}</span></td>
+      <td style="font-size:0.72rem;font-weight:700;color:${(o.margin_krw||0)>0?'var(--green)':'var(--red)'};">${o.margin_krw?o.margin_krw.toLocaleString()+'원':''}</td>
+      <td><select onchange="updateOrderStatus(${o.id},this.value)" style="background:var(--bg);border:1px solid var(--border);color:${sc};padding:2px 4px;border-radius:4px;font-size:0.68rem;font-weight:600;">${Object.entries(SL).map(([k,v])=>`<option value="${k}" ${k===o.status?'selected':''}>${v}</option>`).join('')}</select>${o.status==='cancel_request'?`<div style="margin-top:4px;display:flex;gap:4px;"><button onclick="approveCancel(${o.id},'approve')" style="padding:2px 6px;font-size:0.62rem;background:var(--green);color:#fff;border:none;border-radius:3px;cursor:pointer;">승인</button><button onclick="approveCancel(${o.id},'reject')" style="padding:2px 6px;font-size:0.62rem;background:var(--red);color:#fff;border:none;border-radius:3px;cursor:pointer;">거절</button></div>`:''}</td>
+      <td><select onchange="updateOrderField(${o.id},'courier',this.value)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px;font-size:0.65rem;width:65px;">
+        <option value="">선택</option><option value="CJ대한통운" ${o.courier==='CJ대한통운'?'selected':''}>CJ대한통운</option><option value="한진택배" ${o.courier==='한진택배'?'selected':''}>한진택배</option><option value="롯데택배" ${o.courier==='롯데택배'?'selected':''}>롯데택배</option><option value="우체국" ${o.courier==='우체국'?'selected':''}>우체국</option><option value="로젠택배" ${o.courier==='로젠택배'?'selected':''}>로젠택배</option><option value="EMS" ${o.courier==='EMS'?'selected':''}>EMS</option></select></td>
+      <td><input value="${o.tracking_no||''}" onchange="updateOrderField(${o.id},'tracking_no',this.value)" placeholder="송장번호" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px;font-size:0.65rem;width:85px;"></td>
+      <td><input value="${o.memo||''}" onchange="updateOrderMemo(${o.id},this.value)" placeholder="메모" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px;font-size:0.65rem;width:70px;"></td>
+      </tr>`;
     }).join("");
   }catch(e){}
 }
-async function chgOrderSt(id,st) {
-  await fetch(PREFIX+"/orders/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:st})});
-  loadOrders();
-}
-async function approveCancel(id, action) {
-  const msg = action === 'approve' ? '취소를 승인하시겠습니까?' : '취소 요청을 거절하시겠습니까?';
-  if (!confirm(msg)) return;
-  await fetch(PREFIX+"/orders/"+id+"/approve-cancel",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})});
-  loadOrders();
-}
+function toggleAllOrderChk(c){document.querySelectorAll(".order-chk").forEach(x=>x.checked=c);updateOrderSelCnt();}
+function updateOrderSelCnt(){document.getElementById("order-sel-cnt").textContent=document.querySelectorAll(".order-chk:checked").length;}
+async function updateOrderStatus(id,st){await fetch(PREFIX+"/orders/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:st})});loadOrders();}
+async function updateOrderMemo(id,m){await fetch(PREFIX+"/orders/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({memo:m})});}
+async function updateOrderField(id,f,v){await fetch(PREFIX+"/orders/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({[f]:v})});if(f==='tracking_no'&&v){await fetch(PREFIX+"/orders/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:'shipped'})});loadOrders();}}
+async function bulkChangeOrderStatus(){const ids=[];document.querySelectorAll(".order-chk:checked").forEach(c=>ids.push(+c.dataset.id));if(!ids.length){alert("주문을 선택해주세요");return;}const st=document.getElementById("bulk-order-status").value;if(!st){alert("상태를 선택해주세요");return;}if(!confirm(`${ids.length}건을 '${SL[st]}'로 변경?`))return;for(const id of ids)await fetch(PREFIX+"/orders/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:st})}).catch(()=>{});document.getElementById("bulk-order-status").value="";loadOrders();}
+async function bulkDeleteOrders(){const ids=[];document.querySelectorAll(".order-chk:checked").forEach(c=>ids.push(+c.dataset.id));if(!ids.length){alert("삭제할 주문을 선택해주세요");return;}if(!confirm(`${ids.length}건 삭제?`))return;for(const id of ids)await fetch(PREFIX+"/orders/"+id,{method:"DELETE"}).catch(()=>{});loadOrders();}
+function copyOrderInfo(){const chks=[...document.querySelectorAll(".order-chk:checked")];if(!chks.length){alert("복사할 주문을 선택해주세요");return;}const orders=chks.map(chk=>{const tr=chk.closest("tr");if(!tr)return null;const c=tr.querySelectorAll("td");return{orderNum:c[1]?.textContent?.trim()||'',username:c[2]?.textContent?.trim()||'',customerName:c[4]?.textContent?.trim()||'',brand:c[6]?.textContent?.trim()||'',productName:c[7]?.textContent?.trim()||'',productCode:c[8]?.textContent?.trim()||'',price:c[9]?.textContent?.trim()||'',costInfo:c[10]?.textContent?.trim()||''};}).filter(Boolean);let text=orders.map((o,i)=>`[${i+1}] ${o.customerName||o.username}\n주문번호: ${o.orderNum}\n상품번호: ${o.productCode}\n브랜드: ${o.brand}\n상품: ${o.productName}\n가격: ${o.price}\n엔화: ${(o.costInfo.match(/¥[\d,]+/)||[''])[0]}\n`).join("\n");document.body.insertAdjacentHTML("beforeend",`<div id="copy-order-modal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;justify-content:center;align-items:center;" onclick="if(event.target===this)this.remove()"><div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:550px;width:95%;"><div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);"><span style="font-weight:700;color:var(--accent);">📋 주문 복사 (${orders.length}건)</span><button onclick="document.getElementById('copy-order-modal').remove()" style="background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer;">✕</button></div><div style="padding:16px 20px;"><textarea id="copy-order-text" rows="12" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.82rem;font-family:monospace;resize:vertical;">${text}</textarea><div style="display:flex;gap:8px;margin-top:10px;"><button onclick="document.getElementById('copy-order-text').select();document.execCommand('copy');this.textContent='복사 완료!';setTimeout(()=>this.textContent='클립보드 복사',1500)" class="btn b-green" style="flex:1;padding:8px;">클립보드 복사</button><button onclick="document.getElementById('copy-order-modal').remove()" class="btn b-gray" style="padding:8px 16px;">닫기</button></div></div></div></div>`);}
+function downloadQuote(){const ids=[];document.querySelectorAll(".order-chk:checked").forEach(c=>ids.push(+c.dataset.id));if(!ids.length){alert("견적서에 포함할 주문을 선택해주세요");return;}const a=document.createElement("a");a.href=PREFIX+"/api/quote/download?ids="+ids.join(",");a.download="";a.click();}
+async function toggleBatchDetail(orderId,el){const tr=el.closest("tr");const next=tr.nextElementSibling;if(next&&next.classList.contains("batch-detail-row")){next.remove();return;}try{const r=await fetch(PREFIX+"/orders/"+orderId+"/related");const d=await r.json();if(!d.ok||!d.orders.length)return;let html='<tr class="batch-detail-row"><td colspan="16" style="padding:8px 16px;background:rgba(212,165,74,0.05);"><div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px;">세부 주문:</div><table style="width:100%;font-size:0.72rem;border-collapse:collapse;">';d.orders.forEach(o=>{html+=`<tr style="border-bottom:1px solid var(--border);"><td style="padding:4px 6px;">${o.order_number||''}</td><td>${o.brand||''}</td><td>${o.product_name||''}</td><td>${o.product_code||''}</td><td style="font-weight:700;color:var(--accent);">${o.price||''}</td></tr>`;});html+='</table></td></tr>';tr.insertAdjacentHTML("afterend",html);}catch(e){}}
+async function approveCancel(id,action){if(!confirm(action==='approve'?'취소를 승인하시겠습니까?':'취소 요청을 거절하시겠습니까?'))return;await fetch(PREFIX+"/orders/"+id+"/approve-cancel",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})});loadOrders();}
 
 // ── 주문/장바구니 탭 전환 ──
 function switchOrderTab(tab) {
