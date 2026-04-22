@@ -4477,11 +4477,11 @@ def _start_scheduler_once():
     # ── 공통: 환율 갱신 ──
     scheduler.add_job(
         func=_refresh_daily_rate_job,
-        trigger="cron", hour=0, minute=1,
+        trigger="cron", hour=0, minute=0,
         id="daily_rate_refresh", replace_existing=True,
-        name="일일 환율 갱신 (00:01)",
+        name="일일 환율 갱신 (00:00)",
     )
-    logger.info("💱 환율 갱신 등록 (매일 00:01)")
+    logger.info("💱 환율 갱신 등록 (매일 00:00)")
 
     # ── 공통: 회원 만료 알림 (매일 09:00) ──
     scheduler.add_job(

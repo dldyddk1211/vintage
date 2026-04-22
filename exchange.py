@@ -97,7 +97,7 @@ def get_margin_rate() -> float:
 
 
 def _fetch_rate() -> float:
-    """매매기준율 기반 환율 가져오기 (한국수출입은행 → 구글 → 백업 API)"""
+    """엔화 → 원화 환율 가져오기 (구글 → 수출입은행 → 백업 API)"""
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -107,7 +107,31 @@ def _fetch_rate() -> float:
         "Accept-Language": "ko-KR,ko;q=0.9",
     }
 
-    # 1) 한국수출입은행 매매기준율 (100엔 기준)
+    # 1) 구글 환율 (1순위 — 실시간)
+    try:
+        url = "https://www.google.com/search?q=1+JPY+to+KRW&hl=ko"
+        res = requests.get(url, headers=headers, timeout=10)
+        html = res.text
+        patterns = [
+            r'class="DFlfde[^"]*"[^>]*>([\d.]+)</span>',
+            r'"converted-amount"[^>]*>([\d.]+)',
+            r'data-value="([\d.]+)"',
+            r'1\s*일본\s*엔\s*=?\s*([\d.]+)',
+            r'([\d]{1,2}\.[\d]{1,4})\s*대한민국\s*원',
+            r'([\d]{1,2}\.[\d]{1,4})\s*KRW',
+            r'([\d]{1,2}\.[\d]{2,4})\s*원',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, html)
+            if match:
+                val = float(match.group(1))
+                if 6.0 < val < 15.0:
+                    logger.info(f"✅ 구글 환율: 1엔 = {val}원")
+                    return val
+    except Exception as e:
+        logger.warning(f"⚠️ 구글 환율 실패: {e}")
+
+    # 2) 한국수출입은행 매매기준율 (폴백)
     try:
         url = "https://www.koreaexim.go.kr/site/program/financial/exchangeJSON"
         params = {"authkey": "SAMPLE", "searchdate": datetime.now().strftime("%Y%m%d"), "data": "AP01"}
@@ -116,36 +140,13 @@ def _fetch_rate() -> float:
             data = res.json()
             for item in data:
                 if item.get("cur_unit") == "JPY(100)":
-                    # 매매기준율: 100엔 기준 → 1엔 기준으로 변환
                     deal_bas_r = float(item["deal_bas_r"].replace(",", ""))
                     rate = deal_bas_r / 100
                     if 6.0 < rate < 15.0:
-                        logger.info(f"✅ 수출입은행 매매기준율: 100엔 = {deal_bas_r}원 → 1엔 = {rate:.4f}원")
+                        logger.info(f"✅ 수출입은행 환율: 100엔 = {deal_bas_r}원 → 1엔 = {rate:.4f}원")
                         return rate
     except Exception as e:
         logger.warning(f"⚠️ 수출입은행 환율 실패: {e}")
-
-    # 2) 구글 환율 (폴백)
-    try:
-        url = "https://www.google.com/search?q=JPY+to+KRW&hl=ko"
-        res = requests.get(url, headers=headers, timeout=10)
-        html = res.text
-        patterns = [
-            r'class="DFlfde[^"]*"[^>]*>([\d.]+)</span>',
-            r'"converted-amount"[^>]*>([\d.]+)',
-            r'1\s*일본\s*엔\s*=\s*([\d.]+)',
-            r'([\d]{1,2}\.[\d]{1,4})\s*대한민국\s*원',
-            r'([\d]{1,2}\.[\d]{1,4})\s*KRW',
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, html)
-            if match:
-                val = float(match.group(1))
-                if 6.0 < val < 15.0:
-                    logger.info(f"✅ 구글 환율 조회 성공: 1엔 = {val}원 (매매기준율 아님)")
-                    return val
-    except Exception as e:
-        logger.warning(f"⚠️ 구글 환율 조회 실패: {e}")
 
     # 3) 백업 API
     try:
