@@ -119,23 +119,37 @@ def _send_batch_cart_sms():
         _batch_user_discounts = {}
 
 
-def get_unchecked_products(limit=300):
-    """체크가 필요한 상품 조회 (오래된 순)"""
+def get_unchecked_products(limit=300, brand="", category=""):
+    """체크가 필요한 상품 조회 (오래된 checked_at 순)
+    brand/category가 비어있으면 전체, 있으면 해당 조건만
+    """
     from product_db import _conn
     conn = _conn()
     try:
-        rows = conn.execute("""
+        where = ["source_type='vintage'",
+                 "(product_status IS NULL OR product_status='available' OR product_status='')",
+                 "link IS NOT NULL AND link!=''"]
+        params = []
+        if brand and brand.upper() != "ALL":
+            # brand_ko, brand, internal_code LIKE 등 여러 패턴 매칭
+            where.append("(UPPER(brand)=? OR UPPER(brand_ko)=?)")
+            params.extend([brand.upper(), brand.upper()])
+        if category and category.upper() != "ALL":
+            where.append("category_id=?")
+            params.append(category)
+
+        sql = f"""
             SELECT id, site_id, product_code, brand, brand_ko, name, link, price_jpy, checked_at,
                    internal_code, category_id
             FROM products
-            WHERE source_type='vintage'
-              AND (product_status IS NULL OR product_status = 'available' OR product_status = '')
-              AND link IS NOT NULL AND link != ''
+            WHERE {' AND '.join(where)}
             ORDER BY
-              CASE WHEN checked_at IS NULL OR checked_at = '' THEN 0 ELSE 1 END,
+              CASE WHEN checked_at IS NULL OR checked_at='' THEN 0 ELSE 1 END,
               checked_at ASC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -380,12 +394,20 @@ async def check_products_batch(products, status_callback=None):
     return result
 
 
-def run_check_batch(chunk_size=300, status_callback=None):
-    """동기 래퍼 — 1배치(300개) 상태 체크 실행"""
-    products = get_unchecked_products(chunk_size)
+def run_check_batch(chunk_size=300, status_callback=None, brand="", category=""):
+    """동기 래퍼 — 1배치(300개) 상태 체크 실행
+    brand/category 필터 지원
+    """
+    products = get_unchecked_products(chunk_size, brand=brand, category=category)
     if not products:
         if status_callback:
-            status_callback("체크할 상품 없음 — 전체 최신화 완료")
+            filter_info = []
+            if brand and brand.upper() != "ALL":
+                filter_info.append(f"브랜드:{brand}")
+            if category and category.upper() != "ALL":
+                filter_info.append(f"카테고리:{category}")
+            filter_str = f" [{' '.join(filter_info)}]" if filter_info else ""
+            status_callback(f"체크할 상품 없음 — 최신화 완료{filter_str}")
         return {"checked": 0, "sold_out": 0, "price_changed": 0, "errors": 0}
 
     brands = {}

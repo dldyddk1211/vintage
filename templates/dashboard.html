@@ -402,7 +402,7 @@
         <span class="nav-icon">&#x1f4c2;</span>
         <span>상품 리스트 (NAS)</span>
       </div>
-      <div class="nav-item" data-page="db-update" onclick="showPage('db-update');loadDbUpdateStatus();loadFreshnessStatus()">
+      <div class="nav-item" data-page="db-update" onclick="showPage('db-update');loadDbUpdateStatus();loadFreshnessStatus();loadAutoFreshStatus();loadAiEnrichStatus()">
         <span class="nav-icon">&#x1f504;</span>
         <span>상품DB 업데이트</span>
       </div>
@@ -2456,10 +2456,47 @@
         <div style="margin-top:16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
             <div style="font-size:0.8rem;font-weight:600;">&#x1f50d; 상품 최신화 현황</div>
-            <div style="display:flex;gap:6px;">
-              <button class="btn b-blue" onclick="runFreshnessCheck()" id="btn-fresh-run" style="padding:5px 12px;font-size:0.75rem;">&#x25b6; 수동 실행</button>
-              <button class="btn b-red" onclick="stopFreshnessCheck()" id="btn-fresh-stop" style="padding:5px 12px;font-size:0.75rem;display:none;">&#x23f9; 중지</button>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:4px;font-size:0.72rem;color:var(--muted);cursor:pointer;">
+                <input type="checkbox" id="chk-auto-fresh" onchange="toggleAutoFresh(this.checked)" style="accent-color:var(--accent);">
+                <span>자동 최신화 (5분 간격)</span>
+                <span id="auto-fresh-state" style="padding:1px 6px;border-radius:3px;background:var(--card);font-size:0.65rem;"></span>
+              </label>
             </div>
+          </div>
+          <!-- 필터 및 실행 버튼 -->
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:6px;">
+            <span style="font-size:0.72rem;color:var(--muted);">필터:</span>
+            <select id="fresh-brand" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.72rem;">
+              <option value="ALL">브랜드 전체</option>
+              <option value="LOUIS VUITTON">LOUIS VUITTON</option>
+              <option value="GUCCI">GUCCI</option>
+              <option value="CHANEL">CHANEL</option>
+              <option value="PRADA">PRADA</option>
+              <option value="HERMES">HERMES</option>
+              <option value="CELINE">CELINE</option>
+              <option value="FENDI">FENDI</option>
+              <option value="LOEWE">LOEWE</option>
+              <option value="BALENCIAGA">BALENCIAGA</option>
+              <option value="BOTTEGA VENETA">BOTTEGA VENETA</option>
+              <option value="SAINT LAURENT">SAINT LAURENT</option>
+              <option value="BURBERRY">BURBERRY</option>
+              <option value="PORTER">PORTER</option>
+              <option value="FERRAGAMO">FERRAGAMO</option>
+              <option value="Salvatore Ferragamo">Salvatore Ferragamo</option>
+              <option value="Christian Dior">Christian Dior</option>
+            </select>
+            <select id="fresh-category" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.72rem;">
+              <option value="ALL">카테고리 전체</option>
+              <option value="951001">의류</option>
+              <option value="951002">가방</option>
+              <option value="951003">신발</option>
+              <option value="951004">시계</option>
+              <option value="951005">악세서리</option>
+            </select>
+            <button class="btn b-blue" onclick="runFreshnessCheck()" id="btn-fresh-run" style="padding:5px 12px;font-size:0.75rem;">&#x25b6; 수동 실행</button>
+            <button class="btn b-red" onclick="stopFreshnessCheck()" id="btn-fresh-stop" style="padding:5px 12px;font-size:0.75rem;display:none;">&#x23f9; 중지</button>
+            <span id="fresh-filter-info" style="font-size:0.68rem;color:var(--dim);margin-left:auto;"></span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px;">
             <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
@@ -2501,6 +2538,79 @@
           </div>
           <div style="margin-top:8px;font-size:0.68rem;color:var(--dim);">
             * Windows 수집PC에서만 실행됩니다. 유휴 시간에 자동 실행 (5분 간격), 수집 중에는 교대 실행됩니다.
+          </div>
+        </div>
+
+        <!-- AI 상품명/태그 재생성 -->
+        <div style="margin-top:16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+            <div style="font-size:0.8rem;font-weight:600;">🤖 AI 상품명/태그 재생성 (이미지 Vision)</div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn b-blue" onclick="runAiEnrich()" id="btn-ai-enrich-run" style="padding:5px 12px;font-size:0.75rem;">▶ 실행</button>
+              <button class="btn b-red" onclick="stopAiEnrich()" id="btn-ai-enrich-stop" style="padding:5px 12px;font-size:0.75rem;display:none;">⏹ 중지</button>
+            </div>
+          </div>
+          <!-- 필터 -->
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:6px;">
+            <span style="font-size:0.72rem;color:var(--muted);">필터:</span>
+            <select id="ai-enrich-scope" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.72rem;">
+              <option value="unprocessed">미처리 상품만</option>
+              <option value="all">전체 상품</option>
+            </select>
+            <select id="ai-enrich-brand" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.72rem;">
+              <option value="ALL">브랜드 전체</option>
+              <option value="LOUIS VUITTON">LOUIS VUITTON</option>
+              <option value="GUCCI">GUCCI</option>
+              <option value="CHANEL">CHANEL</option>
+              <option value="PRADA">PRADA</option>
+              <option value="HERMES">HERMES</option>
+              <option value="CELINE">CELINE</option>
+              <option value="FENDI">FENDI</option>
+              <option value="LOEWE">LOEWE</option>
+              <option value="BALENCIAGA">BALENCIAGA</option>
+              <option value="BOTTEGA VENETA">BOTTEGA VENETA</option>
+              <option value="SAINT LAURENT">SAINT LAURENT</option>
+              <option value="BURBERRY">BURBERRY</option>
+              <option value="PORTER">PORTER</option>
+              <option value="FERRAGAMO">FERRAGAMO</option>
+              <option value="Salvatore Ferragamo">Salvatore Ferragamo</option>
+              <option value="Christian Dior">Christian Dior</option>
+            </select>
+            <select id="ai-enrich-category" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.72rem;">
+              <option value="ALL">카테고리 전체</option>
+              <option value="951001">의류</option>
+              <option value="951002">가방</option>
+              <option value="951003">신발</option>
+              <option value="951004">시계</option>
+              <option value="951005">악세서리</option>
+            </select>
+            <label style="font-size:0.72rem;color:var(--muted);" title="비워두면 해당 조건 전체 처리">수량
+              <input type="number" id="ai-enrich-limit" value="" placeholder="전체" min="0" max="100000" style="width:80px;padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.72rem;margin-left:4px;">
+            </label>
+            <span style="font-size:0.66rem;color:var(--dim);">(비워두면 전체)</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:12px;">
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+              <div style="font-size:0.68rem;color:var(--muted);">대상</div>
+              <div style="font-size:1rem;font-weight:700;" id="ai-enrich-total">-</div>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+              <div style="font-size:0.68rem;color:var(--muted);">완료</div>
+              <div style="font-size:1rem;font-weight:700;" id="ai-enrich-done">-</div>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+              <div style="font-size:0.68rem;color:var(--muted);">성공</div>
+              <div style="font-size:1rem;font-weight:700;color:var(--green);" id="ai-enrich-success">-</div>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;">
+              <div style="font-size:0.68rem;color:var(--muted);">실패</div>
+              <div style="font-size:1rem;font-weight:700;color:var(--red);" id="ai-enrich-failed">-</div>
+            </div>
+          </div>
+          <div id="ai-enrich-current" style="display:none;margin-bottom:8px;padding:8px 10px;background:rgba(79,142,247,0.08);border:1px solid rgba(79,142,247,0.3);border-radius:6px;font-size:0.75rem;color:var(--accent);"></div>
+          <div id="ai-enrich-log" style="max-height:280px;overflow-y:auto;font-size:0.72rem;font-family:monospace;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;white-space:pre-wrap;line-height:1.6;"></div>
+          <div style="margin-top:8px;font-size:0.68rem;color:var(--dim);">
+            * 상품 이미지 + 기존 상품명 → AI Vision으로 쇼핑몰용 상품명 + 대표 태그 3개 생성
           </div>
         </div>
       </div>
@@ -9114,8 +9224,27 @@ async function loadFreshnessStatus() {
 }
 
 async function runFreshnessCheck() {
+  const brandEl = document.getElementById("fresh-brand");
+  const catEl = document.getElementById("fresh-category");
+  const brand = brandEl ? brandEl.value : "ALL";
+  const category = catEl ? catEl.value : "ALL";
+  // 필터 정보 표시
+  const info = document.getElementById("fresh-filter-info");
+  if (info) {
+    const parts = [];
+    if (brand !== "ALL") parts.push(`브랜드:${brand}`);
+    if (category !== "ALL") {
+      const catNames = {"951001":"의류","951002":"가방","951003":"신발","951004":"시계","951005":"악세서리"};
+      parts.push(`카테고리:${catNames[category]||category}`);
+    }
+    info.textContent = parts.length ? `▶ ${parts.join(' · ')}` : "▶ 전체 상품";
+  }
   try {
-    const r = await fetch(PREFIX + "/api/freshness/run", {method:"POST"});
+    const r = await fetch(PREFIX + "/api/freshness/run", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({brand, category})
+    });
     const d = await r.json();
     if (d.ok) {
       _freshTimer = setInterval(loadFreshnessStatus, 5000);
@@ -9128,6 +9257,131 @@ async function stopFreshnessCheck() {
   try { await fetch(PREFIX + "/api/freshness/stop", {method:"POST"}); } catch(e) {}
   if (_freshTimer) { clearInterval(_freshTimer); _freshTimer = null; }
   loadFreshnessStatus();
+}
+
+async function toggleAutoFresh(enabled) {
+  try {
+    const r = await fetch(PREFIX + "/api/freshness/auto", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({enable: enabled})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const st = document.getElementById("auto-fresh-state");
+      if (st) {
+        st.textContent = enabled ? "ON" : "OFF";
+        st.style.color = enabled ? "var(--green)" : "var(--red)";
+      }
+    } else {
+      alert(d.message || "설정 실패");
+      document.getElementById("chk-auto-fresh").checked = !enabled;
+    }
+  } catch(e) {
+    alert("오류: " + e);
+    document.getElementById("chk-auto-fresh").checked = !enabled;
+  }
+}
+
+async function loadAutoFreshStatus() {
+  try {
+    const r = await fetch(PREFIX + "/api/freshness/auto");
+    const d = await r.json();
+    if (d.ok) {
+      const chk = document.getElementById("chk-auto-fresh");
+      const st = document.getElementById("auto-fresh-state");
+      if (chk) chk.checked = !!d.enabled;
+      if (st) {
+        st.textContent = d.enabled ? "ON" : "OFF";
+        st.style.color = d.enabled ? "var(--green)" : "var(--red)";
+      }
+    }
+  } catch(e) {}
+}
+
+// ── AI 상품명/태그 재생성 ──
+window._aiEnrichTimer = null;
+
+async function runAiEnrich() {
+  const scope = document.getElementById('ai-enrich-scope').value;
+  const brandEl = document.getElementById('ai-enrich-brand');
+  const catEl = document.getElementById('ai-enrich-category');
+  const brand = brandEl ? brandEl.value : "ALL";
+  const category = catEl ? catEl.value : "ALL";
+  const limitRaw = document.getElementById('ai-enrich-limit').value.trim();
+  const limit = limitRaw === "" ? 0 : (parseInt(limitRaw) || 0);
+  const btn = document.getElementById('btn-ai-enrich-run');
+  btn.disabled = true; btn.textContent = '시작 중...';
+  try {
+    const r = await fetch(PREFIX + "/admin/api/ai-enrich/run", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({scope, limit, brand, category})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      if (window._aiEnrichTimer) clearInterval(window._aiEnrichTimer);
+      window._aiEnrichTimer = setInterval(loadAiEnrichStatus, 2000);
+      loadAiEnrichStatus();
+    } else {
+      alert(d.message || "실행 실패");
+      btn.disabled = false; btn.textContent = "▶ 실행";
+    }
+  } catch(e) {
+    alert("오류: " + e);
+    btn.disabled = false; btn.textContent = "▶ 실행";
+  }
+}
+
+async function loadAiEnrichStatus() {
+  try {
+    const r = await fetch(PREFIX + "/admin/api/ai-enrich/status");
+    const d = await r.json();
+    if (!d.ok) return;
+    const el = id => document.getElementById(id);
+    if (el("ai-enrich-total")) el("ai-enrich-total").textContent = (d.total||0).toLocaleString();
+    if (el("ai-enrich-done")) el("ai-enrich-done").textContent = (d.done||0).toLocaleString();
+    if (el("ai-enrich-success")) el("ai-enrich-success").textContent = (d.success||0).toLocaleString();
+    if (el("ai-enrich-failed")) el("ai-enrich-failed").textContent = (d.failed||0).toLocaleString();
+    const cur = el("ai-enrich-current");
+    if (cur) {
+      if (d.current) {
+        cur.style.display = "block";
+        cur.innerHTML = `▶ 처리 중: <b>${d.current}</b>`;
+      } else {
+        cur.style.display = "none";
+      }
+    }
+    if (d.log && el("ai-enrich-log")) {
+      const lg = el("ai-enrich-log");
+      lg.textContent = d.log;
+      lg.scrollTop = lg.scrollHeight;
+    }
+    const btn = document.getElementById('btn-ai-enrich-run');
+    const stopBtn = document.getElementById('btn-ai-enrich-stop');
+    if (btn) {
+      if (d.running) {
+        btn.disabled = true;
+        btn.textContent = `실행중... (${d.done}/${d.total})`;
+        if (stopBtn) stopBtn.style.display = "";
+      } else {
+        btn.disabled = false;
+        btn.textContent = "▶ 실행";
+        if (stopBtn) stopBtn.style.display = "none";
+        if (window._aiEnrichTimer) { clearInterval(window._aiEnrichTimer); window._aiEnrichTimer = null; }
+      }
+    }
+  } catch(e) {}
+}
+
+async function stopAiEnrich() {
+  if (!confirm("AI 상품명 재생성을 중지하시겠습니까?")) return;
+  const btn = document.getElementById('btn-ai-enrich-stop');
+  if (btn) { btn.disabled = true; btn.textContent = "중지 중..."; }
+  try {
+    const r = await fetch(PREFIX + "/admin/api/ai-enrich/stop", {method:"POST"});
+    const d = await r.json();
+    if (!d.ok) alert(d.message || "중지 실패");
+  } catch(e) { alert("오류: " + e); }
+  // 상태는 다음 폴링에서 자동 갱신
 }
 
 // ── Kabinet ──

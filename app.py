@@ -2425,6 +2425,151 @@ def update_order(order_id):
         conn.close()
 
 
+# ─────────────────────────────────────────
+# AI 상품명/태그 생성 (이미지 Vision)
+# ─────────────────────────────────────────
+
+_ai_enrich_status = {"running": False, "total": 0, "done": 0, "success": 0, "failed": 0, "log": [], "current": ""}
+
+
+def _ai_enrich_log(msg):
+    ts = datetime.now().strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    _ai_enrich_status["log"].append(line)
+    if len(_ai_enrich_status["log"]) > 300:
+        _ai_enrich_status["log"] = _ai_enrich_status["log"][-200:]
+    logger.info(f"[AI enrich] {msg}")
+
+
+@app.route(f"{URL_PREFIX}/admin/api/ai-enrich/run", methods=["POST"])
+@admin_required
+def admin_ai_enrich_run():
+    """AI 상품명/태그 배치 생성 시작"""
+    if _ai_enrich_status["running"]:
+        return jsonify({"ok": False, "message": "이미 실행 중"})
+    data = request.json or {}
+    scope = data.get("scope", "unprocessed")  # unprocessed | all | ids
+    # limit: 0 또는 빈값이면 전체 (LIMIT 없음)
+    raw_limit = data.get("limit", "")
+    try:
+        limit = int(raw_limit) if raw_limit not in ("", None) else 0
+    except Exception:
+        limit = 0
+    ids = data.get("ids", [])
+    brand = (data.get("brand") or "").strip()
+    category = (data.get("category") or "").strip()
+
+    from product_db import _conn
+    conn = _conn()
+    try:
+        if scope == "ids" and ids:
+            rows = [(i,) for i in ids]
+        else:
+            where = ["source_type='vintage'"]
+            params = []
+            if scope == "unprocessed":
+                where.append("(ai_analyzed_at IS NULL OR ai_analyzed_at='')")
+            if brand and brand.upper() != "ALL":
+                where.append("(UPPER(brand)=? OR UPPER(brand_ko)=?)")
+                params.extend([brand.upper(), brand.upper()])
+            if category and category.upper() != "ALL":
+                where.append("category_id=?")
+                params.append(category)
+            sql = f"SELECT id FROM products WHERE {' AND '.join(where)} ORDER BY created_at DESC"
+            if limit > 0:
+                sql += " LIMIT ?"
+                params.append(limit)
+            rows = conn.execute(sql, params).fetchall()
+        target_ids = [r[0] if isinstance(r, tuple) else r["id"] for r in rows]
+    finally:
+        conn.close()
+
+    if not target_ids:
+        return jsonify({"ok": False, "message": "대상 상품 없음"})
+
+    def _run_batch():
+        from ai_product_enrich import enrich_product_by_id, reset_stop, is_stop_requested
+        from product_db import _conn as pdb_conn
+        import time as _t
+        reset_stop()
+        _ai_enrich_status.update({
+            "running": True, "total": len(target_ids),
+            "done": 0, "success": 0, "failed": 0, "log": [], "current": ""
+        })
+        _ai_enrich_log(f"배치 시작: {len(target_ids)}개 상품")
+        for pid in target_ids:
+            if is_stop_requested():
+                _ai_enrich_log("⏹ 중지 요청 — 배치 중단")
+                break
+            # 현재 처리 중인 상품 정보 조회 (internal_code 포함)
+            icode = f"id={pid}"
+            try:
+                c = pdb_conn()
+                try:
+                    r0 = c.execute(
+                        "SELECT brand, name, name_ko, internal_code FROM products WHERE id=?",
+                        (pid,)
+                    ).fetchone()
+                    if r0:
+                        nm = r0["name_ko"] or r0["name"] or ""
+                        icode = r0["internal_code"] or f"id={pid}"
+                        _ai_enrich_status["current"] = f"{icode} | {r0['brand']} {nm[:30]}"
+                        _ai_enrich_log(f"▶ 처리 중: {_ai_enrich_status['current']}")
+                finally:
+                    c.close()
+            except Exception:
+                pass
+
+            try:
+                r = enrich_product_by_id(pid)
+                _ai_enrich_status["done"] += 1
+                if r.get("ok"):
+                    _ai_enrich_status["success"] += 1
+                    orig = r.get("original_name", "")
+                    _ai_enrich_log(f"✅ {icode} | 원본: {orig[:40]} → 쇼핑몰명: {r.get('shop_name','')[:40]} | 태그: {','.join(r.get('tags',[]))}")
+                else:
+                    _ai_enrich_status["failed"] += 1
+                    _ai_enrich_log(f"❌ {icode} | {r.get('message','실패')}")
+            except Exception as e:
+                _ai_enrich_status["done"] += 1
+                _ai_enrich_status["failed"] += 1
+                _ai_enrich_log(f"❌ {icode} | 예외: {str(e)[:80]}")
+            _t.sleep(0.3)
+        _ai_enrich_status["current"] = ""
+        _ai_enrich_log(f"배치 완료: 성공 {_ai_enrich_status['success']} / 실패 {_ai_enrich_status['failed']}")
+        _ai_enrich_status["running"] = False
+
+    threading.Thread(target=_run_batch, daemon=True).start()
+    return jsonify({"ok": True, "total": len(target_ids)})
+
+
+@app.route(f"{URL_PREFIX}/admin/api/ai-enrich/status")
+@admin_required
+def admin_ai_enrich_status():
+    return jsonify({"ok": True, **_ai_enrich_status, "log": "\n".join(_ai_enrich_status["log"][-50:])})
+
+
+@app.route(f"{URL_PREFIX}/admin/api/ai-enrich/stop", methods=["POST"])
+@admin_required
+def admin_ai_enrich_stop():
+    """AI 상품명/태그 배치 중지"""
+    from ai_product_enrich import request_stop
+    request_stop()
+    return jsonify({"ok": True, "message": "중지 요청 전송됨"})
+
+
+@app.route(f"{URL_PREFIX}/admin/api/ai-enrich/single/<int:product_id>", methods=["POST"])
+@admin_required
+def admin_ai_enrich_single(product_id):
+    """단일 상품 AI 재생성"""
+    from ai_product_enrich import enrich_product_by_id
+    try:
+        r = enrich_product_by_id(product_id)
+        return jsonify(r)
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)})
+
+
 @app.route(f"{URL_PREFIX}/shop/api/ai-analyze", methods=["POST"])
 def shop_ai_analyze():
     """AI 상품 분석 (관리자/B2B만)"""
@@ -2438,6 +2583,9 @@ def shop_ai_analyze():
     desc = data.get("description", "")
     condition = data.get("condition", "")
     price_jpy = data.get("price_jpy", 0)
+    shop_name = data.get("shop_name", "")
+    ai_tags = data.get("ai_tags", [])
+    product_code = data.get("product_code", "")
     try:
         from post_generator import get_ai_config, _call_gemini, _call_claude, _call_openai
         config = get_ai_config()
@@ -2445,13 +2593,28 @@ def shop_ai_analyze():
         if provider == "none":
             return jsonify({"ok": False, "message": "AI가 설정되지 않았습니다"})
 
+        # ai_tags가 문자열(JSON)이면 파싱
+        if isinstance(ai_tags, str) and ai_tags:
+            try:
+                import json as _json
+                ai_tags = _json.loads(ai_tags)
+            except Exception:
+                ai_tags = []
+
+        # 태그 정보 섹션 (있을 때만)
+        tag_section = ""
+        if ai_tags and isinstance(ai_tags, list):
+            tag_section = f"\n- 대표 검색 키워드: {', '.join(ai_tags)}"
+        if shop_name:
+            tag_section += f"\n- 쇼핑몰 상품명: {shop_name}"
+
         grade_labels = {"NS":"신품/미사용","S":"최상급","A":"양호","B":"사용감 있음","C":"사용감 많음","D":"난있음"}
         prompt = f"""당신은 국내 명품 가격 비교 전문 분석가입니다.
 아래 상품의 국내 판매 시세를 분석해주세요.
 
 [상품 정보]
 - 브랜드: {brand}
-- 상품명: {name}
+- 상품명: {name}{tag_section}
 - 상태: {grade_labels.get(condition, condition)}
 - 상품 설명: {desc[:500] if desc else '없음'}
 
@@ -3084,6 +3247,8 @@ def shop_api_products():
                 "description": desc,
                 "detail_images": detail_imgs[:12],
                 "sold_out": (r["product_status"] == "sold_out") if "product_status" in r.keys() and r["product_status"] else False,
+                "shop_name": r["shop_name"] if "shop_name" in r.keys() and r["shop_name"] else "",
+                "ai_tags": r["ai_tags"] if "ai_tags" in r.keys() and r["ai_tags"] else "",
             })
 
         return jsonify({
@@ -5283,6 +5448,32 @@ def keyword_config_save():
     return jsonify({"ok": True})
 
 
+@app.route(f"{URL_PREFIX}/shop/api/keyword-stats", methods=["POST"])
+def shop_keyword_stats():
+    """쇼핑몰 — 상품 태그 기반 키워드 검색량 조회 (누구나 가능)"""
+    data = request.get_json() or {}
+    tags = data.get("tags", [])
+    if isinstance(tags, str):
+        try:
+            import json as _json
+            tags = _json.loads(tags)
+        except Exception:
+            tags = [tags]
+    # 최대 3개 태그
+    tags = [t for t in (tags or []) if t and isinstance(t, str)][:3]
+    if not tags:
+        return jsonify({"ok": False, "message": "태그가 없습니다"})
+    try:
+        from naver_keyword import get_keyword_stats, load_api_keys
+        load_api_keys()
+        results = get_keyword_stats(tags)
+        return jsonify({"ok": True, "results": results, "tags": tags})
+    except ValueError as e:
+        return jsonify({"ok": False, "message": str(e)})
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"조회 실패: {e}"})
+
+
 @app.route(f"{URL_PREFIX}/api/keyword/search", methods=["POST"])
 @admin_required
 def keyword_search():
@@ -5312,6 +5503,9 @@ _freshness_status = {
     "last_result": {},
 }
 
+_auto_freshness_enabled = {"enabled": True}
+
+
 def _freshness_log(msg):
     ts = datetime.now().strftime("%H:%M:%S")
     _freshness_status["log"].append(f"[{ts}] {msg}")
@@ -5326,13 +5520,20 @@ def _idle_product_check():
     if platform.system() != "Windows":
         return
 
+    # 자동 최신화 OFF 상태면 건너뛰기 (스케줄러 제거 실패해도 안전장치)
+    if not _auto_freshness_enabled.get("enabled", True):
+        return
+
     # 이미 실행 중이면 스킵
     if _freshness_status["running"]:
         return
-    # 수집 작업 진행 중이면 스킵 (교대 실행은 수집 함수 내에서 처리)
+    # 수집 작업 진행 중이면 스킵
     if status.get("scraping"):
         return
     if _db_update_status.get("running"):
+        return
+    # AI enrich 실행 중이면 스킵 (DB 락 충돌 방지)
+    if _ai_enrich_status.get("running"):
         return
 
     # 유휴 시간 → 최신화 체크 실행
@@ -5340,25 +5541,36 @@ def _idle_product_check():
     t.start()
 
 
-def _run_freshness_check(mode="idle"):
+def _run_freshness_check(mode="idle", brand="", category=""):
     """상품 최신화 체크 실행 (백그라운드)
 
     mode="idle": 유휴 시간 — 계속 300개씩 체크 (다른 작업 시작되면 중단)
     mode="interleaved": 교대 실행 — 1배치(300개)만 체크 후 반환
+    brand/category: 필터링 (비어있거나 ALL이면 전체)
     """
     import time
     from product_checker import run_check_batch, get_check_stats, checker_status, CHUNK_SIZE
 
     _freshness_status["running"] = True
     _freshness_status["mode"] = mode
+    _freshness_status["brand"] = brand or ""
+    _freshness_status["category"] = category or ""
     checker_status["stop_requested"] = False
+
+    filter_info = ""
+    if (brand and brand.upper() != "ALL") or (category and category.upper() != "ALL"):
+        parts = []
+        if brand and brand.upper() != "ALL":
+            parts.append(f"브랜드={brand}")
+        if category and category.upper() != "ALL":
+            parts.append(f"카테고리={category}")
+        filter_info = f" [{', '.join(parts)}]"
 
     try:
         if mode == "idle":
-            _freshness_log("유휴 시간 최신화 시작")
+            _freshness_log(f"최신화 시작{filter_info} (오래된 상품 우선)")
             batch_count = 0
             while True:
-                # 다른 작업이 시작되면 즉시 중단
                 if status.get("scraping") or _db_update_status.get("running"):
                     _freshness_log("수집 작업 감지 — 최신화 일시 중단")
                     break
@@ -5366,16 +5578,14 @@ def _run_freshness_check(mode="idle"):
                     _freshness_log("중지 요청 — 최신화 중단")
                     break
 
-                result = run_check_batch(CHUNK_SIZE, _freshness_log)
+                result = run_check_batch(CHUNK_SIZE, _freshness_log, brand=brand, category=category)
                 if result["checked"] == 0 and result["sold_out"] == 0:
-                    _freshness_log("체크할 상품 없음 — 전체 최신화 완료")
+                    _freshness_log(f"체크할 상품 없음 — 최신화 완료{filter_info}")
                     break
 
                 batch_count += 1
-                total = result["checked"] + result["sold_out"]
                 _freshness_log(f"배치 #{batch_count} 완료: 체크 {result['checked']}, 품절 {result['sold_out']}, 가격변동 {result['price_changed']}")
 
-                # 배치 간 대기 (30초)
                 _freshness_log("30초 대기...")
                 for _ in range(30):
                     if status.get("scraping") or _db_update_status.get("running"):
@@ -5385,8 +5595,8 @@ def _run_freshness_check(mode="idle"):
                     time.sleep(1)
 
         elif mode == "interleaved":
-            _freshness_log("교대 실행: 체크 300개 시작")
-            result = run_check_batch(CHUNK_SIZE, _freshness_log)
+            _freshness_log(f"교대 실행: 체크 300개 시작{filter_info}")
+            result = run_check_batch(CHUNK_SIZE, _freshness_log, brand=brand, category=category)
             _freshness_log(f"교대 체크 완료: 체크 {result['checked']}, 품절 {result['sold_out']}, 가격변동 {result['price_changed']}")
             _freshness_status["last_result"] = result
 
@@ -5429,14 +5639,19 @@ def freshness_status_api():
 @app.route(f"{URL_PREFIX}/api/freshness/run", methods=["POST"])
 @admin_required
 def freshness_run_api():
-    """최신화 체크 수동 실행"""
+    """최신화 체크 수동 실행 (brand, category 필터 옵션)"""
     if _freshness_status["running"]:
         return jsonify({"ok": False, "message": "이미 실행 중입니다"})
     if status.get("scraping"):
         return jsonify({"ok": False, "message": "수집 작업 진행 중 — 수집 완료 후 자동 실행됩니다"})
-    t = threading.Thread(target=_run_freshness_check, args=("idle",), daemon=True)
+    data = request.json or {}
+    brand = (data.get("brand") or "").strip()
+    category = (data.get("category") or "").strip()
+    t = threading.Thread(target=_run_freshness_check,
+                         kwargs={"mode": "idle", "brand": brand, "category": category},
+                         daemon=True)
     t.start()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "brand": brand, "category": category})
 
 
 @app.route(f"{URL_PREFIX}/api/freshness/stop", methods=["POST"])
@@ -5457,6 +5672,54 @@ def _check_menu_access(menu_name):
             return redirect(f"{URL_PREFIX}/admin/{menus[0]}")
         return redirect(f"{URL_PREFIX}/login")
     return None
+
+
+@app.route(f"{URL_PREFIX}/api/freshness/auto", methods=["GET", "POST"])
+@admin_required
+def freshness_auto_toggle():
+    """자동 최신화 ON/OFF 스케줄러 제어"""
+    if request.method == "POST":
+        data = request.json or {}
+        enable = bool(data.get("enable"))
+        _auto_freshness_enabled["enabled"] = enable
+        try:
+            if enable:
+                try:
+                    scheduler.remove_job("idle_product_check")
+                except Exception:
+                    pass
+                scheduler.add_job(
+                    func=_idle_product_check,
+                    trigger="interval", minutes=5,
+                    id="idle_product_check", replace_existing=True,
+                    name="유휴 시간 상품 최신화 (5분 간격)",
+                )
+                msg = "자동 최신화 활성화됨 (5분 간격)"
+            else:
+                try:
+                    from product_checker import checker_status
+                    checker_status["stop_requested"] = True
+                except Exception:
+                    pass
+                try:
+                    scheduler.remove_job("idle_product_check")
+                except Exception:
+                    pass
+                msg = "자동 최신화 비활성화됨"
+            logger.info(msg)
+            return jsonify({"ok": True, "enabled": enable, "message": msg})
+        except Exception as e:
+            return jsonify({"ok": False, "message": str(e)})
+    # GET
+    job_exists = False
+    try:
+        job_exists = scheduler.get_job("idle_product_check") is not None
+    except Exception:
+        pass
+    return jsonify({
+        "ok": True,
+        "enabled": _auto_freshness_enabled["enabled"] and job_exists,
+    })
 
 
 # ── To Do List ─────────────────────

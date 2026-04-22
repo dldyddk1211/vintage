@@ -79,6 +79,9 @@ def init_db():
             ("internal_code", "''"),
             ("product_status", "'available'"),
             ("checked_at", "''"),
+            ("shop_name", "''"),
+            ("ai_tags", "''"),
+            ("ai_analyzed_at", "''"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE products ADD COLUMN {col} TEXT DEFAULT {default}")

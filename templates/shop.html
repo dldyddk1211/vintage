@@ -1077,6 +1077,9 @@
         </div>
         <div id="cost-breakdown-panel" style="display:none;margin-bottom:6px;padding:12px;background:var(--bg);border:1px solid var(--accent);border-radius:10px;font-size:0.8rem;"></div>
         <div class="modal-detail-table" id="modal-detail-table"></div>
+        <!-- AI 태그 영역 -->
+        <div id="modal-ai-tags" style="display:none;margin-top:10px;"></div>
+        <div id="modal-keyword-stats" style="display:none;margin-top:8px;"></div>
         <div class="modal-desc" id="modal-desc"></div>
         {% if is_admin %}<a class="modal-link" id="modal-link" href="#" target="_blank">상품 상세보기</a>{% endif %}
       </div>
@@ -1643,7 +1646,9 @@ function openModal(idx) {
   document.getElementById("modal-prev").style.display = idx > 0 ? "" : "none";
   document.getElementById("modal-next").style.display = idx < allProducts.length - 1 ? "" : "none";
   document.getElementById("modal-brand").textContent = p.brand;
-  document.getElementById("modal-name").textContent = transJa(p.name);
+  // AI 쇼핑몰 상품명 우선, 없으면 원본
+  const displayName = p.shop_name && p.shop_name.trim() ? p.shop_name : transJa(p.name);
+  document.getElementById("modal-name").textContent = displayName;
   document.getElementById("modal-price").innerHTML = renderModalPrice(p);
   // 메인 이미지 + 썸네일: detail_images 기반, 없으면 img_url 폴백
   const detailImgs = (p.detail_images && p.detail_images.length) ? p.detail_images : [];
@@ -1679,6 +1684,31 @@ function openModal(idx) {
     ).join("") + "</table>";
   }
   document.getElementById("modal-detail-table").innerHTML = tableHtml;
+
+  // AI 태그 렌더링
+  const tagEl = document.getElementById("modal-ai-tags");
+  const statsEl = document.getElementById("modal-keyword-stats");
+  if (statsEl) { statsEl.style.display = "none"; statsEl.innerHTML = ""; }
+  let tags = p.ai_tags || [];
+  if (typeof tags === "string") {
+    try { tags = JSON.parse(tags); } catch(e) { tags = []; }
+  }
+  if (Array.isArray(tags) && tags.length > 0) {
+    const tagChips = tags.map(t =>
+      `<span style="display:inline-block;padding:4px 10px;margin:0 4px 4px 0;background:rgba(212,165,74,0.12);color:var(--accent);border:1px solid rgba(212,165,74,0.3);border-radius:14px;font-size:0.72rem;">#${t}</span>`
+    ).join("");
+    tagEl.innerHTML = `
+      <div style="font-size:0.7rem;color:var(--muted);margin-bottom:6px;">대표 태그</div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;">
+        ${tagChips}
+        <button onclick='loadKeywordStats(${JSON.stringify(tags).replace(/'/g,"&#39;")})' style="margin-left:6px;padding:4px 10px;border:1px solid var(--border);background:var(--bg);color:var(--muted);border-radius:14px;font-size:0.68rem;cursor:pointer;">🔍 네이버 검색량</button>
+      </div>
+    `;
+    tagEl.style.display = "";
+  } else {
+    tagEl.style.display = "none";
+    tagEl.innerHTML = "";
+  }
 
   // 상품 설명
   const desc = transJa(p.description || "");
@@ -2020,6 +2050,57 @@ function inquiryProduct() {
   window.open(KAKAO_CHAT_URL, "_blank");
 }
 
+async function loadKeywordStats(tags) {
+  const el = document.getElementById("modal-keyword-stats");
+  if (!el) return;
+  el.style.display = "block";
+  el.innerHTML = `<div style="font-size:0.72rem;color:var(--muted);padding:10px;">검색량 조회 중...</div>`;
+  try {
+    const r = await fetch(PREFIX + "/shop/api/keyword-stats", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({tags})
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      el.innerHTML = `<div style="font-size:0.72rem;color:var(--red);padding:10px;">⚠️ ${d.message || "조회 실패"}</div>`;
+      return;
+    }
+    const results = d.results || [];
+    if (!results.length) {
+      el.innerHTML = `<div style="font-size:0.72rem;color:var(--muted);padding:10px;">데이터 없음</div>`;
+      return;
+    }
+    const html = `
+      <div style="font-size:0.7rem;color:var(--muted);margin-bottom:6px;">📊 네이버 월 검색량</div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.72rem;background:rgba(212,165,74,0.04);border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+        <thead><tr style="background:rgba(0,0,0,0.2);">
+          <th style="padding:6px 8px;text-align:left;color:var(--muted);">키워드</th>
+          <th style="padding:6px 8px;text-align:right;color:var(--muted);">PC</th>
+          <th style="padding:6px 8px;text-align:right;color:var(--muted);">모바일</th>
+          <th style="padding:6px 8px;text-align:right;color:var(--accent);">합계</th>
+          <th style="padding:6px 8px;text-align:center;color:var(--muted);">경쟁</th>
+        </tr></thead>
+        <tbody>
+        ${results.map(r => `
+          <tr style="border-top:1px solid var(--border);">
+            <td style="padding:6px 8px;color:var(--text);">#${r.keyword || '-'}</td>
+            <td style="padding:6px 8px;text-align:right;">${(r.monthlyPcQcCnt||0).toLocaleString()}</td>
+            <td style="padding:6px 8px;text-align:right;">${(r.monthlyMobileQcCnt||0).toLocaleString()}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--accent);">${(r.total||0).toLocaleString()}</td>
+            <td style="padding:6px 8px;text-align:center;">${r.competition || '-'}</td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table>
+    `;
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:0.72rem;color:var(--red);padding:10px;">조회 오류: ${e}</div>`;
+  }
+}
+
 async function aiAnalyze() {
   if (!IS_ADMIN && USER_LEVEL !== "b2b") {
     alert("B2B 사업자 회원 전용 기능입니다.\n\n사업자 회원 등록은 관리자에게 문의해주세요.");
@@ -2032,9 +2113,20 @@ async function aiAnalyze() {
   const name = transJa(p.name);
   const desc = p.description || "";
   try {
+    // AI 태그 추출
+    let tags = p.ai_tags || [];
+    if (typeof tags === "string") {
+      try { tags = JSON.parse(tags); } catch(e) { tags = []; }
+    }
     const res = await fetch(PREFIX + "/shop/api/ai-analyze", {
       method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({brand: p.brand, name: name, description: desc, condition: p.condition_grade, price_jpy: p.price_jpy})
+      body: JSON.stringify({
+        brand: p.brand, name: name, description: desc,
+        condition: p.condition_grade, price_jpy: p.price_jpy,
+        shop_name: p.shop_name || "",
+        ai_tags: tags,
+        product_code: p.product_code || ""
+      })
     });
     const d = await res.json();
     if (d.ok && d.analysis) {
