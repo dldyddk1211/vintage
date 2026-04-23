@@ -7278,13 +7278,29 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                     info["price"] = best_price or 0           # 최대혜택가 (바이마 판매가 기준)
                     info["original_price"] = original_price or 0  # 정가
 
-                    # ── 브랜드 추출 ──
+                    # ── 브랜드 추출 (다중 방법) ──
                     try:
                         be = page.locator('a[href*="/brands/"]').first
                         if be.count() > 0:
                             info["brand"] = be.text_content().strip()
                     except Exception:
                         pass
+                    # 폴백: URL에서 브랜드 추출
+                    if not info["brand"]:
+                        try:
+                            bm = re_mod.search(r'/brand/([^/?]+)', product_url)
+                            if bm:
+                                info["brand"] = bm.group(1).replace('+', ' ')
+                        except Exception:
+                            pass
+                    # 폴백: 페이지 상단 브랜드명
+                    if not info["brand"]:
+                        try:
+                            brand_el = page.locator('[class*="BrandName"], [class*="brand-name"]').first
+                            if brand_el.count() > 0:
+                                info["brand"] = brand_el.text_content().strip()
+                        except Exception:
+                            pass
 
                     # ── 품번 추출 ──
                     try:
@@ -7410,7 +7426,7 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                             color_str = ", ".join(colors) if colors else ""
                             size_str = ", ".join(sizes) if sizes else ""
 
-                            title_prompt = f"BUYMAの出品タイトルを60文字以内で作成。ブランド名を先頭に。韓国限定アピール含む。タイトルのみ出力。\nブランド: {brand}\n商品名: {name_kr}\nカラー: {color_str}\nサイズ: {size_str}"
+                            title_prompt = f"BUYMAの出品タイトルを60文字以内で作成。ブランド名を先頭に入れる。韓国限定アピール含む。タイトルのみ出力。\n【重要】ブランド名は必ず「{brand}」を使用してください。他のブランド名に変えないでください。\nブランド: {brand}\n商品名(韓国語): {name_kr}\nカラー: {color_str}\nサイズ: {size_str}"
                             title_ja = _try_ai(title_prompt)
 
                             if title_ja:
