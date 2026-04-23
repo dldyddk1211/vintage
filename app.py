@@ -6586,6 +6586,7 @@ def kabinet_ai_generate():
     colors = data.get("colors", "")
     sizes = data.get("sizes", "")
     keywords = data.get("keywords", "").strip()
+    current_text = data.get("current_text", "").strip()
 
     try:
         from post_generator import get_ai_config, _call_gemini, _call_claude, _call_openai
@@ -6605,10 +6606,14 @@ def kabinet_ai_generate():
 - カラー: {colors or '不明'}
 - サイズ: {sizes or '不明'}
 {f"""
-【ユーザーからの追加指示】
-以下はユーザーからの指示です。キーワードではなく「指示」として理解し、その通りに対応してください。
-指示内容そのものをタイトルに入れるのではなく、指示に従ってタイトルを作成してください。
-例: 「ブランド名削除」→タイトルからブランド名を消す、「夏コーデ追加」→夏コーデというキーワードを入れる
+【現在のタイトル】
+{current_text}
+""" if current_text and keywords else ''}
+{f"""
+【ユーザーからの修正指示】
+上記の現在のタイトルに対して、以下の指示に従って修正してください。
+指示内容そのものをタイトルに入れるのではなく、指示の意味を理解して修正してください。
+例: 「韓国語削除」→韓国語の文字を全て日本語に置き換える、「ブランド名削除」→ブランド名を消す
 ユーザー指示: {keywords}
 """ if keywords else ''}
 [タイトル作成ルール]
@@ -6646,8 +6651,14 @@ def kabinet_ai_generate():
 - カラー: {colors or '不明'}
 - サイズ: {sizes or '不明'}
 {f"""
-【ユーザーからの追加指示】
-以下はユーザーからの指示です。指示内容そのものを説明文に入れるのではなく、指示に従って説明文を作成してください。
+【現在の説明文】
+{current_text}
+""" if current_text and keywords else ''}
+{f"""
+【ユーザーからの修正指示】
+上記の現在の説明文に対して、以下の指示に従って修正してください。
+指示の意味を理解して修正してください。
+例: 「韓国語削除」→韓国語を全て日本語に変換、「もっと短く」→文章を短くする
 ユーザー指示: {keywords}
 """ if keywords else ''}
 [ルール]

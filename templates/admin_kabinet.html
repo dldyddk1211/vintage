@@ -958,9 +958,10 @@ async function generateAiTitle() {
   const p = _kvProducts[_kvModalIdx]; if (!p) return;
   const btn = document.getElementById("btn-ai-title");
   const kw = document.getElementById("kv-modal-title-kw").value.trim();
+  const currentText = document.getElementById("kv-modal-title-ja").value.trim();
   btn.disabled=true; btn.textContent="생성중...";
   try {
-    const r = await fetch(PREFIX+"/api/kabinet/ai-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"title",brand:p.brand,name:p.name,colors:p.color||'',sizes:(p.sizes||[]).join(','),keywords:kw})});
+    const r = await fetch(PREFIX+"/api/kabinet/ai-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"title",brand:p.brand,name:p.name,colors:p.color||'',sizes:(p.sizes||[]).join(','),keywords:kw,current_text:currentText})});
     const d = await r.json();
     if (d.ok) {
       document.getElementById("kv-modal-title-ja").value = d.text;
@@ -974,10 +975,11 @@ async function generateAiDesc() {
   const p = _kvProducts[_kvModalIdx]; if (!p) return;
   const btn = document.getElementById("btn-ai-desc");
   const kw = document.getElementById("kv-modal-desc-kw").value.trim();
+  const currentText = document.getElementById("kv-modal-desc-ja").value.trim();
+  const title = document.getElementById("kv-modal-title-ja").value || p.name;
   btn.disabled=true; btn.textContent="생성중...";
   try {
-    const title = document.getElementById("kv-modal-title-ja").value || p.name;
-    const r = await fetch(PREFIX+"/api/kabinet/ai-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"description",brand:p.brand,name:title,colors:p.color||'',sizes:(p.sizes||[]).join(','),keywords:kw})});
+    const r = await fetch(PREFIX+"/api/kabinet/ai-generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"description",brand:p.brand,name:title,colors:p.color||'',sizes:(p.sizes||[]).join(','),keywords:kw,current_text:currentText})});
     const d = await r.json();
     if (d.ok) {
       document.getElementById("kv-modal-desc-ja").value = d.text;
