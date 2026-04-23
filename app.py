@@ -6374,7 +6374,7 @@ def _load_musinsa_config() -> dict:
         "shipping_area": "2002003",   # 発送エリア (한국)
         "shipping_city": "001",       # 発送都市 (서울)
         "purchase_deadline": 10,      # 구매기한 (일)
-        "tariff_included": 0,         # 関税込み (0=なし, 1=込み)
+        "tariff_included": 1,         # 関税込み (0=なし, 1=込み)
         "tags": "",                   # タグ ID (언더스코어 구분)
         "quantity": 100,              # 買付可数量
         "control": "下書き",           # コントロール (下書き/公開)
