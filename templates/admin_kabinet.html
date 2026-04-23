@@ -136,9 +136,31 @@
 <div class="page-section" id="page-kv-margin">
   <div class="panel"><div class="panel-title"><span>💰 마진 / 가격 설정</span></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">
-      <div>
-        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">마진율 (%)</label>
-        <input id="cfg-margin" type="number" step="0.1" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);">
+      <div style="grid-column:1/-1;">
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">마진율 유형</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="cfg-margin-type" onchange="onMarginTypeChange()" style="padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.82rem;">
+            <option value="1">유형1</option>
+            <option value="2">유형2</option>
+            <option value="3">유형3</option>
+          </select>
+          <span style="font-size:0.78rem;color:var(--accent);font-weight:700;" id="cfg-margin-display">30%</span>
+          <input id="cfg-margin" type="hidden">
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
+          <div>
+            <label style="font-size:0.68rem;color:var(--muted);display:block;margin-bottom:2px;">유형1 (%)</label>
+            <input id="cfg-margin-1" type="number" step="0.1" value="30" onchange="onMarginInputChange()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:0.82rem;text-align:center;">
+          </div>
+          <div>
+            <label style="font-size:0.68rem;color:var(--muted);display:block;margin-bottom:2px;">유형2 (%)</label>
+            <input id="cfg-margin-2" type="number" step="0.1" value="40" onchange="onMarginInputChange()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:0.82rem;text-align:center;">
+          </div>
+          <div>
+            <label style="font-size:0.68rem;color:var(--muted);display:block;margin-bottom:2px;">유형3 (%)</label>
+            <input id="cfg-margin-3" type="number" step="0.1" value="50" onchange="onMarginInputChange()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:0.82rem;text-align:center;">
+          </div>
+        </div>
       </div>
       <div>
         <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:4px;">엔화 환율 (1엔 = ?원)</label>
@@ -547,6 +569,12 @@ async function loadConfig() {
     const d = await r.json();
     if (d.ok && d.config) {
       const c = d.config;
+      // 마진 유형 로드
+      document.getElementById("cfg-margin-1").value = c.margin_type1 || 30;
+      document.getElementById("cfg-margin-2").value = c.margin_type2 || 40;
+      document.getElementById("cfg-margin-3").value = c.margin_type3 || 50;
+      document.getElementById("cfg-margin-type").value = c.margin_selected || "1";
+      onMarginTypeChange();
       document.getElementById("cfg-margin").value = c.margin_pct || 30;
       document.getElementById("cfg-rate").value = c.jpy_to_krw_rate || 9.26;
       document.getElementById("cfg-shipping").value = c.shipping_jpy || 800;
@@ -573,6 +601,10 @@ async function loadConfig() {
 async function saveConfig() {
   const cfg = {
     margin_pct: parseFloat(document.getElementById("cfg-margin").value),
+    margin_type1: parseFloat(document.getElementById("cfg-margin-1").value),
+    margin_type2: parseFloat(document.getElementById("cfg-margin-2").value),
+    margin_type3: parseFloat(document.getElementById("cfg-margin-3").value),
+    margin_selected: document.getElementById("cfg-margin-type").value,
     jpy_to_krw_rate: parseFloat(document.getElementById("cfg-rate").value),
     shipping_jpy: parseInt(document.getElementById("cfg-shipping").value),
     buyma_fee_pct: parseFloat(document.getElementById("cfg-fee").value),
@@ -588,6 +620,17 @@ async function saveConfig() {
   const d = await r.json();
   if (d.ok) alert("설정이 저장되었습니다");
   else alert("저장 실패");
+}
+
+function onMarginTypeChange() {
+  const type = document.getElementById("cfg-margin-type").value;
+  const val = parseFloat(document.getElementById("cfg-margin-" + type).value) || 30;
+  document.getElementById("cfg-margin").value = val;
+  document.getElementById("cfg-margin-display").textContent = val + "%";
+  simulate();
+}
+function onMarginInputChange() {
+  onMarginTypeChange();
 }
 
 function simulate() {

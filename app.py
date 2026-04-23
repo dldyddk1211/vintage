@@ -6503,13 +6503,14 @@ def kabinet_config_set():
     """무신사→바이마 마진 설정 저장"""
     data = request.get_json() or {}
     cfg = _load_musinsa_config()
-    for key in ["margin_pct", "jpy_to_krw_rate", "shipping_jpy", "buyma_fee_pct",
+    for key in ["margin_pct", "margin_type1", "margin_type2", "margin_type3", "margin_selected",
+                "jpy_to_krw_rate", "shipping_jpy", "buyma_fee_pct",
                 "category_id", "brand_id", "shipping_method", "buying_area", "buying_city",
                 "shipping_area", "shipping_city", "purchase_deadline", "tariff_included",
                 "tags", "quantity", "control", "comment_template", "max_items"]:
         if key in data:
             val = data[key]
-            if key in ("margin_pct", "jpy_to_krw_rate", "buyma_fee_pct"):
+            if key in ("margin_pct", "margin_type1", "margin_type2", "margin_type3", "jpy_to_krw_rate", "buyma_fee_pct"):
                 val = float(val)
             elif key in ("shipping_jpy", "purchase_deadline", "tariff_included", "quantity", "max_items"):
                 val = int(val)
