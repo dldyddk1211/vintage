@@ -783,15 +783,17 @@ function searchCsvList(type, q) {
 function renderCsvDD(type, items) {
   const dd = document.getElementById(`csv-${type}-dd`);
   if (!items.length) { dd.style.display='none'; return; }
-  dd.innerHTML = items.map(x => {
+  let html = `<div onclick="selectCsvItem('${type}','','선택안함')" style="padding:6px 10px;font-size:0.72rem;cursor:pointer;border-bottom:1px solid var(--border);color:var(--muted);" onmouseover="this.style.background='rgba(212,165,74,0.1)'" onmouseout="this.style.background=''">✕ 선택안함</div>`;
+  html += items.map(x => {
     const label = type==='category' ? `${x.path} > ${x.name}` : x.name;
     return `<div onclick="selectCsvItem('${type}',${x.id},'${label.replace(/'/g,"\\'")}')" style="padding:6px 10px;font-size:0.72rem;cursor:pointer;border-bottom:1px solid var(--border);" onmouseover="this.style.background='rgba(212,165,74,0.1)'" onmouseout="this.style.background=''"><span style="color:var(--dim);font-size:0.62rem;">[${x.id}]</span> ${label}</div>`;
   }).join('');
+  dd.innerHTML = html;
   dd.style.display='block';
 }
 function selectCsvItem(type, id, label) {
   document.getElementById(`csv-${type}`).value = '';
-  document.getElementById(`csv-${type}-val`).innerHTML = `✅ [${id}] ${label}`;
+  document.getElementById(`csv-${type}-val`).innerHTML = id ? `✅ [${id}] ${label}` : '<span style="color:var(--dim);">선택안함</span>';
   document.getElementById(`csv-${type}-dd`).style.display = 'none';
   if (type==='brand') _csvBrandId = id;
   else _csvCategoryId = id;
