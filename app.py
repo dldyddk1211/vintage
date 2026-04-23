@@ -6595,7 +6595,7 @@ def kabinet_ai_generate():
 
         src_title = f"{brand} {name}".strip()
         if gen_type == "title":
-            prompt = f"""BUYMAの出品タイトルを60文字以内で作成。タイトルのみ出力（説明不要）。
+            prompt = f"""BUYMAの出品タイトルを半角56文字以内で作成。全て日本語で作成（韓国語は一切使わない）。タイトルのみ出力（説明不要）。
 
 【収集元の商品情報】
 - 収集元タイトル: {src_title}
@@ -6620,7 +6620,7 @@ def kabinet_ai_generate():
 - 「関税なし」「関税免除」は絶対に書かない
 - ブランド名を他のブランドに変えない"""
         else:
-            prompt = f"""BUYMAの「色サイズ補足」欄に入る商品説明文を2000文字（半角基準）以内で作成。説明文のみ出力（前置き不要）。
+            prompt = f"""BUYMAの「色サイズ補足」欄に入る商品説明文を2000文字（半角基準）以内で作成。全て日本語で作成（韓国語は一切使わない）。説明文のみ出力（前置き不要）。
 
 【重要】ブランド名は必ず「{brand}」を使用してください。
 
@@ -7435,7 +7435,7 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                             size_str = ", ".join(sizes) if sizes else ""
 
                             src_title = f"{brand} {name_kr}".strip()
-                            title_prompt = f"""BUYMAの出品タイトルを60文字以内で作成。タイトルのみ出力（説明不要）。
+                            title_prompt = f"""BUYMAの出品タイトルを半角56文字以内で作成。全て日本語で作成（韓国語は一切使わない）。タイトルのみ出力（説明不要）。
 
 【収集元の商品情報】
 - 収集元タイトル: {src_title}
@@ -7457,7 +7457,7 @@ def _run_musinsa_scrape(keyword, max_items=50, search_mode="keyword", url=""):
                             title_ja = _try_ai(title_prompt)
 
                             if title_ja:
-                                desc_prompt = f"""BUYMAの「色サイズ補足」欄に入る商品説明文を2000文字(半角)以内で作成してください。
+                                desc_prompt = f"""BUYMAの「色サイズ補足」欄に入る商品説明文を2000文字(半角)以内で作成。全て日本語で作成（韓国語は一切使わない）。
 説明文のみ出力してください（前置き不要）。
 
 【重要ルール】
