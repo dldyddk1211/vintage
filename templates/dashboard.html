@@ -4372,6 +4372,14 @@ function startTaskAutoRefresh() {
   }, 5000);
 }
 
+function _taskLogWrite(msg, color) {
+  const el = document.getElementById("task-log");
+  if (!el) return;
+  const ts = new Date().toLocaleTimeString();
+  el.innerHTML += `<div style="color:${color||'var(--muted)'}">[${ts}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
 async function runTestScrape() {
   const btn = document.getElementById("btn-test-task");
   const site = document.getElementById("task-site").value;
@@ -4381,7 +4389,7 @@ async function runTestScrape() {
   const brandName = brandNames[brand] || brand || "전체";
 
   btn.disabled = true; btn.textContent = "테스트 중...";
-  addLog(`\uD83E\uDDEA 테스트 수집 시작: ${catName} / ${brandName} (1개)`, "info");
+  _taskLogWrite(`\uD83E\uDDEA 테스트 수집 시작: ${catName} / ${brandName} (1개)`, "var(--accent)");
   startTaskLog();
 
   try {
@@ -4389,12 +4397,16 @@ async function runTestScrape() {
     const res = await fetch(PREFIX + "/scrape?" + params, {method: "POST"});
     const d = await res.json();
     if (d.ok) {
-      addLog(`\u2705 테스트 완료: ${d.count}개 수집`, "ok");
+      _taskLogWrite(`\u2705 테스트 완료: ${d.count}개 수집`, "var(--green)");
     } else {
-      addLog(`\u274C 테스트 실패: ${d.message||''}`, "err");
+      const reason = d.message || "알 수 없는 오류";
+      _taskLogWrite(`\u274C 테스트 실패: ${reason}`, "var(--red)");
+      if (reason.includes("진행 중")) {
+        alert("현재 다른 수집 작업이 진행 중입니다.\n테스트는 모든 수집이 끝난 후 실행해 주세요.\n(⏹ 전체 멈춤 후 재시도 가능)");
+      }
     }
   } catch(e) {
-    addLog(`\u274C 테스트 오류: ${e}`, "err");
+    _taskLogWrite(`\u274C 테스트 오류: ${e}`, "var(--red)");
   }
   btn.disabled = false; btn.textContent = "\uD83E\uDDEA 테스트";
 }
