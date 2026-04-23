@@ -190,10 +190,65 @@
 
 <!-- 나머지 페이지는 준비 중 표시 -->
 <div class="page-section" id="page-scrape-tasks">
+  <!-- 작업 추가 -->
   <div class="panel">
-    <div class="panel-title"><span>📋 수집 작업리스트</span></div>
-    <iframe id="scrape-iframe" style="width:100%;border:none;border-radius:8px;min-height:70vh;display:none;"></iframe>
-    <div id="scrape-loading" style="text-align:center;padding:40px;color:var(--muted);">로딩 중...</div>
+    <div class="panel-title"><span>➕ 수집 작업 추가</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+      <div>
+        <label style="font-size:0.7rem;color:var(--muted);display:block;margin-bottom:3px;">브랜드</label>
+        <select id="task-brand" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.78rem;">
+          <option value="">전체</option>
+          <option value="001235">PRADA</option><option value="000931">LOUIS VUITTON</option><option value="000629">GUCCI</option>
+          <option value="kw:CHANEL">CHANEL</option><option value="kw:HERMES">HERMES</option><option value="000278">CELINE</option>
+          <option value="kw:COACH">COACH</option><option value="kw:BALENCIAGA">BALENCIAGA</option><option value="kw:BURBERRY">BURBERRY</option>
+          <option value="000507">FENDI</option><option value="kw:BOTTEGA VENETA">BOTTEGA VENETA</option><option value="kw:LOEWE">LOEWE</option>
+          <option value="kw:SAINT LAURENT">SAINT LAURENT</option><option value="001227">PORTER</option><option value="kw:FERRAGAMO">FERRAGAMO</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:0.7rem;color:var(--muted);display:block;margin-bottom:3px;">카테고리</label>
+        <select id="task-cat" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.78rem;">
+          <option value="">전체</option>
+          <option value="950001">가방 전체</option><option value="951001">남성 가방</option><option value="951002">여성 가방</option>
+          <option value="931010">시계</option><option value="931011">지갑/소품</option><option value="931002">악세서리</option><option value="931009">모자</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:0.7rem;color:var(--muted);display:block;margin-bottom:3px;">페이지</label>
+        <select id="task-chunk" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.78rem;">
+          <option value="5">5p</option><option value="10">10p</option><option value="20">20p</option>
+        </select>
+      </div>
+      <button class="btn b-green" onclick="addTask()" style="padding:6px 14px;font-size:0.78rem;">+ 추가</button>
+      <button class="btn b-yellow" onclick="testTask()" style="padding:6px 14px;font-size:0.78rem;">🧪 테스트</button>
+    </div>
+  </div>
+  <!-- 작업 리스트 -->
+  <div class="panel" style="margin-top:10px;">
+    <div class="panel-title">
+      <span>📋 작업 리스트</span>
+      <div style="display:flex;gap:6px;">
+        <button class="btn b-blue" onclick="runTasks()" style="font-size:0.72rem;">▶ 선택 실행</button>
+        <button class="btn b-green" onclick="resetTasks()" style="font-size:0.72rem;">↩ 대기로</button>
+        <button class="btn b-red" onclick="stopTasks()" style="font-size:0.72rem;">⏹ 멈춤</button>
+        <button class="btn b-red" onclick="deleteTasks()" style="font-size:0.72rem;">🗑 삭제</button>
+        <button class="btn b-gray" onclick="loadTasks()">🔄</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="tbl" style="width:100%;font-size:0.75rem;">
+        <thead><tr>
+          <th style="width:28px;"><input type="checkbox" onchange="document.querySelectorAll('.tc').forEach(c=>c.checked=this.checked)"></th>
+          <th>#</th><th>브랜드</th><th>카테고리</th><th>페이지</th><th>수집</th><th>상태</th><th>실행시간</th>
+        </tr></thead>
+        <tbody id="task-tbody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px;">로딩 중...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- 로그 -->
+  <div class="panel" style="margin-top:10px;">
+    <div class="panel-title"><span>📝 실시간 로그</span></div>
+    <div id="task-log" style="max-height:250px;overflow-y:auto;font-size:0.72rem;font-family:monospace;color:var(--muted);white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;">대기 중...</div>
   </div>
 </div>
 <div class="page-section" id="page-sns-upload"><div class="panel"><div style="text-align:center;padding:40px;color:var(--muted);">SNS 업로드 — <a href="{{ url_prefix }}/dashboard#sns-upload" style="color:var(--accent);">전체 대시보드에서 보기</a></div></div></div>
@@ -299,7 +354,7 @@ function onPageShow(page) {
   if (page === "vt-todo") loadVtTodo();
   if (page === "members") loadMembers();
   if (page === "orders") loadOrders();
-  if (page === "scrape-tasks") loadScrapeFrame();
+  if (page === "scrape-tasks") loadTasks();
   if (page === "db-update") { loadPriceChanges(); pollDbLog(); }
 }
 
@@ -464,13 +519,73 @@ function downloadQuote(){const ids=[];document.querySelectorAll(".order-chk:chec
 async function toggleBatchDetail(orderId,el){const tr=el.closest("tr");const next=tr.nextElementSibling;if(next&&next.classList.contains("batch-detail-row")){next.remove();return;}try{const r=await fetch(PREFIX+"/orders/"+orderId+"/related");const d=await r.json();if(!d.ok||!d.orders.length)return;let html='<tr class="batch-detail-row"><td colspan="16" style="padding:8px 16px;background:rgba(212,165,74,0.05);"><div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px;">세부 주문:</div><table style="width:100%;font-size:0.72rem;border-collapse:collapse;">';d.orders.forEach(o=>{html+=`<tr style="border-bottom:1px solid var(--border);"><td style="padding:4px 6px;">${o.order_number||''}</td><td>${o.brand||''}</td><td>${o.product_name||''}</td><td>${o.product_code||''}</td><td style="font-weight:700;color:var(--accent);">${o.price||''}</td></tr>`;});html+='</table></td></tr>';tr.insertAdjacentHTML("afterend",html);}catch(e){}}
 async function approveCancel(id,action){if(!confirm(action==='approve'?'취소를 승인하시겠습니까?':'취소 요청을 거절하시겠습니까?'))return;await fetch(PREFIX+"/orders/"+id+"/approve-cancel",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})});loadOrders();}
 
-// ── 수집 작업리스트 (대시보드 임베드) ──
-function loadScrapeFrame() {
-  const iframe = document.getElementById("scrape-iframe");
-  const loading = document.getElementById("scrape-loading");
-  if (iframe.src) return; // 이미 로드됨
-  iframe.src = PREFIX + "/dashboard#scrape-tasks";
-  iframe.onload = () => { loading.style.display = 'none'; iframe.style.display = 'block'; };
+// ── 수집 작업리스트 ──
+let _taskLogTimer = null;
+async function loadTasks() {
+  try {
+    const r = await fetch(PREFIX+"/scrape/tasks");
+    const d = await r.json();
+    const tbody = document.getElementById("task-tbody");
+    const tasks = d.tasks || [];
+    if (!tasks.length) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px;">작업 없음</td></tr>'; return; }
+    const stC={"대기":"var(--muted)","수집중":"var(--green)","완료":"var(--blue)","오류":"var(--red)","예약":"var(--yellow)"};
+    tbody.innerHTML=tasks.map((t,i)=>`<tr>
+      <td><input type="checkbox" class="tc" data-id="${t.id}"></td>
+      <td style="color:var(--dim);">${i+1}</td>
+      <td style="font-weight:600;">${t.brand_name||'전체'}</td>
+      <td>${t.category_name||'전체'}</td>
+      <td style="font-size:0.7rem;">${t.start_page||1}~${t.end_page||'?'}</td>
+      <td style="font-weight:700;color:var(--accent);">${t.collected||0}</td>
+      <td style="color:${stC[t.status]||'var(--muted)'};font-weight:600;">${t.status||'대기'}</td>
+      <td style="font-size:0.68rem;color:var(--dim);">${(t.started_at||'').slice(11,19)||'-'}</td>
+    </tr>`).join("");
+  } catch(e) {}
+}
+async function addTask() {
+  const brand=document.getElementById("task-brand").value;
+  const cat=document.getElementById("task-cat").value;
+  const chunk=parseInt(document.getElementById("task-chunk").value)||5;
+  const brandName=document.getElementById("task-brand").selectedOptions[0]?.textContent||'전체';
+  const catName=document.getElementById("task-cat").selectedOptions[0]?.textContent||'전체';
+  await fetch(PREFIX+"/scrape/tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"add_auto",site:"2ndstreet",brand_code:brand,category_id:cat,brand_name:brandName,category_name:catName,chunk_size:chunk})});
+  loadTasks();
+}
+async function testTask() {
+  const brand=document.getElementById("task-brand").value;
+  const cat=document.getElementById("task-cat").value;
+  const brandName=document.getElementById("task-brand").selectedOptions[0]?.textContent||'전체';
+  const catName=document.getElementById("task-cat").selectedOptions[0]?.textContent||'전체';
+  await fetch(PREFIX+"/scrape/tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"test",site:"2ndstreet",brand_code:brand,category_id:cat,brand_name:brandName,category_name:catName})});
+  pollTaskLog();
+}
+function getCheckedTaskIds() { return [...document.querySelectorAll(".tc:checked")].map(c=>c.dataset.id); }
+async function runTasks() {
+  const ids=getCheckedTaskIds(); if(!ids.length){alert("작업을 선택해주세요");return;}
+  for(const id of ids) await fetch(PREFIX+"/scrape/tasks/"+id+"/run",{method:"POST"}).catch(()=>{});
+  pollTaskLog(); loadTasks();
+}
+async function resetTasks() {
+  const ids=getCheckedTaskIds(); if(!ids.length) return;
+  for(const id of ids) await fetch(PREFIX+"/scrape/tasks/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"대기"})}).catch(()=>{});
+  loadTasks();
+}
+async function stopTasks() { await fetch(PREFIX+"/scrape/stop-all",{method:"POST"}).catch(()=>{}); loadTasks(); }
+async function deleteTasks() {
+  const ids=getCheckedTaskIds(); if(!ids.length) return;
+  if(!confirm(`${ids.length}개 삭제?`)) return;
+  for(const id of ids) await fetch(PREFIX+"/scrape/tasks/"+id,{method:"DELETE"}).catch(()=>{});
+  loadTasks();
+}
+function pollTaskLog() {
+  if(_taskLogTimer) clearInterval(_taskLogTimer);
+  _taskLogTimer=setInterval(async()=>{
+    try{
+      const r=await fetch(PREFIX+"/scrape/log");const d=await r.json();
+      const el=document.getElementById("task-log");
+      el.textContent=d.log||'대기 중...'; el.scrollTop=999999;
+      if(!d.running){clearInterval(_taskLogTimer);_taskLogTimer=null;loadTasks();}
+    }catch(e){}
+  },2000);
 }
 
 // ── 주문/장바구니 탭 전환 ──
