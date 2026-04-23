@@ -367,6 +367,11 @@
       <textarea id="kv-modal-desc-ja" rows="6" placeholder="AI가 생성하거나 직접 입력..." style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.78rem;resize:vertical;line-height:1.6;" oninput="document.getElementById('kv-desc-len').textContent=this.value.length"></textarea>
       <div style="text-align:right;font-size:0.62rem;color:var(--dim);margin-top:2px;"><span id="kv-desc-len">0</span>/2000</div>
     </div>
+    <!-- 검색량 -->
+    <div style="margin-bottom:12px;">
+      <button onclick="loadKvModalKeywords()" id="btn-kv-keyword" style="padding:5px 12px;font-size:0.72rem;background:rgba(79,142,247,0.15);border:1px solid rgba(79,142,247,0.3);color:var(--blue);border-radius:4px;cursor:pointer;font-weight:600;">🔍 네이버 검색량</button>
+      <div id="kv-modal-keyword-result" style="display:none;margin-top:8px;"></div>
+    </div>
     <!-- 하단 버튼 -->
     <div style="display:flex;gap:8px;">
       <button onclick="saveKvModalData()" class="btn b-green" style="flex:1;padding:8px;font-size:0.82rem;">💾 저장</button>
@@ -987,6 +992,53 @@ async function generateAiDesc() {
     } else alert(d.message||"생성 실패");
   } catch(e) { alert("오류: "+e); }
   finally { btn.disabled=false; btn.textContent="🤖 AI 생성"; }
+}
+
+async function loadKvModalKeywords() {
+  const p = _kvProducts[_kvModalIdx]; if (!p) return;
+  const btn = document.getElementById("btn-kv-keyword");
+  const el = document.getElementById("kv-modal-keyword-result");
+  btn.disabled=true; btn.textContent="조회중...";
+  el.style.display="block";
+  el.innerHTML='<div style="font-size:0.72rem;color:var(--muted);padding:6px;">검색량 조회 중...</div>';
+  // 대표 태그 3개: 브랜드 + 상품 키워드 조합
+  const brand = p.brand || '';
+  const name = p.name || '';
+  // 상품명에서 핵심 키워드 추출 (첫 2~3단어)
+  const words = name.replace(/[0-9A-Z]{3,}/g,'').replace(/[\/\-_]/g,' ').split(/\s+/).filter(w=>w.length>=2).slice(0,3);
+  const tags = [];
+  if (brand && words.length) tags.push(brand + ' ' + words[0]);
+  if (words.length >= 2) tags.push(brand + ' ' + words.slice(0,2).join(' '));
+  if (words.length >= 1) tags.push(words[0]);
+  if (tags.length === 0) tags.push(brand || name.slice(0,10));
+  try {
+    const r = await fetch(PREFIX+"/shop/api/keyword-stats",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tags:tags.slice(0,3)})});
+    const d = await r.json();
+    if (!d.ok || !d.results || !d.results.length) {
+      el.innerHTML='<div style="font-size:0.72rem;color:var(--muted);padding:6px;">검색량 데이터 없음</div>';
+      return;
+    }
+    const results = d.results.sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,15);
+    el.innerHTML=`
+      <div style="font-size:0.68rem;color:var(--muted);margin-bottom:4px;">검색 태그: ${tags.join(', ')}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.7rem;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+        <thead><tr style="background:rgba(0,0,0,0.2);">
+          <th style="padding:4px 6px;text-align:left;color:var(--muted);">키워드</th>
+          <th style="padding:4px 6px;text-align:right;color:var(--muted);">PC</th>
+          <th style="padding:4px 6px;text-align:right;color:var(--muted);">모바일</th>
+          <th style="padding:4px 6px;text-align:right;color:var(--accent);">합계</th>
+          <th style="padding:4px 6px;text-align:center;color:var(--muted);">경쟁</th>
+        </tr></thead>
+        <tbody>${results.map(r=>`<tr style="border-top:1px solid var(--border);">
+          <td style="padding:4px 6px;">${r.relKeyword||'-'}</td>
+          <td style="padding:4px 6px;text-align:right;">${(r.monthlyPcQcCnt||0).toLocaleString()}</td>
+          <td style="padding:4px 6px;text-align:right;">${(r.monthlyMobileQcCnt||0).toLocaleString()}</td>
+          <td style="padding:4px 6px;text-align:right;font-weight:700;color:var(--accent);">${(r.total||0).toLocaleString()}</td>
+          <td style="padding:4px 6px;text-align:center;color:${r.compIdx==='높음'?'var(--red)':r.compIdx==='중간'?'var(--yellow)':r.compIdx==='낮음'?'var(--green)':'var(--muted)'};">${r.compIdx||'-'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  } catch(e) { el.innerHTML=`<div style="color:var(--red);font-size:0.72rem;">오류: ${e}</div>`; }
+  finally { btn.disabled=false; btn.textContent="🔍 네이버 검색량"; }
 }
 
 async function saveKvModalData() {
