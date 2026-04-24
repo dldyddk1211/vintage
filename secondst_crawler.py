@@ -928,6 +928,24 @@ def _translate_and_save(product: dict, log_func=None):
         if log_func:
             log_func(f"      ⚠️ 번역 오류: {e}")
 
+    # AI 상품명 + 대표 태그 생성 (이미지 Vision)
+    try:
+        from ai_product_enrich import enrich_product_data
+        ai_result = enrich_product_data(product)
+        if ai_result and ai_result.get("ok"):
+            if ai_result.get("shop_name"):
+                product["shop_name"] = ai_result["shop_name"]
+            if ai_result.get("ai_tags"):
+                product["ai_tags"] = ai_result["ai_tags"]
+            product["ai_analyzed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if log_func:
+                tags = ai_result.get("ai_tags", [])
+                tag_str = ", ".join(tags[:3]) if isinstance(tags, list) else str(tags)[:30]
+                log_func(f"      🏷️ AI: {(ai_result.get('shop_name') or '')[:30]} [{tag_str}]")
+    except Exception as e:
+        if log_func:
+            log_func(f"      ⚠️ AI 분석 스킵: {e}")
+
     try:
         from product_db import insert_products
         insert_products([product])

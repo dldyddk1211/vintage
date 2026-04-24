@@ -195,6 +195,43 @@ def _db_connect_safe():
     return conn
 
 
+def enrich_product_data(product: dict) -> dict:
+    """상품 dict를 받아 AI 상품명 + 태그 생성 (DB 저장 없이 dict에 결과 추가)
+
+    Args: product dict (name, brand, brand_ko, img_url, detail_images, subcategory 등)
+    Returns: {"ok": True, "shop_name": str, "ai_tags": list} or {"ok": False}
+    """
+    name = product.get("name_ko") or product.get("name") or ""
+    brand = product.get("brand_ko") or product.get("brand") or ""
+    category = product.get("subcategory") or ""
+
+    img_urls = []
+    try:
+        detail = product.get("detail_images")
+        if isinstance(detail, str):
+            detail = json.loads(detail)
+        if isinstance(detail, list):
+            img_urls.extend([u for u in detail if u][:2])
+    except Exception:
+        pass
+    if product.get("img_url") and product["img_url"] not in img_urls:
+        img_urls.insert(0, product["img_url"].replace("_tn.jpg", ".jpg"))
+    img_urls = [u for u in img_urls if u][:2]
+
+    if not name and not img_urls:
+        return {"ok": False, "message": "상품명/이미지 없음"}
+
+    result = enrich_product(name, brand, category, img_urls)
+    if not result:
+        return {"ok": False, "message": "AI 분석 실패"}
+
+    shop_name = result.get("shop_name", "")
+    tags = result.get("tags", [])
+    tags_json = json.dumps(tags, ensure_ascii=False) if isinstance(tags, list) else str(tags)
+
+    return {"ok": True, "shop_name": shop_name, "ai_tags": tags_json}
+
+
 def enrich_product_by_id(product_id: int) -> dict:
     """DB 상품 1건 AI 분석 + 저장"""
     import time as _t
