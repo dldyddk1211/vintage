@@ -298,6 +298,18 @@
         <tbody id="dbu-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">로딩 중...</td></tr></tbody>
       </table>
     </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:0.72rem;color:var(--muted);">표시:</span>
+        <select id="dbu-per-page" onchange="_dbuPage=1;renderPriceChanges()" style="padding:3px 6px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.72rem;">
+          <option value="20">20개</option>
+          <option value="40">40개</option>
+          <option value="100">100개</option>
+        </select>
+        <span id="dbu-info" style="font-size:0.68rem;color:var(--dim);"></span>
+      </div>
+      <div id="dbu-paging" style="display:flex;gap:4px;"></div>
+    </div>
   </div>
   <!-- 실시간 로그 -->
   <div class="panel" style="margin-top:12px;">
@@ -737,33 +749,62 @@ async function deleteCheckedCarts() {
 }
 
 // ── 가격 변경 이력 ──
+let _dbuAllChanges = [];
+let _dbuPage = 1;
+
 async function loadPriceChanges() {
   const filter = document.getElementById("dbu-filter")?.value || "";
   try {
-    const r = await fetch(PREFIX+"/api/price-changes?type="+encodeURIComponent(filter));
+    const r = await fetch(PREFIX+"/api/price-changes?type="+encodeURIComponent(filter)+"&limit=1000");
     const d = await r.json();
-    const tb = document.getElementById("dbu-tbody");
-    if (!d.ok || !d.changes || d.changes.length === 0) {
-      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">변경 이력 없음</td></tr>';
+    if (!d.ok || !d.changes || !d.changes.length) {
+      _dbuAllChanges = [];
+      document.getElementById("dbu-tbody").innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">변경 이력 없음</td></tr>';
+      document.getElementById("dbu-info").textContent = '';
+      document.getElementById("dbu-paging").innerHTML = '';
       return;
     }
-    tb.innerHTML = d.changes.map(c => {
-      const arrow = c.new_price < c.old_price ? '↓' : '↑';
-      const color = c.new_price < c.old_price ? 'var(--green)' : 'var(--red)';
-      const diff = Math.abs(c.new_price - c.old_price);
-      return `<tr>
-        <td style="white-space:nowrap;">${(c.updated_at||'').slice(0,16)}</td>
-        <td style="white-space:nowrap;">${(c.synced_at||'-').slice(0,16)}</td>
-        <td><a href="${c.link||'#'}" target="_blank" style="color:var(--accent);cursor:pointer;" title="${c.name}">${c.internal_code||c.product_code||'-'}</a></td>
-        <td>${c.brand_ko||'-'}</td>
-        <td>${c.category_id||'-'}</td>
-        <td style="color:${color};font-weight:600;white-space:nowrap;">
-          ¥${(c.old_price||0).toLocaleString()} → ¥${(c.new_price||0).toLocaleString()}
-          <span style="font-size:0.68rem;">(${arrow}${diff.toLocaleString()})</span>
-        </td>
-      </tr>`;
-    }).join("");
+    _dbuAllChanges = d.changes;
+    _dbuPage = 1;
+    renderPriceChanges();
   } catch(e) {}
+}
+
+function renderPriceChanges() {
+  const tb = document.getElementById("dbu-tbody");
+  const perPage = parseInt(document.getElementById("dbu-per-page").value) || 20;
+  const total = _dbuAllChanges.length;
+  const pages = Math.ceil(total / perPage);
+  if (_dbuPage > pages) _dbuPage = pages;
+  const start = (_dbuPage - 1) * perPage;
+  const items = _dbuAllChanges.slice(start, start + perPage);
+
+  tb.innerHTML = items.map(c => {
+    const arrow = c.new_price < c.old_price ? '↓' : '↑';
+    const color = c.new_price < c.old_price ? 'var(--green)' : 'var(--red)';
+    const diff = Math.abs(c.new_price - c.old_price);
+    return `<tr>
+      <td style="white-space:nowrap;">${(c.updated_at||'').slice(0,16)}</td>
+      <td style="white-space:nowrap;">${(c.synced_at||'-').slice(0,16)}</td>
+      <td><a href="${c.link||'#'}" target="_blank" style="color:var(--accent);cursor:pointer;" title="${c.name}">${c.internal_code||c.product_code||'-'}</a></td>
+      <td>${c.brand_ko||'-'}</td>
+      <td>${c.category_id||'-'}</td>
+      <td style="color:${color};font-weight:600;white-space:nowrap;">
+        ¥${(c.old_price||0).toLocaleString()} → ¥${(c.new_price||0).toLocaleString()}
+        <span style="font-size:0.68rem;">(${arrow}${diff.toLocaleString()})</span>
+      </td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("dbu-info").textContent = `${total}건 중 ${start+1}~${Math.min(start+perPage,total)}`;
+  let pgHtml = '';
+  if (pages > 1) {
+    if (_dbuPage > 1) pgHtml += `<button onclick="_dbuPage--;renderPriceChanges()" class="btn b-gray" style="font-size:0.68rem;padding:2px 6px;">◀</button>`;
+    for (let i = Math.max(1,_dbuPage-3); i <= Math.min(pages,_dbuPage+3); i++)
+      pgHtml += `<button onclick="_dbuPage=${i};renderPriceChanges()" class="btn ${i===_dbuPage?'b-blue':'b-gray'}" style="font-size:0.68rem;padding:2px 6px;min-width:24px;">${i}</button>`;
+    if (_dbuPage < pages) pgHtml += `<button onclick="_dbuPage++;renderPriceChanges()" class="btn b-gray" style="font-size:0.68rem;padding:2px 6px;">▶</button>`;
+  }
+  document.getElementById("dbu-paging").innerHTML = pgHtml;
 }
 
 let _dbuTimer = null;
