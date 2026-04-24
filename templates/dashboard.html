@@ -3342,6 +3342,17 @@ let checkedIndices = new Set();  // 스크래핑 페이지용 (인덱스)
 let checkedCodes = new Set();   // 카페 업로드용 (product_code)
 let pageIndexMap = [];
 
+// 카테고리/브랜드 이름 매핑 (runTestScrape 등에서 즉시 필요 — 상단 초기화)
+const catNames = {"":"전체","950001":"가방","950002":"의류","950003":"신발","950004":"시계","950005":"악세서리"};
+const brandNames = {"":"전체","001235":"PRADA","000931":"LOUIS VUITTON","000629":"GUCCI","kw:CHANEL":"CHANEL","kw:HERMES":"HERMES","000278":"CELINE","kw:COACH":"COACH","kw:BALENCIAGA":"BALENCIAGA","kw:BURBERRY":"BURBERRY","000507":"FENDI","kw:BOTTEGA VENETA":"BOTTEGA VENETA","kw:LOEWE":"LOEWE","kw:SAINT LAURENT":"SAINT LAURENT","kw:MICHAEL KORS":"MICHAEL KORS","kw:MARC JACOBS":"MARC JACOBS","kw:JIMMY CHOO":"JIMMY CHOO","001227":"PORTER","001355":"FERRAGAMO","kw:Christian Dior":"Christian Dior"};
+
+// 초기 해시 라우팅에서 showPage()가 호출하므로 상단에서 미리 초기화 (TDZ 방지)
+let scrapeTaskList = [];
+let taskLogSource = null;
+let taskPage = 1;
+const TASK_PER_PAGE = 20;
+const checkedTaskIds = new Set();
+
 // ── 카테고리 토글 ──────────────────────────
 // ── 모바일 햄버거 메뉴 ──────────────────────
 function toggleMobileMenu() {
@@ -4278,9 +4289,7 @@ async function runTranslate() {
 }
 
 // ── 수집 작업리스트 (서버 DB) ─────────────────
-let scrapeTaskList = [];
-const catNames = {"":"전체","950001":"가방","950002":"의류","950003":"신발","950004":"시계","950005":"악세서리"};
-const brandNames = {"":"전체","001235":"PRADA","000931":"LOUIS VUITTON","000629":"GUCCI","kw:CHANEL":"CHANEL","kw:HERMES":"HERMES","000278":"CELINE","kw:COACH":"COACH","kw:BALENCIAGA":"BALENCIAGA","kw:BURBERRY":"BURBERRY","000507":"FENDI","kw:BOTTEGA VENETA":"BOTTEGA VENETA","kw:LOEWE":"LOEWE","kw:SAINT LAURENT":"SAINT LAURENT","kw:MICHAEL KORS":"MICHAEL KORS","kw:MARC JACOBS":"MARC JACOBS","kw:JIMMY CHOO":"JIMMY CHOO","001227":"PORTER","001355":"FERRAGAMO","kw:Christian Dior":"Christian Dior"};
+// scrapeTaskList / catNames / brandNames 는 상단에서 이미 선언됨
 
 async function loadScrapeTasks() {
   try {
@@ -4332,7 +4341,7 @@ function updateTaskStats() {
   if (el("st-pct")) el("st-pct").textContent = `${done}/${total} (${pct}%)`;
 }
 
-let taskLogSource = null;
+// taskLogSource — 상단에서 이미 선언됨
 function startTaskLog() {
   if (taskLogSource) return;
   taskLogSource = new EventSource(PREFIX + "/logs/stream");
@@ -4463,9 +4472,7 @@ async function addScrapeTaskAuto() {
   loadScrapeTasks();
 }
 
-let taskPage = 1;
-const TASK_PER_PAGE = 20;
-const checkedTaskIds = new Set();
+// taskPage / TASK_PER_PAGE / checkedTaskIds — 상단에서 이미 선언됨
 
 function renderTaskList() {
   const tbody = document.getElementById("scrape-task-body");

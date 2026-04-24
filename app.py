@@ -7847,11 +7847,14 @@ def _start_queue_worker():
                     _worker._nas_acc = _nas_export_acc
                     if _nas_export_acc >= 300:
                         try:
-                            export_all_to_nas()
-                            push_log(f"📤 {_nas_export_acc}개 수집 → NAS 자동 내보내기")
-                            _worker._nas_acc = 0
-                        except Exception:
-                            pass
+                            nas_res = export_all_to_nas()
+                            if nas_res.get("ok"):
+                                push_log(f"📤 {_nas_export_acc}개 수집 → NAS 자동 내보내기 완료")
+                                _worker._nas_acc = 0
+                            else:
+                                push_log(f"⚠️ NAS 내보내기 실패: {nas_res.get('message','')}")
+                        except Exception as e:
+                            push_log(f"⚠️ NAS 내보내기 예외: {e}")
 
                 # AI 자동 분석 (백그라운드, 최대 N개) — 매 큐 작업 완료 시
                 if count > 0:
@@ -8075,10 +8078,13 @@ def api_scrape_sync():
     import platform
     if platform.system() == "Windows":
         try:
-            export_all_to_nas()
-            push_log(f"📤 수집 완료 → NAS 자동 내보내기 완료")
+            nas_res = export_all_to_nas()
+            if nas_res.get("ok"):
+                push_log(f"📤 수집 완료 → NAS 자동 내보내기 완료")
+            else:
+                push_log(f"⚠️ NAS 내보내기 실패: {nas_res.get('message','')}")
         except Exception as e:
-            push_log(f"⚠️ NAS 내보내기 실패: {e}")
+            push_log(f"⚠️ NAS 내보내기 예외: {e}")
 
     # AI 자동 분석 (백그라운드, 최대 N개)
     if count > 0:
@@ -10570,19 +10576,29 @@ def _sync_single_db(nas_db_path, db_name="products.db"):
 
 
 def export_all_to_nas(selected_files=None):
-    """로컬 → NAS 공유 폴더로 복사 (선택 파일)"""
+    """로컬 → NAS 공유 폴더로 복사
+
+    기본(selected_files=None): 수집 PC 안전을 위해 products.db만 내보냄
+    (수집/최신화 PC의 설정 JSON은 Mac 서버가 authoritative — 덮어쓰기 방지)
+    전체 동기화가 필요하면 수동 API에서 명시적으로 selected_files를 넘겨야 함.
+    """
     try:
         local_db_dir = get_path("db")
         nas_db_dir = get_nas_path("db")
         if not os.path.isdir(nas_db_dir):
             return {"ok": False, "message": "NAS 경로 접근 불가"}
 
+        # 화이트리스트 — 수동 API에서 지정 가능한 전체 파일 목록
         all_files = ["products.db", "users.db", "scrape_history.json",
                      "cafe_schedule.json", "vt_cafe_schedule.json", "check_schedule.json",
                      "fb_schedule.json", "uploaded_history.json", "translation_dict.json",
                      "naver_accounts.json", "blog_accounts.json",
                      "price_config.json", "vintage_price.json", "biz_info.json", "admin_config.json"]
-        export_files = [f for f in all_files if not selected_files or f in selected_files]
+        # 기본 동작(selected_files=None): products.db만
+        if selected_files is None:
+            export_files = ["products.db"]
+        else:
+            export_files = [f for f in all_files if f in selected_files]
         copied = []
         for fn in export_files:
             local_file = os.path.join(local_db_dir, fn)
