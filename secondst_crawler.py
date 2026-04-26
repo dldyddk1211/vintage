@@ -502,9 +502,11 @@ async def scrape_2ndstreet(
                 log(f"   📄 진행률: {pages_done}/{len(page_list)}페이지 ({pages_done*100//len(page_list)}%)")
 
                 # 🔁 교대 실행: 수집 청크 완료 → 기존 상품 최신화 300개 체크
+                # (fresh PC만 — crawl PC는 수집 전용)
                 try:
                     import platform
-                    if platform.system() == "Windows":
+                    from config import PC_ROLE
+                    if platform.system() == "Windows" and PC_ROLE == "fresh":
                         log(f"   🔍 교대 최신화 체크 시작 (300개)...")
                         await force_close_browser()
                         import concurrent.futures

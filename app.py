@@ -3892,9 +3892,12 @@ def run_scrape(site_id="xebio", category_id="sale", keyword="", pages="", brand_
         status["scraping"] = False
         push_log("🔧 run_scrape 종료 (scraping=False)")
 
-        # [Windows] 수집 완료 후 교대 최신화 체크 실행
+        # [Windows - fresh PC만] 수집 완료 후 교대 최신화 체크 실행
+        # (crawl PC는 수집 전용 — 최신화는 fresh PC에서만 돌림)
         import platform
-        if platform.system() == "Windows" and not _freshness_status.get("running"):
+        if (platform.system() == "Windows"
+                and PC_ROLE == "fresh"
+                and not _freshness_status.get("running")):
             try:
                 push_log("🔍 교대 실행: 기존 상품 300개 최신화 체크 시작")
                 run_interleaved_check()
@@ -5027,16 +5030,19 @@ def _auto_git_pull():
 
 set_app_status(status)  # xebio_search에 status 딕셔너리 주입
 
-# 카페 모니터 + 텔레그램 봇 자동 시작
-try:
-    _monitor_started = start_monitor(log_callback=push_log, interval=180)
-    _bot_started = start_bot(log_callback=push_log)
-    if _monitor_started:
-        logger.info("📡 카페 모니터 자동 시작됨")
-    if _bot_started:
-        logger.info("🤖 텔레그램 봇 자동 시작됨")
-except Exception as e:
-    logger.warning(f"⚠️ 모니터/봇 자동 시작 실패: {e}")
+# 카페 모니터 + 텔레그램 봇 자동 시작 (수집/최신화 PC에서는 OFF — Mac 서버가 담당)
+if PC_ROLE == "server":
+    try:
+        _monitor_started = start_monitor(log_callback=push_log, interval=180)
+        _bot_started = start_bot(log_callback=push_log)
+        if _monitor_started:
+            logger.info("📡 카페 모니터 자동 시작됨")
+        if _bot_started:
+            logger.info("🤖 텔레그램 봇 자동 시작됨")
+    except Exception as e:
+        logger.warning(f"⚠️ 모니터/봇 자동 시작 실패: {e}")
+else:
+    logger.info(f"⏸ 카페 모니터/봇 자동 시작 건너뜀 (PC_ROLE={PC_ROLE})")
 
 
 # =============================================

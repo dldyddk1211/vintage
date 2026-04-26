@@ -84,7 +84,7 @@ OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
 AI_PROVIDER       = os.environ.get("AI_PROVIDER", "gemini")  # "gemini" | "claude" | "openai" | "none"
 
 # ── AI 상품명/태그 자동 분석 (스크래핑 완료 후) ────
-AUTO_AI_ENRICH_ON_SCRAPE = True   # 스크래핑 완료 후 자동 AI 분석 ON/OFF
+AUTO_AI_ENRICH_ON_SCRAPE = False  # 스크래핑 완료 후 자동 AI 분석 ON/OFF (수집PC에서는 OFF)
 AUTO_AI_ENRICH_LIMIT     = 0      # 0 = 제한 없음 (수집된 미분석 상품 전부 처리)
 
 # ── 텔레그램 알림 설정 ─────────────────────
