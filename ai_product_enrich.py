@@ -117,25 +117,9 @@ def enrich_product(name: str, brand: str, category: str,
         return {}
 
     result_text = ""
+    used_provider = ""
 
-    # 1) Gemini Vision 우선
-    if config.get("gemini_key"):
-        try:
-            client = _get_gemini()
-            from google.genai import types
-            contents = [prompt]
-            for b64, mime in img_parts:
-                contents.append(types.Part.from_bytes(
-                    data=base64.b64decode(b64), mime_type=mime))
-            resp = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-            )
-            result_text = (resp.text or "").strip()
-        except Exception as e:
-            logger.warning(f"Gemini 실패: {e}")
-
-    # 2) OpenAI Vision 폴백
+    # 1) OpenAI Vision 우선
     if not result_text and config.get("openai_key"):
         try:
             client = _get_openai()
@@ -155,11 +139,59 @@ def enrich_product(name: str, brand: str, category: str,
                 timeout=30.0,
             )
             result_text = (resp.choices[0].message.content or "").strip()
+            if result_text:
+                used_provider = "OpenAI"
         except Exception as e:
             logger.warning(f"OpenAI 실패: {e}")
 
+    # 2) Gemini Vision 폴백
+    if not result_text and config.get("gemini_key"):
+        try:
+            client = _get_gemini()
+            from google.genai import types
+            contents = [prompt]
+            for b64, mime in img_parts:
+                contents.append(types.Part.from_bytes(
+                    data=base64.b64decode(b64), mime_type=mime))
+            resp = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+            )
+            result_text = (resp.text or "").strip()
+            if result_text:
+                used_provider = "Gemini"
+        except Exception as e:
+            logger.warning(f"Gemini 실패: {e}")
+
+    # 3) Claude Vision 폴백
+    if not result_text and config.get("claude_key"):
+        try:
+            from post_generator import _get_claude
+            client = _get_claude()
+            content = [{"type": "text", "text": prompt}]
+            for b64, mime in img_parts:
+                content.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": mime, "data": b64}
+                })
+            resp = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=500,
+                messages=[{"role": "user", "content": content}],
+            )
+            # Claude SDK 응답: resp.content[0].text
+            if resp.content and len(resp.content) > 0:
+                result_text = (resp.content[0].text or "").strip()
+                if result_text:
+                    used_provider = "Claude"
+        except Exception as e:
+            logger.warning(f"Claude 실패: {e}")
+
     if not result_text:
         return {}
+
+    if used_provider:
+        logger.info(f"AI enrich 사용 모델: {used_provider}")
 
     parsed = _parse_json_response(result_text)
     shop_name = (parsed.get("shop_name") or "").strip()
